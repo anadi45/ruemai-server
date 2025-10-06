@@ -44,7 +44,6 @@ export class LLMService {
     this.model = new ChatOpenAI({
       model: 'gpt-4.1-mini-2025-04-14',
       temperature: 0.1,
-      maxTokens: 2048,
       openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
     });
 

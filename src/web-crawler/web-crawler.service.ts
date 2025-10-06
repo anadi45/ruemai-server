@@ -4,6 +4,7 @@ import * as cheerio from 'cheerio';
 import { ParserService } from '../parser/parser.service';
 import { storage } from '../utils/storage';
 import { CrawledPage } from '../types/feature.interface';
+import { DebugLogger } from '../utils/debug-logger';
 
 export interface CrawlResult {
   pages: CrawledPage[];
@@ -19,7 +20,10 @@ export class WebCrawlerService {
   private readonly BATCH_SIZE = 10; // Process links in batches
   private readonly REQUEST_DELAY = 0; // Delay between batches (ms)
 
-  constructor(private readonly parserService: ParserService) {}
+  constructor(
+    private readonly parserService: ParserService,
+    private readonly debugLogger: DebugLogger,
+  ) {}
 
   async crawlWebsite(baseUrl: string): Promise<CrawlResult> {
     const visitedUrls = new Set<string>();
@@ -126,6 +130,13 @@ export class WebCrawlerService {
         crawledAt: new Date(),
         title: extractedContent.metadata?.title,
       };
+
+      // Log crawled content for debugging
+      await this.debugLogger.logCrawledContent(url, extractedContent.text, {
+        title: extractedContent.metadata?.title,
+        contentLength: extractedContent.text.length,
+        crawledAt: page.crawledAt,
+      });
 
       return page;
     } catch (error) {

@@ -5,6 +5,7 @@ import { UploadModule } from '../upload/upload.module';
 import { WebCrawlerModule } from '../web-crawler/web-crawler.module';
 import { ParserModule } from '../parser/parser.module';
 import { FeatureExtractorModule } from '../feature-extractor/feature-extractor.module';
+import { DebugLogger } from '../utils/debug-logger';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { FeatureExtractorModule } from '../feature-extractor/feature-extractor.m
     FeatureExtractorModule,
   ],
   controllers: [ExtractionController],
-  providers: [ExtractionService],
+  providers: [ExtractionService, DebugLogger],
   exports: [ExtractionService],
 })
 export class ExtractionModule {}

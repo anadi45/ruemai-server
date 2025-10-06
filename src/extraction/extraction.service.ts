@@ -4,6 +4,7 @@ import { WebCrawlerService } from '../web-crawler/web-crawler.service';
 import { ParserService } from '../parser/parser.service';
 import { FeatureExtractorService } from '../feature-extractor/feature-extractor.service';
 import { storage } from '../utils/storage';
+import { DebugLogger } from '../utils/debug-logger';
 import {
   Feature,
   ExtractionResult,
@@ -22,6 +23,7 @@ export class ExtractionService {
     private readonly webCrawlerService: WebCrawlerService,
     private readonly parserService: ParserService,
     private readonly featureExtractorService: FeatureExtractorService,
+    private readonly debugLogger: DebugLogger,
   ) {}
 
   async extractFeatures(request: ExtractionRequest): Promise<ExtractionResult> {
@@ -67,10 +69,24 @@ export class ExtractionService {
         processingTime: `${processingTime}s`,
       };
 
-      return {
+      const result = {
         features: allFeatures,
         stats,
       };
+
+      // Log extraction results for debugging
+      await this.debugLogger.logExtractionResults('FEATURE_EXTRACTION', {
+        request: {
+          hasFiles: !!request.files?.length,
+          fileCount: request.files?.length || 0,
+          hasUrl: !!request.url,
+          url: request.url,
+        },
+        results: result,
+        processingTime: `${processingTime}s`,
+      });
+
+      return result;
     } catch (error) {
       throw new Error(`Extraction failed: ${error.message}`);
     }

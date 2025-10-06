@@ -6,6 +6,7 @@ import * as cheerio from 'cheerio';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { encode } from 'gpt-3-encoder';
+import { DebugLogger } from '../utils/debug-logger';
 
 export interface ExtractedContent {
   text: string;
@@ -25,29 +26,63 @@ export class ParserService {
   private readonly MAX_CHUNK_TOKENS = 4000;
   private readonly CHUNK_OVERLAP = 200; // tokens
 
+  constructor(private readonly debugLogger: DebugLogger) {}
+
   async parseDocument(
     file: Buffer,
     mimeType: string,
     filename: string,
   ): Promise<ExtractedContent> {
     try {
+      let result: ExtractedContent;
+
       switch (mimeType) {
         case 'application/pdf':
-          return this.parsePDF(file);
+          result = await this.parsePDF(file);
+          break;
         case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
         case 'application/msword':
         case 'application/vnd.ms-word.document.macroEnabled.12':
-          return this.parseWord(file);
+          result = await this.parseWord(file);
+          break;
         case 'text/plain':
-          return this.parseText(file);
+          result = await this.parseText(file);
+          break;
         case 'text/markdown':
-          return this.parseMarkdown(file);
+          result = await this.parseMarkdown(file);
+          break;
         case 'text/html':
-          return this.parseHTML(file);
+          result = await this.parseHTML(file);
+          break;
         default:
           throw new Error(`Unsupported file type: ${mimeType}`);
       }
+
+      // Log parsed document content for debugging
+      await this.debugLogger.logParsedContent(
+        filename,
+        file.toString('utf8', 0, Math.min(5000, file.length)), // Log first 5k chars
+        result.text,
+        {
+          filename,
+          mimeType,
+          fileSize: file.length,
+          parsedTextLength: result.text.length,
+          hasMetadata: !!result.metadata,
+          title: result.metadata?.title,
+        },
+      );
+
+      return result;
     } catch (error) {
+      // Log parsing errors
+      await this.debugLogger.logError('DOCUMENT_PARSING', error, {
+        filename,
+        mimeType,
+        fileSize: file.length,
+        filePreview: file.toString('utf8', 0, Math.min(1000, file.length)),
+      });
+
       throw new Error(`Failed to parse document ${filename}: ${error.message}`);
     }
   }
@@ -124,8 +159,10 @@ export class ParserService {
       const reader = new Readability(dom.window.document);
       const article = reader.parse();
 
+      let result: ExtractedContent;
+
       if (article) {
-        return {
+        result = {
           text: article.textContent || article.content,
           metadata: {
             title: article.title,
@@ -134,11 +171,34 @@ export class ParserService {
       } else {
         // Fallback to cheerio extraction
         const $ = cheerio.load(html);
-        return {
+        result = {
           text: $('body').text().trim(),
         };
       }
+
+      // Log parsed content for debugging
+      await this.debugLogger.logParsedContent(
+        url,
+        html.substring(0, 5000), // Log first 5k chars of HTML
+        result.text,
+        {
+          url,
+          originalHtmlLength: html.length,
+          parsedTextLength: result.text.length,
+          hasMetadata: !!result.metadata,
+          title: result.metadata?.title,
+        },
+      );
+
+      return result;
     } catch (error) {
+      // Log parsing errors
+      await this.debugLogger.logError('HTML_PARSING', error, {
+        url,
+        htmlLength: html.length,
+        htmlPreview: html.substring(0, 1000),
+      });
+
       throw new Error(
         `Failed to parse HTML content from ${url}: ${error.message}`,
       );
