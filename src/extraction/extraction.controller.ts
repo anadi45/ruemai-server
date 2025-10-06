@@ -35,7 +35,6 @@ export class ExtractionController {
     const request: ExtractionRequest = {
       files,
       url: body.url,
-      maxPages: body.maxPages,
     };
 
     return this.extractionService.extractFeatures(request);
@@ -55,10 +54,7 @@ export class ExtractionController {
   async extractFromWebsite(
     @Body() body: WebsiteExtractionDto,
   ): Promise<{ features: Feature[] }> {
-    const features = await this.extractionService.extractFromWebsite(
-      body.url,
-      body.maxPages || 50,
-    );
+    const features = await this.extractionService.extractFromWebsite(body.url);
     return { features };
   }
 

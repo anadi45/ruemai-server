@@ -13,7 +13,6 @@ import {
 export interface ExtractionRequest {
   files?: Express.Multer.File[];
   url?: string;
-  maxPages?: number;
 }
 
 @Injectable()
@@ -58,7 +57,6 @@ export class ExtractionService {
       if (request.url) {
         const crawlResult = await this.webCrawlerService.crawlWebsite(
           request.url,
-          request.maxPages || 50,
         );
         pagesCrawled = crawlResult.totalPages;
 
@@ -118,14 +116,8 @@ export class ExtractionService {
     return this.deduplicateFeatures(allFeatures);
   }
 
-  async extractFromWebsite(
-    url: string,
-    maxPages: number = 50,
-  ): Promise<Feature[]> {
-    const crawlResult = await this.webCrawlerService.crawlWebsite(
-      url,
-      maxPages,
-    );
+  async extractFromWebsite(url: string): Promise<Feature[]> {
+    const crawlResult = await this.webCrawlerService.crawlWebsite(url);
     const allFeatures: Feature[] = [];
 
     for (const page of crawlResult.pages) {

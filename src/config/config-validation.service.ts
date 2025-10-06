@@ -52,11 +52,11 @@ export class ConfigValidationService {
       );
     }
 
-    // Validate max crawl pages
-    const maxCrawlPages = this.configService.get<number>('MAX_CRAWL_PAGES', 50);
-    if (maxCrawlPages < 1 || maxCrawlPages > 1000) {
+    // Validate crawl delay (rate limiting)
+    const crawlDelay = this.configService.get<number>('CRAWL_DELAY', 1000);
+    if (crawlDelay < 100 || crawlDelay > 10000) {
       throw new Error(
-        `❌ Invalid MAX_CRAWL_PAGES: ${maxCrawlPages}. Must be between 1 and 1000.`,
+        `❌ Invalid CRAWL_DELAY: ${crawlDelay}. Must be between 100ms and 10s.`,
       );
     }
 
@@ -79,14 +79,6 @@ export class ConfigValidationService {
       );
     }
 
-    // Validate crawl delay
-    const crawlDelay = this.configService.get<number>('CRAWL_DELAY', 1000);
-    if (crawlDelay < 100 || crawlDelay > 10000) {
-      throw new Error(
-        `❌ Invalid CRAWL_DELAY: ${crawlDelay}. Must be between 100ms and 10s.`,
-      );
-    }
-
     this.logger.log('✅ Application configuration is valid');
   }
 
@@ -94,7 +86,6 @@ export class ConfigValidationService {
     return {
       port: this.configService.get<number>('PORT', 3000),
       nodeEnv: this.configService.get<string>('NODE_ENV', 'development'),
-      maxCrawlPages: this.configService.get<number>('MAX_CRAWL_PAGES', 50),
       maxFileSize: this.configService.get<number>('MAX_FILE_SIZE', 10485760),
       chunkSize: this.configService.get<number>('CHUNK_SIZE', 4000),
       crawlDelay: this.configService.get<number>('CRAWL_DELAY', 1000),

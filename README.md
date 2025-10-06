@@ -79,8 +79,7 @@ Content-Type: multipart/form-data
 
 # Form data:
 - files: File[] (optional) - Upload documents
-- url: string (optional) - Website URL to crawl
-- maxPages: number (optional) - Max pages to crawl (default: 50)
+- url: string (optional) - Website URL to crawl (crawls entire website)
 ```
 
 ### Document-Only Extraction
@@ -98,8 +97,7 @@ POST /extract/website
 Content-Type: application/json
 
 {
-  "url": "https://example.com",
-  "maxPages": 25
+  "url": "https://example.com"
 }
 ```
 
@@ -143,15 +141,14 @@ curl -X POST http://localhost:3000/extract/documents \
 ```bash
 curl -X POST http://localhost:3000/extract/website \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com", "maxPages": 10}'
+  -d '{"url": "https://example.com"}'
 ```
 
 **3. Test Combined Extraction:**
 ```bash
 curl -X POST http://localhost:3000/extract \
   -F "files=@document.pdf" \
-  -F "url=https://example.com" \
-  -F "maxPages=25"
+  -F "url=https://example.com"
 ```
 
 **4. Test Health Check:**
@@ -222,12 +219,11 @@ PORT=3000
 NODE_ENV=development
 
 # Crawler Configuration
-MAX_CRAWL_PAGES=50
 MAX_FILE_SIZE=10485760  # 10MB
 CHUNK_SIZE=4000
 
-# Rate Limiting
-CRAWL_DELAY=1000  # milliseconds between requests
+# Rate Limiting & Concurrency
+CRAWL_DELAY=1000  # milliseconds between batches
 ```
 
 ### Supported File Types

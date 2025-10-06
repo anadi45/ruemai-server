@@ -13,19 +13,19 @@ export interface CrawlResult {
 
 @Injectable()
 export class WebCrawlerService {
-  private readonly MAX_PAGES = 50;
   private readonly MAX_DEPTH = 3;
   private readonly TIMEOUT = 30000;
+  private readonly CONCURRENT_REQUESTS = 5; // Number of concurrent requests
+  private readonly BATCH_SIZE = 10; // Process links in batches
+  private readonly REQUEST_DELAY = 1000; // Delay between batches (ms)
 
   constructor(private readonly parserService: ParserService) {}
 
-  async crawlWebsite(
-    baseUrl: string,
-    maxPages: number = this.MAX_PAGES,
-  ): Promise<CrawlResult> {
+  async crawlWebsite(baseUrl: string): Promise<CrawlResult> {
     const visitedUrls = new Set<string>();
     const pages: CrawledPage[] = [];
     const crawledUrls: string[] = [];
+    const urlsToCrawl = new Set<string>();
 
     try {
       // First, crawl the main page
@@ -37,28 +37,60 @@ export class WebCrawlerService {
         crawledUrls.push(baseUrl);
       }
 
-      // Find all internal links
-      const internalLinks = await this.findInternalLinks(baseUrl, baseUrl);
+      // Find all internal links from the main page
+      const initialLinks = await this.findInternalLinks(baseUrl, baseUrl);
+      initialLinks.forEach((link) => urlsToCrawl.add(link));
 
-      // Crawl internal links (limited to prevent infinite crawling)
-      const linksToCrawl = internalLinks
-        .filter((link) => !visitedUrls.has(link))
-        .slice(0, maxPages - 1);
+      // Process URLs in batches with concurrency control
+      while (urlsToCrawl.size > 0) {
+        const batch = Array.from(urlsToCrawl).slice(0, this.BATCH_SIZE);
 
-      for (const link of linksToCrawl) {
-        try {
-          const page = await this.crawlPage(link);
+        // Process batch with concurrency control
+        const batchPromises = batch.map(async (url) => {
+          if (visitedUrls.has(url)) return null;
+
+          try {
+            const page = await this.crawlPage(url);
+            if (page) {
+              visitedUrls.add(url);
+              crawledUrls.push(url);
+
+              // Find new links from this page
+              const newLinks = await this.findInternalLinks(baseUrl, url);
+              newLinks.forEach((link) => {
+                if (!visitedUrls.has(link) && !urlsToCrawl.has(link)) {
+                  urlsToCrawl.add(link);
+                }
+              });
+
+              return page;
+            }
+          } catch (error) {
+            console.warn(`Failed to crawl ${url}: ${error.message}`);
+          }
+
+          return null;
+        });
+
+        // Wait for all requests in the batch to complete
+        const batchResults = await Promise.all(batchPromises);
+
+        // Add successful pages to results
+        batchResults.forEach((page) => {
           if (page) {
             pages.push(page);
             storage.addCrawledPage(page);
-            visitedUrls.add(link);
-            crawledUrls.push(link);
           }
+        });
 
-          // Add a small delay to be respectful to the server
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        } catch (error) {
-          console.warn(`Failed to crawl ${link}: ${error.message}`);
+        // Remove processed URLs from the queue
+        batch.forEach((url) => urlsToCrawl.delete(url));
+
+        // Add delay between batches to be respectful
+        if (urlsToCrawl.size > 0) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.REQUEST_DELAY),
+          );
         }
       }
 
@@ -135,7 +167,7 @@ export class WebCrawlerService {
         }
       });
 
-      return links.slice(0, 20); // Limit to 20 links per page
+      return links; // No limit - crawl all internal links
     } catch (error) {
       return [];
     }
