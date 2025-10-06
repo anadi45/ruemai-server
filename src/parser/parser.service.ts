@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { readFile } from 'fs/promises';
-import * as pdfParse from 'pdf-parse';
+import { pdf as pdfParse } from 'pdf-parse';
 import * as mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
 import { JSDOM } from 'jsdom';
@@ -54,17 +54,11 @@ export class ParserService {
 
   private async parsePDF(file: Buffer): Promise<ExtractedContent> {
     try {
-      const pdfData = await pdfParse.default(file);
+      const pdfData = await pdfParse(file);
       return {
         text: pdfData.text,
         metadata: {
-          title: pdfData.info?.Title,
-          author: pdfData.info?.Author,
-          subject: pdfData.info?.Subject,
-          creator: pdfData.info?.Creator,
-          producer: pdfData.info?.Producer,
-          creationDate: pdfData.info?.CreationDate,
-          modificationDate: pdfData.info?.ModDate,
+          title: 'PDF Document',
         },
       };
     } catch (error) {

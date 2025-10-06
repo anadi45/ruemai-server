@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { readFile } from 'fs/promises';
-import pdfParse from 'pdf-parse';
+import { pdf as pdfParse } from 'pdf-parse';
 import * as mammoth from 'mammoth';
 import { LLMService, ProductFeature } from '../llm/llm.service';
 
@@ -23,18 +23,12 @@ export class DocumentParserService {
   async parsePDF(filePath: string): Promise<ExtractedContent> {
     try {
       const dataBuffer = await readFile(filePath);
-      const pdfData = await pdfParse.default(dataBuffer);
+      const pdfData = await pdfParse(dataBuffer);
 
       return {
         text: pdfData.text,
         metadata: {
-          title: pdfData.info?.Title,
-          author: pdfData.info?.Author,
-          subject: pdfData.info?.Subject,
-          creator: pdfData.info?.Creator,
-          producer: pdfData.info?.Producer,
-          creationDate: pdfData.info?.CreationDate,
-          modificationDate: pdfData.info?.ModDate,
+          title: 'PDF Document',
         },
       };
     } catch (error) {
