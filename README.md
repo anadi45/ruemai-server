@@ -53,6 +53,11 @@ cp env.example .env
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
+**⚠️ Important**: The application will validate your configuration on startup and will fail to start if:
+- OpenAI API key is missing or invalid
+- Configuration values are out of acceptable ranges
+- Required environment variables are not set
+
 ### 3. Start the Application
 
 ```bash
@@ -113,6 +118,16 @@ GET /extract/stats
 DELETE /extract/clear
 ```
 
+### Health Check
+```http
+GET /health
+```
+
+### Configuration Status
+```http
+GET /health/config
+```
+
 ## 🧪 Testing
 
 ### Manual Testing Examples
@@ -137,6 +152,16 @@ curl -X POST http://localhost:3000/extract \
   -F "files=@document.pdf" \
   -F "url=https://example.com" \
   -F "maxPages=25"
+```
+
+**4. Test Health Check:**
+```bash
+curl http://localhost:3000/health
+```
+
+**5. Test Configuration Status:**
+```bash
+curl http://localhost:3000/health/config
 ```
 
 ### Unit Tests
