@@ -60,16 +60,16 @@ Return only the JSON object, no other text.
 
   async extractFeatures(content: string, source: string): Promise<Feature[]> {
     try {
+      const structuredModel = this.model.withStructuredOutput(
+        ExtractionResponseSchema,
+      );
+
       const chain = RunnableSequence.from([
         this.extractionPrompt,
-        this.model,
-        new StringOutputParser(),
+        structuredModel,
       ]);
 
-      const response = await chain.invoke({ content });
-
-      const parsed = JSON.parse(response);
-      const validated = ExtractionResponseSchema.parse(parsed);
+      const validated = await chain.invoke({ content });
 
       // Add source to all features and ensure required fields are present
       const features = validated.features.map((feature) => ({

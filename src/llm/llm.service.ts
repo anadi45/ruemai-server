@@ -4,6 +4,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
+import { z } from 'zod';
 
 export interface ProductFeature {
   name: string;
@@ -17,6 +18,20 @@ export interface ExtractionResult {
   products: ProductFeature[];
   summary?: string;
 }
+
+// Zod schemas for structured output
+const ProductFeatureSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().min(10).max(500),
+  category: z.string().optional(),
+  features: z.array(z.string()).optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+const ExtractionResultSchema = z.object({
+  products: z.array(ProductFeatureSchema),
+  summary: z.string().optional(),
+});
 
 @Injectable()
 export class LLMService {
@@ -105,16 +120,16 @@ Only return valid JSON. Do not include any other text.
 
   async extractProductsFromText(text: string): Promise<ExtractionResult> {
     try {
+      const structuredModel = this.model.withStructuredOutput(
+        ExtractionResultSchema,
+      );
+
       const chain = RunnableSequence.from([
         this.productExtractionPrompt,
-        this.model,
-        new StringOutputParser(),
+        structuredModel,
       ]);
 
-      const response = await chain.invoke({ text });
-
-      // Parse the JSON response
-      const result = JSON.parse(response);
+      const result = await chain.invoke({ text });
 
       // Validate and clean the results
       const cleanedProducts = this.validateAndCleanProducts(
@@ -139,18 +154,20 @@ Only return valid JSON. Do not include any other text.
   ): Promise<ExtractionResult> {
     try {
       const productsJson = JSON.stringify(products, null, 2);
+      const structuredModel = this.model.withStructuredOutput(
+        ExtractionResultSchema,
+      );
+
       const chain = RunnableSequence.from([
         this.productAnalysisPrompt,
-        this.model,
-        new StringOutputParser(),
+        structuredModel,
       ]);
 
-      const response = await chain.invoke({
+      const result = await chain.invoke({
         products: productsJson,
         context: context || 'No additional context provided',
       });
 
-      const result = JSON.parse(response);
       const cleanedProducts = this.validateAndCleanProducts(
         result.products || [],
       );
@@ -207,18 +224,16 @@ Return the results in the following JSON format:
 Only return valid JSON. Do not include any other text.
 `);
 
-      const chain = RunnableSequence.from([
-        websitePrompt,
-        this.model,
-        new StringOutputParser(),
-      ]);
+      const structuredModel = this.model.withStructuredOutput(
+        ExtractionResultSchema,
+      );
 
-      const response = await chain.invoke({
+      const chain = RunnableSequence.from([websitePrompt, structuredModel]);
+
+      const result = await chain.invoke({
         content: htmlContent,
         url: url,
       });
-
-      const result = JSON.parse(response);
       const cleanedProducts = this.validateAndCleanProducts(
         result.products || [],
       );
