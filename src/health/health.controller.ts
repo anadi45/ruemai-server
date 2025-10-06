@@ -16,7 +16,7 @@ export class HealthController {
       timestamp: new Date().toISOString(),
       configuration: config,
       services: {
-        gemini: (config as any).hasGeminiKey ? 'configured' : 'missing',
+        openai: (config as any).hasOpenAIKey ? 'configured' : 'missing',
         storage: 'in-memory',
         parser: 'active',
         crawler: 'active',

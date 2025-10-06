@@ -26,8 +26,8 @@ export class ConfigValidationService {
   private async validateApiKeys(): Promise<void> {
     const apiKeyConfigs: ApiKeyConfig[] = [
       {
-        keyName: 'Gemini',
-        envVar: 'GEMINI_API_KEY',
+        keyName: 'OpenAI',
+        envVar: 'OPENAI_API_KEY',
       },
     ];
 
@@ -89,7 +89,7 @@ export class ConfigValidationService {
       maxFileSize: this.configService.get<number>('MAX_FILE_SIZE', 10485760),
       chunkSize: this.configService.get<number>('CHUNK_SIZE', 4000),
       crawlDelay: this.configService.get<number>('CRAWL_DELAY', 1000),
-      hasGeminiKey: !!this.configService.get<string>('GEMINI_API_KEY'),
+      hasOpenAIKey: !!this.configService.get<string>('OPENAI_API_KEY'),
     };
   }
 }

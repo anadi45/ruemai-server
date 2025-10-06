@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
@@ -21,16 +21,16 @@ const ExtractionResponseSchema = z.object({
 
 @Injectable()
 export class ExtractorService {
-  private readonly model: ChatGoogleGenerativeAI;
+  private readonly model: ChatOpenAI;
   private readonly extractionPrompt: PromptTemplate;
 
   constructor(private configService: ConfigService) {
-    // Initialize Gemini model
-    this.model = new ChatGoogleGenerativeAI({
-      model: 'gemini-1.5-flash',
+    // Initialize OpenAI model
+    this.model = new ChatOpenAI({
+      model: 'gpt-4o',
       temperature: 0.1,
-      maxOutputTokens: 4000,
-      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
+      maxTokens: 4000,
+      openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
     });
 
     // Create prompt template for feature extraction
@@ -82,7 +82,7 @@ Return only the JSON object, no other text.
 
       return features;
     } catch (error) {
-      console.error('Gemini extraction failed:', error);
+      console.error('OpenAI extraction failed:', error);
       throw new Error(`Failed to extract features: ${error.message}`);
     }
   }

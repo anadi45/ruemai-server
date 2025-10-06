@@ -10,7 +10,7 @@ A powerful NestJS-based system for extracting product features from documentatio
 
 - **📄 Multi-format Document Support**: PDF, DOCX, TXT, MD, HTML
 - **🕷️ Intelligent Web Crawling**: Extract content from websites with smart crawling
-- **🤖 AI-Powered Extraction**: Uses Google Gemini for intelligent feature extraction
+- **🤖 AI-Powered Extraction**: Uses OpenAI GPT-4 for intelligent feature extraction
 - **💾 In-Memory Storage**: No database required for POC
 - **📊 Chunked Processing**: Handles large documents with intelligent chunking
 - **🔗 RESTful API**: Clean API endpoints for all operations
@@ -29,7 +29,7 @@ Web Crawler → Content Extraction → Chunker → LLM → JSON Response
 ### Prerequisites
 
 - **Node.js 18+** - [Download here](https://nodejs.org/)
-- **Google Gemini API Key** - [Get your key here](https://aistudio.google.com/app/apikey)
+- **OpenAI API Key** - [Get your key here](https://platform.openai.com/api-keys)
 - **npm or yarn** package manager
 
 ### 1. Clone and Install
@@ -49,12 +49,12 @@ npm install
 # Copy environment template
 cp env.example .env
 
-# Edit .env file and add your Gemini API key
-GEMINI_API_KEY=your_gemini_api_key_here
+# Edit .env file and add your OpenAI API key
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 **⚠️ Important**: The application will validate your configuration on startup and will fail to start if:
-- Gemini API key is missing or invalid
+- OpenAI API key is missing or invalid
 - Configuration values are out of acceptable ranges
 - Required environment variables are not set
 
@@ -211,8 +211,8 @@ npm run test:cov
 ### Environment Variables
 
 ```env
-# Gemini Configuration
-GEMINI_API_KEY=your_gemini_api_key_here
+# OpenAI Configuration
+OPENAI_API_KEY=your_openai_api_key_here
 
 # Application Configuration
 PORT=3000
@@ -253,10 +253,10 @@ src/
 
 ### Common Issues
 
-**1. Gemini API Key Error:**
+**1. OpenAI API Key Error:**
 ```bash
 # Make sure your API key is set in .env
-echo "GEMINI_API_KEY=your_key_here" > .env
+echo "OPENAI_API_KEY=your_key_here" > .env
 ```
 
 **2. File Upload Issues:**
@@ -271,8 +271,8 @@ echo "GEMINI_API_KEY=your_key_here" > .env
 
 ### Performance Tips
 
-- **For Speed**: Use `gemini-1.5-flash` for faster results
-- **For Accuracy**: Use `gemini-1.5-pro` for better extraction
+- **For Speed**: Use `gpt-4o` for fast and accurate results
+- **For Accuracy**: Use `gpt-4o` for high-quality extraction
 - **For Cost**: Limit document/page count and use smaller chunks
 
 ## 🤝 Contributing
@@ -290,6 +290,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - [NestJS](https://nestjs.com/) - The amazing Node.js framework
-- [Google Gemini](https://ai.google.dev/) - For the powerful AI models
+- [OpenAI](https://platform.openai.com/) - For the powerful AI models
 - [pdf-parse](https://github.com/modesty/pdf-parse) - PDF parsing library
 - [Cheerio](https://cheerio.js.org/) - Server-side HTML parsing

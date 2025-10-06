@@ -31,7 +31,7 @@ describe('ConfigValidationService', () => {
     // Mock valid configuration
     (configService.get as jest.Mock).mockImplementation((key: string) => {
       const config = {
-        GEMINI_API_KEY: 'test-gemini-api-key-123456789012345678901234567890',
+        OPENAI_API_KEY: 'test-openai-api-key-123456789012345678901234567890',
         PORT: 3000,
         MAX_CRAWL_PAGES: 50,
         MAX_FILE_SIZE: 10485760,
@@ -44,11 +44,11 @@ describe('ConfigValidationService', () => {
     await expect(service.validateConfiguration()).resolves.not.toThrow();
   });
 
-  it('should throw error for missing Gemini API key', async () => {
+  it('should throw error for missing OpenAI API key', async () => {
     (configService.get as jest.Mock).mockReturnValue(undefined);
 
     await expect(service.validateConfiguration()).rejects.toThrow(
-      'GEMINI_API_KEY is required but not provided',
+      'OPENAI_API_KEY is required but not provided',
     );
   });
 
@@ -56,7 +56,7 @@ describe('ConfigValidationService', () => {
     (configService.get as jest.Mock).mockReturnValue('invalid-key');
 
     await expect(service.validateConfiguration()).rejects.toThrow(
-      'GEMINI_API_KEY appears to be invalid',
+      'OPENAI_API_KEY appears to be invalid',
     );
   });
 });

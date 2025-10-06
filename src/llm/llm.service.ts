@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
@@ -20,17 +20,17 @@ export interface ExtractionResult {
 
 @Injectable()
 export class LLMService {
-  private readonly model: ChatGoogleGenerativeAI;
+  private readonly model: ChatOpenAI;
   private readonly productExtractionPrompt: PromptTemplate;
   private readonly productAnalysisPrompt: PromptTemplate;
 
   constructor(private readonly configService: ConfigService) {
-    // Initialize Gemini model
-    this.model = new ChatGoogleGenerativeAI({
-      model: 'gemini-1.5-flash',
+    // Initialize OpenAI model
+    this.model = new ChatOpenAI({
+      model: 'gpt-4o',
       temperature: 0.1,
-      maxOutputTokens: 2048,
-      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
+      maxTokens: 2048,
+      openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
     });
 
     // Create prompt template for product extraction
