@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { UploadService } from '../upload/upload.service';
 import { WebCrawlerService } from '../web-crawler/web-crawler.service';
 import { ParserService } from '../parser/parser.service';
-import { ExtractorService } from '../extractor/extractor.service';
+import { FeatureExtractorService } from '../feature-extractor/feature-extractor.service';
 import { storage } from '../utils/storage';
 import {
   Feature,
@@ -21,7 +21,7 @@ export class ExtractionService {
     private readonly uploadService: UploadService,
     private readonly webCrawlerService: WebCrawlerService,
     private readonly parserService: ParserService,
-    private readonly extractorService: ExtractorService,
+    private readonly featureExtractorService: FeatureExtractorService,
   ) {}
 
   async extractFeatures(request: ExtractionRequest): Promise<ExtractionResult> {
@@ -44,7 +44,7 @@ export class ExtractionService {
             document.content,
           );
           const features =
-            await this.extractorService.extractFeaturesFromChunks(
+            await this.featureExtractorService.extractFeaturesFromChunks(
               chunks,
               document.filename,
             );
@@ -66,7 +66,7 @@ export class ExtractionService {
             page.content,
           );
           const features =
-            await this.extractorService.extractFeaturesFromChunks(
+            await this.featureExtractorService.extractFeaturesFromChunks(
               chunks,
               page.url,
             );
@@ -106,10 +106,11 @@ export class ExtractionService {
       const chunks = await this.parserService.processContentWithOverlap(
         document.content,
       );
-      const features = await this.extractorService.extractFeaturesFromChunks(
-        chunks,
-        document.filename,
-      );
+      const features =
+        await this.featureExtractorService.extractFeaturesFromChunks(
+          chunks,
+          document.filename,
+        );
       allFeatures.push(...features);
     }
 
@@ -124,10 +125,11 @@ export class ExtractionService {
       const chunks = await this.parserService.processContentWithOverlap(
         page.content,
       );
-      const features = await this.extractorService.extractFeaturesFromChunks(
-        chunks,
-        page.url,
-      );
+      const features =
+        await this.featureExtractorService.extractFeaturesFromChunks(
+          chunks,
+          page.url,
+        );
       allFeatures.push(...features);
     }
 
