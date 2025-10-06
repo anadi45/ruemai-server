@@ -41,15 +41,8 @@ async function bootstrap() {
     await app.listen(port);
 
     logger.log(`🎉 Server is running on http://localhost:${port}`);
-    logger.log('📡 API Endpoints:');
+    logger.log('📡 API Endpoint:');
     logger.log('  POST /extract - Combined document + website extraction');
-    logger.log('  POST /extract/documents - Document-only extraction');
-    logger.log('  POST /extract/website - Website-only extraction');
-    logger.log('  GET /extract/features - Get all extracted features');
-    logger.log('  GET /extract/stats - Get processing statistics');
-    logger.log('  DELETE /extract/clear - Clear storage');
-    logger.log('  GET /health - Health check and configuration status');
-    logger.log('  GET /health/config - Configuration summary');
   } catch (error) {
     logger.error('❌ Failed to start application:', error.message);
     logger.error('💡 Please check your configuration and try again.');

@@ -70,7 +70,7 @@ npm run start:prod
 
 The server will start on `http://localhost:3000` 🎉
 
-## 📡 API Endpoints
+## 📡 API Endpoint
 
 ### Main Extraction Endpoint
 ```http
@@ -82,66 +82,21 @@ Content-Type: multipart/form-data
 - url: string (optional) - Website URL to crawl (crawls entire website)
 ```
 
-### Document-Only Extraction
-```http
-POST /extract/documents
-Content-Type: multipart/form-data
-
-# Form data:
-- files: File[] - Documents to process
-```
-
-### Website-Only Extraction
-```http
-POST /extract/website
-Content-Type: application/json
-
-{
-  "url": "https://example.com"
-}
-```
-
-### Get All Features
-```http
-GET /extract/features
-```
-
-### Get Statistics
-```http
-GET /extract/stats
-```
-
-### Clear Storage
-```http
-DELETE /extract/clear
-```
-
-### Health Check
-```http
-GET /health
-```
-
-### Configuration Status
-```http
-GET /health/config
-```
-
 ## 🧪 Testing
 
 ### Manual Testing Examples
 
 **1. Test Document Upload:**
 ```bash
-curl -X POST http://localhost:3000/extract/documents \
+curl -X POST http://localhost:3000/extract \
   -F "files=@document.pdf" \
   -F "files=@manual.docx"
 ```
 
 **2. Test Website Crawling:**
 ```bash
-curl -X POST http://localhost:3000/extract/website \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
+curl -X POST http://localhost:3000/extract \
+  -F "url=https://example.com"
 ```
 
 **3. Test Combined Extraction:**
@@ -149,16 +104,6 @@ curl -X POST http://localhost:3000/extract/website \
 curl -X POST http://localhost:3000/extract \
   -F "files=@document.pdf" \
   -F "url=https://example.com"
-```
-
-**4. Test Health Check:**
-```bash
-curl http://localhost:3000/health
-```
-
-**5. Test Configuration Status:**
-```bash
-curl http://localhost:3000/health/config
 ```
 
 ### Unit Tests
