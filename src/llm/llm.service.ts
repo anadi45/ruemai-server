@@ -21,8 +21,8 @@ export interface ExtractionResult {
 
 // Zod schemas for structured output
 const ProductFeatureSchema = z.object({
-  name: z.string().min(1).max(100),
-  description: z.string().min(10).max(500),
+  name: z.string(),
+  description: z.string(),
   category: z.string().optional(),
   features: z.array(z.string()).optional(),
   confidence: z.number().min(0).max(1),

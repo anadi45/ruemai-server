@@ -17,7 +17,7 @@ export class WebCrawlerService {
   private readonly TIMEOUT = 30000;
   private readonly CONCURRENT_REQUESTS = 5; // Number of concurrent requests
   private readonly BATCH_SIZE = 10; // Process links in batches
-  private readonly REQUEST_DELAY = 1000; // Delay between batches (ms)
+  private readonly REQUEST_DELAY = 0; // Delay between batches (ms)
 
   constructor(private readonly parserService: ParserService) {}
 
