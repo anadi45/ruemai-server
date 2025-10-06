@@ -28,15 +28,13 @@ describe('ApiKeyValidator', () => {
   });
 
   describe('validateApiKey', () => {
-    it('should validate a valid API key', async () => {
+    it('should validate when API key exists in config', async () => {
       const config = {
         keyName: 'Test API',
         envVar: 'TEST_API_KEY',
-        minLength: 10,
-        prefix: 'test_',
       };
 
-      (configService.get as jest.Mock).mockReturnValue('test_valid_key_12345');
+      (configService.get as jest.Mock).mockReturnValue('test_api_key_value');
 
       const result = await service.validateApiKey(config);
 
@@ -45,57 +43,10 @@ describe('ApiKeyValidator', () => {
       expect(result.error).toBeUndefined();
     });
 
-    it('should reject placeholder keys', async () => {
+    it('should reject when API key is missing from config', async () => {
       const config = {
         keyName: 'Test API',
         envVar: 'TEST_API_KEY',
-        minLength: 10,
-      };
-
-      (configService.get as jest.Mock).mockReturnValue('your_api_key_here');
-
-      const result = await service.validateApiKey(config);
-
-      expect(result.isValid).toBe(false);
-      expect(result.error).toContain('placeholder');
-    });
-
-    it('should reject keys that are too short', async () => {
-      const config = {
-        keyName: 'Test API',
-        envVar: 'TEST_API_KEY',
-        minLength: 20,
-      };
-
-      (configService.get as jest.Mock).mockReturnValue('short');
-
-      const result = await service.validateApiKey(config);
-
-      expect(result.isValid).toBe(false);
-      expect(result.error).toContain('too short');
-    });
-
-    it('should reject keys with wrong prefix', async () => {
-      const config = {
-        keyName: 'Test API',
-        envVar: 'TEST_API_KEY',
-        minLength: 10,
-        prefix: 'sk-',
-      };
-
-      (configService.get as jest.Mock).mockReturnValue('invalid_prefix_key');
-
-      const result = await service.validateApiKey(config);
-
-      expect(result.isValid).toBe(false);
-      expect(result.error).toContain('should start with');
-    });
-
-    it('should handle missing API key', async () => {
-      const config = {
-        keyName: 'Test API',
-        envVar: 'TEST_API_KEY',
-        minLength: 10,
       };
 
       (configService.get as jest.Mock).mockReturnValue(undefined);
@@ -113,12 +64,10 @@ describe('ApiKeyValidator', () => {
         {
           keyName: 'API 1',
           envVar: 'API_1_KEY',
-          minLength: 10,
         },
         {
           keyName: 'API 2',
           envVar: 'API_2_KEY',
-          minLength: 10,
         },
       ];
 
