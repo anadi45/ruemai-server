@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { PromptTemplate } from '@langchain/core/prompts';
+import { StringOutputParser } from '@langchain/core/output_parsers';
+import { RunnableSequence } from '@langchain/core/runnables';
 import { z } from 'zod';
 import { Feature } from '../types/feature.interface';
 
@@ -18,42 +21,54 @@ const ExtractionResponseSchema = z.object({
 
 @Injectable()
 export class ExtractorService {
-  private openai: OpenAI;
+  private readonly model: ChatGoogleGenerativeAI;
+  private readonly extractionPrompt: PromptTemplate;
 
   constructor(private configService: ConfigService) {
-    this.openai = new OpenAI({
-      apiKey: this.configService.get<string>('OPENAI_API_KEY'),
+    // Initialize Gemini model
+    this.model = new ChatGoogleGenerativeAI({
+      model: 'gemini-1.5-flash',
+      temperature: 0.1,
+      maxOutputTokens: 4000,
+      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
     });
+
+    // Create prompt template for feature extraction
+    this.extractionPrompt = PromptTemplate.fromTemplate(`
+You are a technical documentation analyst. Extract ALL product features from the provided documentation.
+
+Documentation:
+{content}
+
+Instructions:
+1. Extract every distinct feature mentioned
+2. Be comprehensive but avoid duplicates
+3. Include technical capabilities, integrations, and functions
+4. Description should be clear and actionable
+5. Focus on what the product can do, not just what it is
+
+Return a JSON object with a "features" array where each object has:
+- name: Short feature name (2-6 words)
+- description: Clear 1-2 sentence description
+- source: The URL or document name where found
+- category: Optional category (e.g., "API", "UI", "Integration", "Security")
+- confidence: Optional confidence score (0-1)
+
+Return only the JSON object, no other text.
+`);
   }
 
   async extractFeatures(content: string, source: string): Promise<Feature[]> {
     try {
-      const prompt = this.buildExtractionPrompt(content);
+      const chain = RunnableSequence.from([
+        this.extractionPrompt,
+        this.model,
+        new StringOutputParser(),
+      ]);
 
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a technical documentation analyst. Extract ALL product features from the provided documentation. Return a JSON array where each object has: name (short feature name 2-6 words), description (clear 1-2 sentence description), source (the URL or document name where found), category (optional), confidence (optional 0-1). Extract every distinct feature mentioned. Be comprehensive but avoid duplicates. Include technical capabilities, integrations, and functions. Description should be clear and actionable.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 4000,
-        response_format: { type: 'json_object' },
-      });
+      const response = await chain.invoke({ content });
 
-      const content_response = response.choices[0]?.message?.content;
-      if (!content_response) {
-        throw new Error('No response from OpenAI');
-      }
-
-      const parsed = JSON.parse(content_response);
+      const parsed = JSON.parse(response);
       const validated = ExtractionResponseSchema.parse(parsed);
 
       // Add source to all features and ensure required fields are present
@@ -67,7 +82,7 @@ export class ExtractorService {
 
       return features;
     } catch (error) {
-      console.error('OpenAI extraction failed:', error);
+      console.error('Gemini extraction failed:', error);
       throw new Error(`Failed to extract features: ${error.message}`);
     }
   }
@@ -101,31 +116,6 @@ export class ExtractorService {
 
     // Deduplicate features
     return this.deduplicateFeatures(allFeatures);
-  }
-
-  private buildExtractionPrompt(content: string): string {
-    return `
-Extract ALL product features from the provided documentation.
-
-Return a JSON object with a "features" array where each object has:
-- name: Short feature name (2-6 words)
-- description: Clear 1-2 sentence description
-- source: The URL or document name where found
-- category: Optional category (e.g., "API", "UI", "Integration", "Security")
-- confidence: Optional confidence score (0-1)
-
-Rules:
-- Extract every distinct feature mentioned
-- Be comprehensive but avoid duplicates
-- Include technical capabilities, integrations, and functions
-- Description should be clear and actionable
-- Focus on what the product can do, not just what it is
-
-Documentation:
-${content}
-
-Return only the JSON object, no other text.
-`;
   }
 
   private deduplicateFeatures(features: Feature[]): Feature[] {
