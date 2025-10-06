@@ -3,6 +3,7 @@ import { UploadService } from '../upload/upload.service';
 import { WebCrawlerService } from '../web-crawler/web-crawler.service';
 import { ParserService } from '../parser/parser.service';
 import { FeatureExtractorService } from '../feature-extractor/feature-extractor.service';
+import { PerformanceService } from '../performance/performance.service';
 import { storage } from '../utils/storage';
 import { DebugLogger } from '../utils/debug-logger';
 import {
@@ -23,10 +24,17 @@ export class ExtractionService {
     private readonly webCrawlerService: WebCrawlerService,
     private readonly parserService: ParserService,
     private readonly featureExtractorService: FeatureExtractorService,
+    private readonly performanceService: PerformanceService,
     private readonly debugLogger: DebugLogger,
   ) {}
 
   async extractFeatures(request: ExtractionRequest): Promise<ExtractionResult> {
+    const timingId = this.performanceService.startTiming('extractFeatures', {
+      hasFiles: !!request.files?.length,
+      fileCount: request.files?.length || 0,
+      hasUrl: !!request.url,
+    });
+
     const startTime = Date.now();
     let documentsProcessed = 0;
     let pagesCrawled = 0;
@@ -86,8 +94,10 @@ export class ExtractionService {
         processingTime: `${processingTime}s`,
       });
 
+      this.performanceService.endTiming(timingId, true);
       return result;
     } catch (error) {
+      this.performanceService.endTiming(timingId, false);
       throw new Error(`Extraction failed: ${error.message}`);
     }
   }
@@ -172,22 +182,32 @@ export class ExtractionService {
     const documents = await this.uploadService.processMultipleFiles(files);
     const documentsProcessed = documents.length;
 
-    // Process all documents in parallel
+    // Process all documents in parallel with better error handling
     const documentPromises = documents.map(async (document) => {
-      const chunks = await this.parserService.processContentWithOverlap(
-        document.content,
-      );
-      const features =
-        await this.featureExtractorService.extractFeaturesFromChunks(
-          chunks,
-          document.filename,
+      try {
+        const chunks = await this.parserService.processContentWithOverlap(
+          document.content,
         );
-      storage.addFeatures(features);
-      return features.length;
+        const features =
+          await this.featureExtractorService.extractFeaturesFromChunks(
+            chunks,
+            document.filename,
+          );
+        storage.addFeatures(features);
+        return features.length;
+      } catch (error) {
+        console.warn(
+          `Failed to process document ${document.filename}:`,
+          error.message,
+        );
+        return 0;
+      }
     });
 
-    const featureCounts = await Promise.all(documentPromises);
-    const featuresFound = featureCounts.reduce((sum, count) => sum + count, 0);
+    const featureCounts = await Promise.allSettled(documentPromises);
+    const featuresFound = featureCounts.reduce((sum, result) => {
+      return sum + (result.status === 'fulfilled' ? result.value : 0);
+    }, 0);
 
     return { documentsProcessed, featuresFound };
   }
@@ -203,22 +223,29 @@ export class ExtractionService {
     const crawlResult = await this.webCrawlerService.crawlWebsite(url);
     const pagesCrawled = crawlResult.totalPages;
 
-    // Process all crawled pages in parallel
+    // Process all crawled pages in parallel with better error handling
     const pagePromises = crawlResult.pages.map(async (page) => {
-      const chunks = await this.parserService.processContentWithOverlap(
-        page.content,
-      );
-      const features =
-        await this.featureExtractorService.extractFeaturesFromChunks(
-          chunks,
-          page.url,
+      try {
+        const chunks = await this.parserService.processContentWithOverlap(
+          page.content,
         );
-      storage.addFeatures(features);
-      return features.length;
+        const features =
+          await this.featureExtractorService.extractFeaturesFromChunks(
+            chunks,
+            page.url,
+          );
+        storage.addFeatures(features);
+        return features.length;
+      } catch (error) {
+        console.warn(`Failed to process page ${page.url}:`, error.message);
+        return 0;
+      }
     });
 
-    const featureCounts = await Promise.all(pagePromises);
-    const featuresFound = featureCounts.reduce((sum, count) => sum + count, 0);
+    const featureCounts = await Promise.allSettled(pagePromises);
+    const featuresFound = featureCounts.reduce((sum, result) => {
+      return sum + (result.status === 'fulfilled' ? result.value : 0);
+    }, 0);
 
     return { pagesCrawled, featuresFound };
   }

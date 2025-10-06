@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { LLMService } from './llm.service';
+import { CacheModule } from '../cache/cache.module';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, CacheModule],
   providers: [LLMService],
   exports: [LLMService],
 })

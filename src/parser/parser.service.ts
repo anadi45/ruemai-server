@@ -23,8 +23,8 @@ export interface ExtractedContent {
 
 @Injectable()
 export class ParserService {
-  private readonly MAX_CHUNK_TOKENS = 4000;
-  private readonly CHUNK_OVERLAP = 200; // tokens
+  private readonly MAX_CHUNK_TOKENS = 6000; // Increased for better context
+  private readonly CHUNK_OVERLAP = 300; // Increased overlap for better context
 
   constructor(private readonly debugLogger: DebugLogger) {}
 
@@ -231,7 +231,8 @@ export class ParserService {
       chunks.push(currentChunk.trim());
     }
 
-    return chunks;
+    // Filter out very small chunks that are likely not useful
+    return chunks.filter((chunk) => this.countTokens(chunk) > 100);
   }
 
   private splitIntoSentences(text: string): string[] {

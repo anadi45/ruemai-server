@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   UseInterceptors,
   UploadedFiles,
@@ -11,6 +12,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { ExtractionService, ExtractionRequest } from './extraction.service';
 import { ExtractionResult } from '../types/feature.interface';
 import { UploadService } from '../upload/upload.service';
+import { PerformanceService } from '../performance/performance.service';
 import { ExtractionRequestDto } from '../dto/extraction.dto';
 
 @Controller('extract')
@@ -18,6 +20,7 @@ export class ExtractionController {
   constructor(
     private readonly extractionService: ExtractionService,
     private readonly uploadService: UploadService,
+    private readonly performanceService: PerformanceService,
   ) {}
 
   @Post()
@@ -33,5 +36,10 @@ export class ExtractionController {
     };
 
     return this.extractionService.extractFeatures(request);
+  }
+
+  @Get('performance')
+  getPerformanceMetrics() {
+    return this.performanceService.getSummary();
   }
 }

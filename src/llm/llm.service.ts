@@ -5,6 +5,7 @@ import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { z } from 'zod';
+import { CacheService } from '../cache/cache.service';
 
 export interface ProductFeature {
   name: string;
@@ -39,12 +40,17 @@ export class LLMService {
   private readonly productExtractionPrompt: PromptTemplate;
   private readonly productAnalysisPrompt: PromptTemplate;
 
-  constructor(private readonly configService: ConfigService) {
-    // Initialize OpenAI model
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly cacheService: CacheService,
+  ) {
+    // Initialize OpenAI model with optimized settings
     this.model = new ChatOpenAI({
-      model: 'gpt-4.1-mini-2025-04-14',
+      model: 'gpt-4o-mini', // Faster and cheaper model
       temperature: 0.1,
       openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
+      maxTokens: 4000, // Limit response size for faster processing
+      timeout: 30000, // 30 second timeout
     });
 
     // Create prompt template for product extraction
@@ -118,6 +124,12 @@ Only return valid JSON. Do not include any other text.
   }
 
   async extractProductsFromText(text: string): Promise<ExtractionResult> {
+    // Check cache first
+    const cached = this.cacheService.get<ExtractionResult>(text, 'extraction');
+    if (cached) {
+      return cached;
+    }
+
     try {
       const structuredModel = this.model.withStructuredOutput(
         ExtractionResultSchema,
@@ -135,15 +147,66 @@ Only return valid JSON. Do not include any other text.
         result.products || [],
       );
 
-      return {
+      const extractionResult = {
         products: cleanedProducts,
         summary: result.summary,
       };
+
+      // Cache the result for 1 hour
+      this.cacheService.set(
+        text,
+        'extraction',
+        extractionResult,
+        60 * 60 * 1000,
+      );
+
+      return extractionResult;
     } catch (error) {
       console.error('Error extracting products with LLM:', error);
 
       // Fallback to basic extraction if LLM fails
       return this.fallbackExtraction(text);
+    }
+  }
+
+  async extractProductsFromTextBatch(
+    texts: string[],
+  ): Promise<ExtractionResult[]> {
+    try {
+      const structuredModel = this.model.withStructuredOutput(
+        ExtractionResultSchema,
+      );
+
+      // Process all texts in parallel
+      const batchPromises = texts.map(async (text) => {
+        try {
+          const chain = RunnableSequence.from([
+            this.productExtractionPrompt,
+            structuredModel,
+          ]);
+
+          const result = await chain.invoke({ text });
+          const cleanedProducts = this.validateAndCleanProducts(
+            result.products || [],
+          );
+
+          return {
+            products: cleanedProducts,
+            summary: result.summary,
+          };
+        } catch (error) {
+          console.warn('Error in batch extraction:', error);
+          return this.fallbackExtraction(text);
+        }
+      });
+
+      return await Promise.all(batchPromises);
+    } catch (error) {
+      console.error('Error in batch extraction:', error);
+      // Fallback to individual processing
+      return Promise.all(
+        texts.map((text) => this.extractProductsFromText(text)),
+      );
     }
   }
 

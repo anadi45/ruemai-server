@@ -15,10 +15,10 @@ export interface CrawlResult {
 @Injectable()
 export class WebCrawlerService {
   private readonly MAX_DEPTH = 3;
-  private readonly TIMEOUT = 30000;
-  private readonly CONCURRENT_REQUESTS = 5; // Number of concurrent requests
-  private readonly BATCH_SIZE = 10; // Process links in batches
-  private readonly REQUEST_DELAY = 0; // Delay between batches (ms)
+  private readonly TIMEOUT = 15000; // Reduced timeout for faster processing
+  private readonly CONCURRENT_REQUESTS = 8; // Increased concurrent requests
+  private readonly BATCH_SIZE = 15; // Increased batch size
+  private readonly REQUEST_DELAY = 100; // Small delay to be respectful
 
   constructor(
     private readonly parserService: ParserService,
@@ -45,11 +45,11 @@ export class WebCrawlerService {
       const initialLinks = await this.findInternalLinks(baseUrl, baseUrl);
       initialLinks.forEach((link) => urlsToCrawl.add(link));
 
-      // Process URLs in batches with concurrency control
+      // Process URLs in batches with improved concurrency control
       while (urlsToCrawl.size > 0) {
         const batch = Array.from(urlsToCrawl).slice(0, this.BATCH_SIZE);
 
-        // Process batch with concurrency control
+        // Process batch with concurrency control using Promise.allSettled for better error handling
         const batchPromises = batch.map(async (url) => {
           if (visitedUrls.has(url)) return null;
 
@@ -59,13 +59,21 @@ export class WebCrawlerService {
               visitedUrls.add(url);
               crawledUrls.push(url);
 
-              // Find new links from this page
-              const newLinks = await this.findInternalLinks(baseUrl, url);
-              newLinks.forEach((link) => {
-                if (!visitedUrls.has(link) && !urlsToCrawl.has(link)) {
-                  urlsToCrawl.add(link);
-                }
-              });
+              // Find new links from this page (don't await to avoid blocking)
+              this.findInternalLinks(baseUrl, url)
+                .then((newLinks) => {
+                  newLinks.forEach((link) => {
+                    if (!visitedUrls.has(link) && !urlsToCrawl.has(link)) {
+                      urlsToCrawl.add(link);
+                    }
+                  });
+                })
+                .catch((error) => {
+                  console.warn(
+                    `Failed to find links from ${url}:`,
+                    error.message,
+                  );
+                });
 
               return page;
             }
@@ -77,13 +85,13 @@ export class WebCrawlerService {
         });
 
         // Wait for all requests in the batch to complete
-        const batchResults = await Promise.all(batchPromises);
+        const batchResults = await Promise.allSettled(batchPromises);
 
         // Add successful pages to results
-        batchResults.forEach((page) => {
-          if (page) {
-            pages.push(page);
-            storage.addCrawledPage(page);
+        batchResults.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value) {
+            pages.push(result.value);
+            storage.addCrawledPage(result.value);
           }
         });
 
