@@ -52,14 +52,23 @@ export class DebugLogger {
       const logFilename = `parsed-${timestamp}-${this.sanitizeFilename(filename)}.txt`;
       const filepath = join(this.debugDir, logFilename);
 
+      // Check if originalContent is binary data indicator
+      const isBinaryContent =
+        originalContent.startsWith('[Binary file -') ||
+        originalContent.includes('\u0000') || // Contains null bytes
+        /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/.test(originalContent); // Contains control characters
+
       const logContent = {
         originalFilename: filename,
         timestamp: new Date().toISOString(),
         originalContentLength: originalContent.length,
         parsedContentLength: parsedContent.length,
         metadata,
-        originalContent: originalContent.substring(0, 5000), // Limit to first 5k chars
+        originalContent: isBinaryContent
+          ? originalContent // Don't truncate binary indicators
+          : originalContent.substring(0, 5000), // Limit to first 5k chars for text
         parsedContent: parsedContent.substring(0, 10000), // Limit to first 10k chars
+        isBinaryFile: isBinaryContent,
       };
 
       await writeFile(filepath, JSON.stringify(logContent, null, 2));

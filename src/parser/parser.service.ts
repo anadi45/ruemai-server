@@ -59,9 +59,21 @@ export class ParserService {
       }
 
       // Log parsed document content for debugging
+      const isBinaryFile =
+        mimeType.includes('application/') &&
+        (mimeType.includes('pdf') ||
+          mimeType.includes('word') ||
+          mimeType.includes('excel') ||
+          mimeType.includes('powerpoint') ||
+          mimeType.includes('officedocument'));
+
+      const originalContent = isBinaryFile
+        ? `[Binary file - ${file.length} bytes]`
+        : file.toString('utf8', 0, Math.min(5000, file.length));
+
       await this.debugLogger.logParsedContent(
         filename,
-        file.toString('utf8', 0, Math.min(5000, file.length)), // Log first 5k chars
+        originalContent,
         result.text,
         {
           filename,
