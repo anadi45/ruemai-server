@@ -66,20 +66,24 @@ export class UploadService {
   async processMultipleFiles(
     files: Express.Multer.File[],
   ): Promise<Document[]> {
-    const documents: Document[] = [];
-
-    for (const file of files) {
+    // Process all files in parallel
+    const filePromises = files.map(async (file) => {
       try {
-        const document = await this.processUploadedFile(file);
-        documents.push(document);
+        return await this.processUploadedFile(file);
       } catch (error) {
         console.warn(
           `Failed to process file ${file.originalname}:`,
           error.message,
         );
+        return null;
       }
-    }
+    });
 
-    return documents;
+    const results = await Promise.all(filePromises);
+
+    // Filter out null results (failed files)
+    return results.filter(
+      (document): document is Document => document !== null,
+    );
   }
 }

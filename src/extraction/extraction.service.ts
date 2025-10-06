@@ -31,48 +31,26 @@ export class ExtractionService {
     let featuresFound = 0;
 
     try {
-      // Process uploaded files
-      if (request.files && request.files.length > 0) {
-        const documents = await this.uploadService.processMultipleFiles(
-          request.files,
-        );
-        documentsProcessed = documents.length;
+      // Process files and URL in parallel
+      const [fileResults, urlResults] = await Promise.allSettled([
+        this.processFiles(request.files),
+        this.processUrl(request.url),
+      ]);
 
-        // Extract features from documents
-        for (const document of documents) {
-          const chunks = await this.parserService.processContentWithOverlap(
-            document.content,
-          );
-          const features =
-            await this.featureExtractorService.extractFeaturesFromChunks(
-              chunks,
-              document.filename,
-            );
-          storage.addFeatures(features);
-          featuresFound += features.length;
-        }
+      // Handle file processing results
+      if (fileResults.status === 'fulfilled') {
+        documentsProcessed = fileResults.value.documentsProcessed;
+        featuresFound += fileResults.value.featuresFound;
+      } else {
+        console.warn('File processing failed:', fileResults.reason);
       }
 
-      // Crawl website if URL provided
-      if (request.url) {
-        const crawlResult = await this.webCrawlerService.crawlWebsite(
-          request.url,
-        );
-        pagesCrawled = crawlResult.totalPages;
-
-        // Extract features from crawled pages
-        for (const page of crawlResult.pages) {
-          const chunks = await this.parserService.processContentWithOverlap(
-            page.content,
-          );
-          const features =
-            await this.featureExtractorService.extractFeaturesFromChunks(
-              chunks,
-              page.url,
-            );
-          storage.addFeatures(features);
-          featuresFound += features.length;
-        }
+      // Handle URL processing results
+      if (urlResults.status === 'fulfilled') {
+        pagesCrawled = urlResults.value.pagesCrawled;
+        featuresFound += urlResults.value.featuresFound;
+      } else {
+        console.warn('URL processing failed:', urlResults.reason);
       }
 
       // Get all features and deduplicate
@@ -100,9 +78,9 @@ export class ExtractionService {
 
   async extractFromDocuments(files: Express.Multer.File[]): Promise<Feature[]> {
     const documents = await this.uploadService.processMultipleFiles(files);
-    const allFeatures: Feature[] = [];
 
-    for (const document of documents) {
+    // Process all documents in parallel
+    const documentPromises = documents.map(async (document) => {
       const chunks = await this.parserService.processContentWithOverlap(
         document.content,
       );
@@ -111,17 +89,20 @@ export class ExtractionService {
           chunks,
           document.filename,
         );
-      allFeatures.push(...features);
-    }
+      return features;
+    });
+
+    const featureArrays = await Promise.all(documentPromises);
+    const allFeatures = featureArrays.flat();
 
     return this.deduplicateFeatures(allFeatures);
   }
 
   async extractFromWebsite(url: string): Promise<Feature[]> {
     const crawlResult = await this.webCrawlerService.crawlWebsite(url);
-    const allFeatures: Feature[] = [];
 
-    for (const page of crawlResult.pages) {
+    // Process all pages in parallel
+    const pagePromises = crawlResult.pages.map(async (page) => {
       const chunks = await this.parserService.processContentWithOverlap(
         page.content,
       );
@@ -130,8 +111,11 @@ export class ExtractionService {
           chunks,
           page.url,
         );
-      allFeatures.push(...features);
-    }
+      return features;
+    });
+
+    const featureArrays = await Promise.all(pagePromises);
+    const allFeatures = featureArrays.flat();
 
     return this.deduplicateFeatures(allFeatures);
   }
@@ -159,5 +143,67 @@ export class ExtractionService {
 
   clearStorage() {
     storage.clear();
+  }
+
+  private async processFiles(files?: Express.Multer.File[]): Promise<{
+    documentsProcessed: number;
+    featuresFound: number;
+  }> {
+    if (!files || files.length === 0) {
+      return { documentsProcessed: 0, featuresFound: 0 };
+    }
+
+    const documents = await this.uploadService.processMultipleFiles(files);
+    const documentsProcessed = documents.length;
+
+    // Process all documents in parallel
+    const documentPromises = documents.map(async (document) => {
+      const chunks = await this.parserService.processContentWithOverlap(
+        document.content,
+      );
+      const features =
+        await this.featureExtractorService.extractFeaturesFromChunks(
+          chunks,
+          document.filename,
+        );
+      storage.addFeatures(features);
+      return features.length;
+    });
+
+    const featureCounts = await Promise.all(documentPromises);
+    const featuresFound = featureCounts.reduce((sum, count) => sum + count, 0);
+
+    return { documentsProcessed, featuresFound };
+  }
+
+  private async processUrl(url?: string): Promise<{
+    pagesCrawled: number;
+    featuresFound: number;
+  }> {
+    if (!url) {
+      return { pagesCrawled: 0, featuresFound: 0 };
+    }
+
+    const crawlResult = await this.webCrawlerService.crawlWebsite(url);
+    const pagesCrawled = crawlResult.totalPages;
+
+    // Process all crawled pages in parallel
+    const pagePromises = crawlResult.pages.map(async (page) => {
+      const chunks = await this.parserService.processContentWithOverlap(
+        page.content,
+      );
+      const features =
+        await this.featureExtractorService.extractFeaturesFromChunks(
+          chunks,
+          page.url,
+        );
+      storage.addFeatures(features);
+      return features.length;
+    });
+
+    const featureCounts = await Promise.all(pagePromises);
+    const featuresFound = featureCounts.reduce((sum, count) => sum + count, 0);
+
+    return { pagesCrawled, featuresFound };
   }
 }
