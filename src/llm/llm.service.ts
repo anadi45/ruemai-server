@@ -30,7 +30,7 @@ export class LLMService {
       model: 'gemini-1.5-flash',
       temperature: 0.1,
       maxOutputTokens: 2048,
-      apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
+      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
     });
 
     // Create prompt template for product extraction

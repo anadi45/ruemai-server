@@ -25,15 +25,14 @@ export class ConfigValidationService {
 
   private async validateApiKeys(): Promise<void> {
     const apiKeyConfigs: ApiKeyConfig[] = [
+      //   {
+      //     keyName: 'OpenAI',
+      //     envVar: 'OPENAI_API_KEY',
+      //   },
       {
-        keyName: 'OpenAI',
-        envVar: 'OPENAI_API_KEY',
+        keyName: 'Gemini',
+        envVar: 'GEMINI_API_KEY',
       },
-      // Add more API keys as needed
-      // {
-      //   keyName: 'Google',
-      //   envVar: 'GOOGLE_API_KEY',
-      // },
     ];
 
     const results =
@@ -104,6 +103,7 @@ export class ConfigValidationService {
       chunkSize: this.configService.get<number>('CHUNK_SIZE', 4000),
       crawlDelay: this.configService.get<number>('CRAWL_DELAY', 1000),
       hasOpenAIKey: !!this.configService.get<string>('OPENAI_API_KEY'),
+      hasGeminiKey: !!this.configService.get<string>('GEMINI_API_KEY'),
     };
   }
 }
