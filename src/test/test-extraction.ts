@@ -3,7 +3,7 @@ import { ExtractionService } from '../extraction/extraction.service';
 import { UploadService } from '../upload/upload.service';
 import { WebCrawlerService } from '../web-crawler/web-crawler.service';
 import { ParserService } from '../parser/parser.service';
-import { ExtractorService } from '../extractor/extractor.service';
+import { FeatureExtractorService } from '../feature-extractor/feature-extractor.service';
 import { ConfigService } from '@nestjs/config';
 
 describe('ExtractionService', () => {
@@ -32,7 +32,7 @@ describe('ExtractionService', () => {
           },
         },
         {
-          provide: ExtractorService,
+          provide: FeatureExtractorService,
           useValue: {
             extractFeaturesFromChunks: jest.fn(),
           },
