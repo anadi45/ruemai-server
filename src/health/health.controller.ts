@@ -16,7 +16,7 @@ export class HealthController {
       timestamp: new Date().toISOString(),
       configuration: config,
       services: {
-        openai: config.hasOpenAIKey ? 'configured' : 'missing',
+        openai: (config as any).hasOpenAIKey ? 'configured' : 'missing',
         storage: 'in-memory',
         parser: 'active',
         crawler: 'active',

@@ -56,10 +56,13 @@ export class ExtractorService {
       const parsed = JSON.parse(content_response);
       const validated = ExtractionResponseSchema.parse(parsed);
 
-      // Add source to all features
+      // Add source to all features and ensure required fields are present
       const features = validated.features.map((feature) => ({
-        ...feature,
+        name: feature.name,
+        description: feature.description || 'No description provided',
         source: source,
+        category: feature.category,
+        confidence: feature.confidence,
       }));
 
       return features;

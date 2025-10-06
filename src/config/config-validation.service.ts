@@ -28,20 +28,11 @@ export class ConfigValidationService {
       {
         keyName: 'OpenAI',
         envVar: 'OPENAI_API_KEY',
-        minLength: 20,
-        prefix: 'sk-',
-        testMethod: this.apiKeyValidator.createOpenAITestMethod(
-          this.configService.get<string>('OPENAI_API_KEY'),
-        ),
       },
       // Add more API keys as needed
       // {
       //   keyName: 'Google',
       //   envVar: 'GOOGLE_API_KEY',
-      //   minLength: 20,
-      //   testMethod: this.apiKeyValidator.createGoogleTestMethod(
-      //     this.configService.get<string>('GOOGLE_API_KEY'),
-      //   ),
       // },
     ];
 
