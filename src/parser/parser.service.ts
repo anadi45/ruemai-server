@@ -72,9 +72,7 @@ export class ParserService {
       return {
         text: result.value,
         metadata: {
-          title:
-            result.messages.find((msg) => msg.type === 'info')?.message ||
-            'Word Document',
+          title: 'Word Document',
         },
       };
     } catch (error) {
