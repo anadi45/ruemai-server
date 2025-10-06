@@ -42,7 +42,7 @@ export class LLMService {
   constructor(private readonly configService: ConfigService) {
     // Initialize OpenAI model
     this.model = new ChatOpenAI({
-      model: 'gpt-4o',
+      model: 'gpt-4.1-mini-2025-04-14',
       temperature: 0.1,
       maxTokens: 2048,
       openAIApiKey: this.configService.get<string>('OPENAI_API_KEY'),
