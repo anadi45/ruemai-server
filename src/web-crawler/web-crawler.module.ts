@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { WebCrawlerService } from './web-crawler.service';
-import { LLMModule } from '../llm/llm.module';
+import { ParserModule } from '../parser/parser.module';
 
 @Module({
-  imports: [LLMModule],
+  imports: [ParserModule],
   providers: [WebCrawlerService],
   exports: [WebCrawlerService],
 })

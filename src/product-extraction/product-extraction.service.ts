@@ -5,7 +5,6 @@ import {
 } from '../document-parser/document-parser.service';
 import {
   WebCrawlerService,
-  WebsiteProduct,
   CrawlResult,
 } from '../web-crawler/web-crawler.service';
 import {
@@ -96,16 +95,15 @@ export class ProductExtractionService {
           await this.webCrawlerService.crawlWebsite(websiteUrl);
         pagesCrawled = crawlResult.totalPages;
 
-        const websiteFeatures: ProductFeature[] = crawlResult.products.map(
-          (product) => ({
-            name: product.name,
-            description: product.description,
+        const websiteFeatures: ProductFeature[] = crawlResult.pages.map(
+          (page) => ({
+            name: page.title || 'Website Content',
+            description: page.content.substring(0, 200) + '...',
             source: 'website' as const,
-            sourceUrl: product.url,
+            sourceUrl: page.url,
             confidence: 0.8, // LLM provides better confidence scoring
-            category: product.category || 'Product',
-            features: product.features,
-            price: product.price,
+            category: 'Product',
+            features: [],
           }),
         );
 

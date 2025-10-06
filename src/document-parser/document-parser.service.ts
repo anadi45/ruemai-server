@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { readFile } from 'fs/promises';
-import * as pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 import * as mammoth from 'mammoth';
 import { LLMService, ProductFeature } from '../llm/llm.service';
 
@@ -23,7 +23,7 @@ export class DocumentParserService {
   async parsePDF(filePath: string): Promise<ExtractedContent> {
     try {
       const dataBuffer = await readFile(filePath);
-      const pdfData = await pdfParse(dataBuffer);
+      const pdfData = await pdfParse.default(dataBuffer);
 
       return {
         text: pdfData.text,
@@ -48,9 +48,7 @@ export class DocumentParserService {
       return {
         text: result.value,
         metadata: {
-          title:
-            result.messages.find((msg) => msg.type === 'info')?.message ||
-            'Word Document',
+          title: 'Word Document',
         },
       };
     } catch (error) {
