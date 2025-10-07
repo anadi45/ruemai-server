@@ -96,4 +96,12 @@ export class CreateDemoResponseDto {
     totalSteps: number;
     processingTime: number;
   };
+
+  @IsOptional()
+  @IsObject()
+  filePaths?: {
+    demoFolder: string;
+    wisFiles: string[];
+    metadataFile: string;
+  };
 }

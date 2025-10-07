@@ -7,6 +7,8 @@ import {
 import { LLMService } from '../llm/llm.service';
 import * as puppeteer from 'puppeteer';
 import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class DemoAutomationService {
@@ -55,6 +57,13 @@ export class DemoAutomationService {
 
       this.logger.log(`✅ Demo automation completed in ${processingTime}ms`);
 
+      // Save WIS scripts to disk
+      const filePaths = await this.saveWISScripts(
+        demoId,
+        generatedScripts,
+        request,
+      );
+
       return {
         demoId,
         demoName:
@@ -70,6 +79,7 @@ export class DemoAutomationService {
           ),
           processingTime,
         },
+        filePaths,
       };
     } catch (error) {
       this.logger.error(`❌ Demo automation failed: ${error.message}`);
@@ -416,6 +426,95 @@ export class DemoAutomationService {
     }
 
     return scripts;
+  }
+
+  private async saveWISScripts(
+    demoId: string,
+    scripts: WebInteractionScriptDto[],
+    request: CreateDemoRequestDto,
+  ): Promise<{
+    demoFolder: string;
+    wisFiles: string[];
+    metadataFile: string;
+  }> {
+    this.logger.log(`💾 Saving WIS scripts to disk for demo: ${demoId}`);
+
+    try {
+      // Create demo-specific folder
+      const demoFolder = path.join(
+        process.cwd(),
+        'demos',
+        'wis-scripts',
+        demoId,
+      );
+      await fs.promises.mkdir(demoFolder, { recursive: true });
+
+      const wisFiles: string[] = [];
+
+      // Save each WIS script as a separate JSON file
+      for (let i = 0; i < scripts.length; i++) {
+        const script = scripts[i];
+        const fileName = `${i + 1}-${this.sanitizeFileName(script.name)}.json`;
+        const filePath = path.join(demoFolder, fileName);
+
+        await fs.promises.writeFile(
+          filePath,
+          JSON.stringify(script, null, 2),
+          'utf8',
+        );
+
+        wisFiles.push(filePath);
+        this.logger.log(`📄 Saved WIS script: ${fileName}`);
+      }
+
+      // Create metadata file
+      const metadata = {
+        demoId,
+        demoName:
+          request.demoName ||
+          `Demo for ${new URL(request.websiteUrl).hostname}`,
+        websiteUrl: request.websiteUrl,
+        createdAt: new Date().toISOString(),
+        totalScripts: scripts.length,
+        totalSteps: scripts.reduce(
+          (sum, script) => sum + script.steps.length,
+          0,
+        ),
+        scripts: scripts.map((script, index) => ({
+          index: index + 1,
+          name: script.name,
+          category: script.category,
+          steps: script.steps.length,
+          fileName: `${index + 1}-${this.sanitizeFileName(script.name)}.json`,
+        })),
+      };
+
+      const metadataPath = path.join(demoFolder, 'metadata.json');
+      await fs.promises.writeFile(
+        metadataPath,
+        JSON.stringify(metadata, null, 2),
+        'utf8',
+      );
+
+      this.logger.log(`📋 Saved metadata: ${metadataPath}`);
+
+      return {
+        demoFolder,
+        wisFiles,
+        metadataFile: metadataPath,
+      };
+    } catch (error) {
+      this.logger.error(`❌ Failed to save WIS scripts: ${error.message}`);
+      throw new Error(`Failed to save WIS scripts: ${error.message}`);
+    }
+  }
+
+  private sanitizeFileName(fileName: string): string {
+    return fileName
+      .replace(/[^a-zA-Z0-9\s-]/g, '') // Remove special characters
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .toLowerCase()
+      .substring(0, 50); // Limit length
   }
 }
 
