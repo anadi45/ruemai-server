@@ -440,13 +440,8 @@ export class DemoAutomationService {
     this.logger.log(`💾 Saving WIS scripts to disk for demo: ${demoId}`);
 
     try {
-      // Create demo-specific folder
-      const demoFolder = path.join(
-        process.cwd(),
-        'demos',
-        'wis-scripts',
-        demoId,
-      );
+      // Create demo-specific folder in logs directory
+      const demoFolder = path.join(process.cwd(), 'logs', 'demo', demoId);
       await fs.promises.mkdir(demoFolder, { recursive: true });
 
       const wisFiles: string[] = [];
