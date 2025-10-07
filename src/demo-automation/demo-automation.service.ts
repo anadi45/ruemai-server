@@ -188,6 +188,107 @@ export class DemoAutomationService {
     }
   }
 
+  async createAutomatedApplicationDemo(
+    targetUrl: string = 'http://localhost:3001',
+    credentials: { username: string; password: string } = {
+      username: 'demo@example.com',
+      password: 'demo123',
+    },
+  ): Promise<CreateDemoResponseDto> {
+    const startTime = Date.now();
+    const demoId = uuidv4();
+
+    this.logger.log(`🚀 Starting automated application demo with Puppeteer`);
+    this.logger.log(`🎯 Target URL: ${targetUrl}`);
+
+    try {
+      // Step 1: Launch browser and navigate to target application
+      const browser = await puppeteer.launch({
+        headless: false, // Set to true for production
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1920, height: 1080 });
+
+      // Step 2: Navigate to target application and login
+      await this.navigateAndLoginToTargetApp(page, targetUrl, credentials);
+
+      // Step 3: Wait for page to stabilize after login
+      this.logger.log('⏳ Waiting for page to stabilize after login...');
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      // Step 4: Extract features using LLM
+      this.logger.log('🧠 Extracting features using LLM...');
+
+      // First, let's debug what's on the page
+      const pageInfo = await page.evaluate(() => {
+        return {
+          title: document.title,
+          url: window.location.href,
+          bodyText: document.body.innerText.substring(0, 500),
+          totalElements: document.querySelectorAll('*').length,
+          buttons: document.querySelectorAll('button').length,
+          links: document.querySelectorAll('a').length,
+          inputs: document.querySelectorAll('input').length,
+        };
+      });
+
+      this.logger.log(`📄 Page Info: ${JSON.stringify(pageInfo, null, 2)}`);
+
+      const extractedFeatures = await this.extractFeaturesFromLocalApp(page);
+
+      // Step 5: Explore the UI and capture elements
+      this.logger.log('🔍 Exploring UI elements...');
+      const uiElements = await this.exploreUI(page);
+
+      // Step 6: Generate WIS scripts based on extracted features and UI elements
+      this.logger.log('🤖 Generating WIS scripts for extracted features...');
+      const generatedScripts = await this.generateWISFromFeatures(
+        extractedFeatures,
+        uiElements,
+        targetUrl,
+      );
+
+      // Step 7: Clean up
+      await browser.close();
+
+      const processingTime = Date.now() - startTime;
+
+      this.logger.log(
+        `✅ Automated application demo completed in ${processingTime}ms`,
+      );
+
+      // Save WIS scripts to disk
+      const filePaths = await this.saveWISScripts(demoId, generatedScripts, {
+        websiteUrl: targetUrl,
+        demoName: 'Automated Application Demo',
+        credentials,
+      });
+
+      return {
+        demoId,
+        demoName: 'Automated Application Demo',
+        websiteUrl: targetUrl,
+        generatedScripts,
+        summary: {
+          totalFlows: generatedScripts.length,
+          totalSteps: generatedScripts.reduce(
+            (sum, script) => sum + script.steps.length,
+            0,
+          ),
+          processingTime,
+        },
+        filePaths,
+      };
+    } catch (error) {
+      this.logger.error(
+        `❌ Automated application demo failed: ${error.message}`,
+      );
+      throw new Error(`Automated application demo failed: ${error.message}`);
+    }
+  }
+
   private async navigateAndLogin(
     page: puppeteer.Page,
     websiteUrl: string,
@@ -292,15 +393,27 @@ export class DemoAutomationService {
     this.logger.log('🔍 Exploring UI elements...');
 
     // Wait a bit for dynamic content to load
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     // Check if page is still valid
     try {
-      await page.evaluate(() => document.title);
+      const title = await page.evaluate(() => document.title);
+      this.logger.log(`📄 Page title: ${title}`);
     } catch (error) {
       throw new Error(
         'Page context is no longer valid - likely due to navigation',
       );
+    }
+
+    // Take a screenshot for debugging
+    try {
+      await page.screenshot({
+        path: 'logs/debug/ui-exploration.png',
+        fullPage: true,
+      });
+      this.logger.log('📸 Screenshot saved to logs/debug/ui-exploration.png');
+    } catch (error) {
+      this.logger.warn('⚠️ Could not take screenshot:', error.message);
     }
 
     const uiElements = await page.evaluate(() => {
@@ -374,52 +487,60 @@ export class DemoAutomationService {
         '[class*="item"]',
       ];
 
+      // Debug: Log total elements found
+      console.log('🔍 Starting element detection...');
+
       interactiveSelectors.forEach((selector) => {
         const nodes = document.querySelectorAll(selector);
+        console.log(`🔍 Selector "${selector}" found ${nodes.length} elements`);
+
         nodes.forEach((node: Element) => {
           const rect = node.getBoundingClientRect();
-          if (
-            rect.width > 0 &&
-            rect.height > 0 &&
-            rect.top >= 0 &&
-            rect.left >= 0
-          ) {
-            // Only visible elements that are in viewport
-            const text = node.textContent?.trim();
-            const isVisible =
-              window.getComputedStyle(node).visibility !== 'hidden' &&
-              window.getComputedStyle(node).display !== 'none';
+          const text = node.textContent?.trim() || '';
+          const isVisible =
+            window.getComputedStyle(node).visibility !== 'hidden' &&
+            window.getComputedStyle(node).display !== 'none';
 
-            if (isVisible && text && text.length > 0) {
-              elements.push({
-                tagName: node.tagName.toLowerCase(),
-                id: node.id,
-                className: node.className,
-                text: text.substring(0, 100),
-                selector: generateSelector(node),
-                rect: {
-                  x: rect.x,
-                  y: rect.y,
-                  width: rect.width,
-                  height: rect.height,
-                },
-                attributes: Array.from(node.attributes).reduce((acc, attr) => {
-                  acc[attr.name] = attr.value;
-                  return acc;
-                }, {}),
-                // Add more metadata for better analysis
-                isClickable:
-                  node.tagName === 'BUTTON' ||
-                  node.tagName === 'A' ||
-                  node.getAttribute('onclick') ||
-                  node.getAttribute('role') === 'button',
-                hasText: text.length > 0,
-                textLength: text.length,
-              });
-            }
+          // More lenient visibility check - include elements that might be partially visible
+          const isInViewport = rect.width > 0 && rect.height > 0;
+
+          // Include elements even without text if they're interactive
+          const isInteractive =
+            node.tagName === 'BUTTON' ||
+            node.tagName === 'A' ||
+            node.getAttribute('onclick') ||
+            node.getAttribute('role') === 'button' ||
+            node.getAttribute('role') === 'link' ||
+            node.getAttribute('role') === 'menuitem' ||
+            node.getAttribute('role') === 'tab';
+
+          if (isVisible && isInViewport && (text.length > 0 || isInteractive)) {
+            elements.push({
+              tagName: node.tagName.toLowerCase(),
+              id: node.id,
+              className: node.className,
+              text: text.substring(0, 100),
+              selector: generateSelector(node),
+              rect: {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+              },
+              attributes: Array.from(node.attributes).reduce((acc, attr) => {
+                acc[attr.name] = attr.value;
+                return acc;
+              }, {}),
+              // Add more metadata for better analysis
+              isClickable: isInteractive,
+              hasText: text.length > 0,
+              textLength: text.length,
+            });
           }
         });
       });
+
+      console.log(`🔍 Total elements found: ${elements.length}`);
 
       // Also capture form elements specifically
       const formElements = document.querySelectorAll(
@@ -481,6 +602,66 @@ export class DemoAutomationService {
       `📊 Elements breakdown: ${uniqueElements.filter((e) => e.tagName === 'button').length} buttons, ${uniqueElements.filter((e) => e.tagName === 'a').length} links, ${uniqueElements.filter((e) => e.tagName === 'input').length} inputs`,
     );
 
+    // If we found very few elements, try a more aggressive approach
+    if (uniqueElements.length < 5) {
+      this.logger.log(
+        '⚠️ Found very few elements, trying fallback detection...',
+      );
+
+      const fallbackElements = await page.evaluate(() => {
+        const allElements = document.querySelectorAll('*');
+        const elements = [];
+
+        allElements.forEach((node: Element) => {
+          const rect = node.getBoundingClientRect();
+          const text = node.textContent?.trim() || '';
+          const tagName = node.tagName.toLowerCase();
+
+          // Look for any potentially interactive element
+          const isInteractive =
+            tagName === 'button' ||
+            tagName === 'a' ||
+            tagName === 'input' ||
+            tagName === 'select' ||
+            tagName === 'textarea' ||
+            node.getAttribute('onclick') ||
+            node.getAttribute('role') ||
+            node.getAttribute('tabindex') ||
+            text.length > 0;
+
+          if (isInteractive && rect.width > 0 && rect.height > 0) {
+            elements.push({
+              tagName,
+              id: node.id,
+              className: node.className,
+              text: text.substring(0, 100),
+              selector: node.id ? `#${node.id}` : tagName,
+              rect: {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+              },
+              attributes: Array.from(node.attributes).reduce((acc, attr) => {
+                acc[attr.name] = attr.value;
+                return acc;
+              }, {}),
+              isClickable: true,
+              hasText: text.length > 0,
+              textLength: text.length,
+            });
+          }
+        });
+
+        return elements;
+      });
+
+      this.logger.log(
+        `📊 Fallback detection found ${fallbackElements.length} elements`,
+      );
+      return fallbackElements;
+    }
+
     return uniqueElements;
   }
 
@@ -492,62 +673,39 @@ export class DemoAutomationService {
     this.logger.log(`📊 Found ${uiElements.length} UI elements to analyze`);
 
     try {
-      // Create a specialized prompt for WIS generation focused on application features
+      // Create a specialized prompt for WIS generation based on actual website analysis
       const prompt = `
-You are an expert UI automation analyst for a feature extraction application. Analyze the following UI elements and generate Web Interaction Scripts (WIS) that demonstrate the core application features.
+You are an expert UI automation analyst. Analyze the following UI elements from the actual website and generate Web Interaction Scripts (WIS) that demonstrate the REAL features of this application.
 
 Website: ${websiteUrl}
 UI Elements: ${JSON.stringify(uiElements.slice(0, 50), null, 2)}
 
-This application has the following core features:
-1. Document Upload & Processing (PDF, Word, HTML, Markdown, Text)
-2. Web Crawling & Content Extraction
-3. Feature Extraction using AI/LLM
-4. Performance Monitoring
-5. Demo Automation
-
 Instructions:
-1. Identify UI elements that relate to these core features
-2. Create WIS scripts that demonstrate each feature workflow
-3. Focus on realistic user journeys through the application
-4. Include file upload, form submissions, and result viewing flows
+1. Analyze the actual UI elements to understand what this application really does
+2. Look for buttons, links, forms, and interactive elements that represent real features
+3. Create WIS scripts that demonstrate the ACTUAL user workflows on this website
+4. Focus on realistic user journeys based on what you can see in the UI elements
+5. Do NOT assume generic features - only create scripts for features you can actually see in the UI
 
-Create 4-6 different user flows as WIS JSON objects:
-
-1. Document Upload Flow - Upload and process documents
-2. Web Crawling Flow - Extract content from websites
-3. Feature Extraction Flow - Use AI to extract features from content
-4. Performance Monitoring Flow - View metrics and analytics
-5. Demo Automation Flow - Create automated demos
-6. Results Review Flow - View and analyze extracted features
-
-For each flow, provide:
-1. A descriptive name
-2. A brief description
-3. A category (e.g., "Document Processing", "Web Crawling", "AI Extraction", "Analytics", "Automation")
-4. A sequence of steps with selectors, actions, and tooltips
+For each real feature you identify, provide:
+1. A descriptive name based on the actual UI elements
+2. A brief description of what the feature does
+3. A category that makes sense for the feature
+4. A sequence of steps with the actual selectors from the UI elements
 
 Return the response as a JSON array of WIS objects in this exact format:
 [
   {
-    "name": "Document Upload & Processing",
-    "description": "Upload documents and process them for feature extraction",
-    "category": "Document Processing",
+    "name": "Feature Name Based on UI",
+    "description": "What this feature actually does based on UI elements",
+    "category": "Appropriate Category",
     "steps": [
       {
-        "selector": "input[type='file']",
+        "selector": "actual-selector-from-ui",
         "action": "click",
         "tooltip": {
-          "text": "Click to select documents for upload",
+          "text": "Description of what this step does",
           "position": "bottom"
-        }
-      },
-      {
-        "selector": "button[type='submit']",
-        "action": "click",
-        "tooltip": {
-          "text": "Submit documents for processing",
-          "position": "top"
         }
       }
     ]
@@ -675,281 +833,109 @@ Only return valid JSON. Do not include any other text.
       `📊 Processing ${uiElements.length} UI elements for feature scripts`,
     );
 
-    // Group elements by type and create application-specific flows
-    const fileInputs = uiElements.filter(
-      (el) => el.tagName === 'input' && el.attributes?.type === 'file',
-    );
-    const textInputs = uiElements.filter(
-      (el) => el.tagName === 'input' && el.attributes?.type === 'text',
-    );
-    const urlInputs = uiElements.filter(
-      (el) => el.tagName === 'input' && el.attributes?.type === 'url',
-    );
+    // Group elements by type and analyze their actual purpose
     const buttons = uiElements.filter(
       (el) => el.tagName === 'button' || el.className.includes('btn'),
     );
     const links = uiElements.filter((el) => el.tagName === 'a');
+    const inputs = uiElements.filter((el) => el.tagName === 'input');
     const forms = uiElements.filter((el) => el.tagName === 'form');
 
     this.logger.log(
-      `📊 Found: ${fileInputs.length} file inputs, ${textInputs.length} text inputs, ${urlInputs.length} URL inputs, ${buttons.length} buttons, ${links.length} links, ${forms.length} forms`,
+      `📊 Found: ${buttons.length} buttons, ${links.length} links, ${inputs.length} inputs, ${forms.length} forms`,
     );
 
     const scripts: WebInteractionScriptDto[] = [];
 
-    // 1. Document Upload & Processing Flow
-    if (fileInputs.length > 0) {
-      scripts.push({
-        name: 'Document Upload & Processing',
-        description:
-          'Upload documents (PDF, Word, HTML, etc.) for feature extraction',
-        category: 'Document Processing',
-        steps: [
-          {
-            selector: fileInputs[0].selector,
-            action: 'click',
-            tooltip: {
-              text: 'Click to select documents for upload (PDF, Word, HTML, Markdown, Text)',
-              position: 'bottom' as const,
-            },
-          },
-          ...(buttons.length > 0
-            ? [
-                {
-                  selector: buttons[0].selector,
-                  action: 'click' as const,
-                  tooltip: {
-                    text: 'Submit documents for processing',
-                    position: 'top' as const,
-                  },
-                },
-              ]
-            : []),
-        ],
+    // Analyze actual features based on UI element text and context
+    const featureKeywords = {
+      sales: ['sales', 'deals', 'revenue', 'pipeline', 'opportunities'],
+      dashboard: ['dashboard', 'overview', 'home', 'main'],
+      reports: ['reports', 'analytics', 'metrics', 'insights'],
+      settings: ['settings', 'profile', 'account', 'preferences'],
+      notifications: ['notifications', 'alerts', 'messages'],
+      calendar: ['calendar', 'schedule', 'meetings', 'events'],
+      team: ['team', 'collaboration', 'users', 'members'],
+      workflow: ['workflow', 'process', 'automation', 'tasks'],
+    };
+
+    // Create scripts based on actual UI element analysis
+    for (const [category, keywords] of Object.entries(featureKeywords)) {
+      const relevantElements = uiElements.filter((el) => {
+        const text = el.text?.toLowerCase() || '';
+        return keywords.some((keyword) => text.includes(keyword));
       });
-    }
 
-    // 2. Web Crawling Flow
-    if (
-      urlInputs.length > 0 ||
-      textInputs.some((input) =>
-        input.attributes?.placeholder?.toLowerCase().includes('url'),
-      )
-    ) {
-      const urlInput =
-        urlInputs[0] ||
-        textInputs.find((input) =>
-          input.attributes?.placeholder?.toLowerCase().includes('url'),
-        );
-
-      scripts.push({
-        name: 'Web Crawling & Content Extraction',
-        description: 'Extract content from websites for feature analysis',
-        category: 'Web Crawling',
-        steps: [
-          {
-            selector: urlInput.selector,
-            action: 'type',
-            value: 'https://example.com',
-            tooltip: {
-              text: 'Enter website URL to crawl and extract content',
-              position: 'right' as const,
-            },
-          },
-          ...(buttons.length > 0
-            ? [
-                {
-                  selector: buttons[0].selector,
-                  action: 'click' as const,
-                  tooltip: {
-                    text: 'Start web crawling process',
-                    position: 'top' as const,
-                  },
-                },
-              ]
-            : []),
-        ],
-      });
-    }
-
-    // 3. Feature Extraction Flow
-    if (textInputs.length > 0) {
-      scripts.push({
-        name: 'AI Feature Extraction',
-        description: 'Use AI/LLM to extract features from content',
-        category: 'AI Extraction',
-        steps: [
-          {
-            selector: textInputs[0].selector,
-            action: 'type',
-            value: 'Sample content for feature extraction',
-            tooltip: {
-              text: 'Enter or paste content for AI feature extraction',
-              position: 'right' as const,
-            },
-          },
-          ...(buttons.length > 0
-            ? [
-                {
-                  selector: buttons[0].selector,
-                  action: 'click' as const,
-                  tooltip: {
-                    text: 'Start AI feature extraction process',
-                    position: 'top' as const,
-                  },
-                },
-              ]
-            : []),
-        ],
-      });
-    }
-
-    // 4. Performance Monitoring Flow
-    if (
-      links.some(
-        (link) =>
-          link.text?.toLowerCase().includes('performance') ||
-          link.text?.toLowerCase().includes('metrics'),
-      )
-    ) {
-      const performanceLink = links.find(
-        (link) =>
-          link.text?.toLowerCase().includes('performance') ||
-          link.text?.toLowerCase().includes('metrics'),
-      );
-
-      scripts.push({
-        name: 'Performance Monitoring',
-        description: 'View performance metrics and analytics',
-        category: 'Analytics',
-        steps: [
-          {
-            selector: performanceLink.selector,
-            action: 'click',
-            tooltip: {
-              text: 'View performance metrics and analytics',
-              position: 'bottom' as const,
-            },
-          },
-        ],
-      });
-    }
-
-    // 5. Demo Automation Flow
-    if (
-      links.some(
-        (link) =>
-          link.text?.toLowerCase().includes('demo') ||
-          link.text?.toLowerCase().includes('automation'),
-      )
-    ) {
-      const demoLink = links.find(
-        (link) =>
-          link.text?.toLowerCase().includes('demo') ||
-          link.text?.toLowerCase().includes('automation'),
-      );
-
-      scripts.push({
-        name: 'Demo Automation',
-        description: 'Create automated demos and WIS scripts',
-        category: 'Automation',
-        steps: [
-          {
-            selector: demoLink.selector,
-            action: 'click',
-            tooltip: {
-              text: 'Access demo automation features',
-              position: 'bottom' as const,
-            },
-          },
-        ],
-      });
-    }
-
-    // 6. Results Review Flow
-    if (
-      links.some(
-        (link) =>
-          link.text?.toLowerCase().includes('results') ||
-          link.text?.toLowerCase().includes('features'),
-      )
-    ) {
-      const resultsLink = links.find(
-        (link) =>
-          link.text?.toLowerCase().includes('results') ||
-          link.text?.toLowerCase().includes('features'),
-      );
-
-      scripts.push({
-        name: 'Results Review & Analysis',
-        description: 'View and analyze extracted features and results',
-        category: 'Analytics',
-        steps: [
-          {
-            selector: resultsLink.selector,
-            action: 'click',
-            tooltip: {
-              text: 'View extracted features and analysis results',
-              position: 'bottom' as const,
-            },
-          },
-        ],
-      });
-    }
-
-    // Fallback: Create basic interaction flows if no specific features found
-    if (scripts.length === 0) {
-      // Basic navigation flow
-      if (links.length > 0) {
+      if (relevantElements.length > 0) {
+        const categoryName =
+          category.charAt(0).toUpperCase() + category.slice(1);
         scripts.push({
-          name: 'Application Navigation',
-          description: 'Navigate through the main sections of the application',
-          category: 'Navigation',
-          steps: links.slice(0, 3).map((link, index) => ({
-            selector: link.selector,
-            action: 'click',
+          name: `${categoryName} Management`,
+          description: `Manage ${category} related features in the application`,
+          category: categoryName,
+          steps: relevantElements.slice(0, 3).map((element) => ({
+            selector: element.selector,
+            action: element.tagName === 'input' ? 'type' : 'click',
+            value: element.tagName === 'input' ? 'Sample data' : undefined,
             tooltip: {
-              text: `Click to navigate to ${link.text || 'next section'}`,
+              text: `Interact with ${category} feature: ${element.text || element.tagName}`,
               position: 'bottom' as const,
             },
           })),
         });
       }
+    }
 
-      // Basic form interaction flow
-      if (textInputs.length > 0) {
-        scripts.push({
-          name: 'Form Interaction',
-          description: 'Interact with form elements on the page',
-          category: 'Data Entry',
-          steps: textInputs.slice(0, 2).map((input, index) => ({
-            selector: input.selector,
-            action: 'type',
-            value: 'Sample text',
-            tooltip: {
-              text: `Enter information in this field`,
-              position: 'right' as const,
-            },
-          })),
-        });
-      }
+    // Create navigation flow based on actual links
+    if (links.length > 0) {
+      scripts.push({
+        name: 'Application Navigation',
+        description: 'Navigate through the main sections of the application',
+        category: 'Navigation',
+        steps: links.slice(0, 4).map((link) => ({
+          selector: link.selector,
+          action: 'click',
+          tooltip: {
+            text: `Navigate to ${link.text || 'next section'}`,
+            position: 'bottom' as const,
+          },
+        })),
+      });
+    }
 
-      // Basic button interaction flow
-      if (buttons.length > 0) {
-        scripts.push({
-          name: 'Button Actions',
-          description: 'Interact with buttons and action elements',
-          category: 'Actions',
-          steps: buttons.slice(0, 2).map((button, index) => ({
-            selector: button.selector,
-            action: 'click',
-            tooltip: {
-              text: `Click this button to ${button.text || 'perform action'}`,
-              position: 'top' as const,
-            },
-          })),
-        });
-      }
+    // Create form interaction flow based on actual forms
+    if (inputs.length > 0) {
+      scripts.push({
+        name: 'Data Entry & Forms',
+        description: 'Interact with form elements and input fields',
+        category: 'Data Entry',
+        steps: inputs.slice(0, 3).map((input) => ({
+          selector: input.selector,
+          action: 'type',
+          value: 'Sample data',
+          tooltip: {
+            text: `Enter information in this field`,
+            position: 'right' as const,
+          },
+        })),
+      });
+    }
+
+    // Create action flow based on actual buttons
+    if (buttons.length > 0) {
+      scripts.push({
+        name: 'Action Buttons',
+        description: 'Interact with buttons and action elements',
+        category: 'Actions',
+        steps: buttons.slice(0, 3).map((button) => ({
+          selector: button.selector,
+          action: 'click',
+          tooltip: {
+            text: `Click to ${button.text || 'perform action'}`,
+            position: 'top' as const,
+          },
+        })),
+      });
     }
 
     this.logger.log(
@@ -1156,253 +1142,357 @@ Only return valid JSON. Do not include any other text.
   private generateApplicationFeatureWIS(): WebInteractionScriptDto[] {
     this.logger.log('🎯 Generating WIS scripts for application features...');
 
-    const scripts: WebInteractionScriptDto[] = [
-      {
-        name: 'Document Upload & Processing',
-        description:
-          'Upload and process various document types (PDF, Word, HTML, Markdown, Text) for feature extraction',
-        category: 'Document Processing',
-        steps: [
-          {
-            selector: 'input[type="file"]',
-            action: 'click',
-            tooltip: {
-              text: 'Click to select documents for upload (supports PDF, Word, HTML, Markdown, Text)',
-              position: 'bottom' as const,
-            },
-          },
-          {
-            selector: 'input[type="file"]',
-            action: 'type',
-            value: 'C:\\path\\to\\document.pdf',
-            tooltip: {
-              text: 'Select multiple documents for batch processing',
-              position: 'right' as const,
-            },
-          },
-          {
-            selector: 'button[type="submit"]',
-            action: 'click',
-            tooltip: {
-              text: 'Submit documents for processing and feature extraction',
-              position: 'top' as const,
-            },
-          },
-          {
-            selector: '.processing-status',
-            action: 'hover',
-            tooltip: {
-              text: 'Monitor document processing status',
-              position: 'bottom' as const,
-            },
-          },
-        ],
-      },
-      {
-        name: 'Web Crawling & Content Extraction',
-        description: 'Extract content from websites and analyze for features',
-        category: 'Web Crawling',
-        steps: [
-          {
-            selector: 'input[name="url"]',
-            action: 'click',
-            tooltip: {
-              text: 'Enter website URL to crawl and extract content',
-              position: 'right' as const,
-            },
-          },
-          {
-            selector: 'input[name="url"]',
-            action: 'type',
-            value: 'https://example.com',
-            tooltip: {
-              text: 'Enter the target website URL for content extraction',
-              position: 'right' as const,
-            },
-          },
-          {
-            selector: 'button[type="submit"]',
-            action: 'click',
-            tooltip: {
-              text: 'Start web crawling process',
-              position: 'top' as const,
-            },
-          },
-          {
-            selector: '.crawl-progress',
-            action: 'hover',
-            tooltip: {
-              text: 'Monitor crawling progress and extracted pages',
-              position: 'bottom' as const,
-            },
-          },
-        ],
-      },
-      {
-        name: 'AI Feature Extraction',
-        description: 'Use AI/LLM to extract features and products from content',
-        category: 'AI Extraction',
-        steps: [
-          {
-            selector: 'textarea[name="content"]',
-            action: 'click',
-            tooltip: {
-              text: 'Enter or paste content for AI feature extraction',
-              position: 'right' as const,
-            },
-          },
-          {
-            selector: 'textarea[name="content"]',
-            action: 'type',
-            value: 'Sample content with product descriptions and features...',
-            tooltip: {
-              text: 'Paste content containing product information for AI analysis',
-              position: 'right' as const,
-            },
-          },
-          {
-            selector: 'button[type="submit"]',
-            action: 'click',
-            tooltip: {
-              text: 'Start AI feature extraction process',
-              position: 'top' as const,
-            },
-          },
-          {
-            selector: '.extraction-results',
-            action: 'hover',
-            tooltip: {
-              text: 'View extracted features and products',
-              position: 'bottom' as const,
-            },
-          },
-        ],
-      },
-      {
-        name: 'Performance Monitoring',
-        description:
-          'View performance metrics and analytics for all operations',
-        category: 'Analytics',
-        steps: [
-          {
-            selector: 'a[href*="performance"]',
-            action: 'click',
-            tooltip: {
-              text: 'Navigate to performance monitoring dashboard',
-              position: 'bottom' as const,
-            },
-          },
-          {
-            selector: '.metrics-summary',
-            action: 'hover',
-            tooltip: {
-              text: 'View overall performance metrics',
-              position: 'bottom' as const,
-            },
-          },
-          {
-            selector: '.operation-stats',
-            action: 'click',
-            tooltip: {
-              text: 'View detailed operation statistics',
-              position: 'top' as const,
-            },
-          },
-          {
-            selector: '.success-rate',
-            action: 'hover',
-            tooltip: {
-              text: 'Monitor success rates for different operations',
-              position: 'right' as const,
-            },
-          },
-        ],
-      },
-      {
-        name: 'Demo Automation',
-        description: 'Create automated demos and WIS scripts for applications',
-        category: 'Automation',
-        steps: [
-          {
-            selector: 'a[href*="demo"]',
-            action: 'click',
-            tooltip: {
-              text: 'Access demo automation features',
-              position: 'bottom' as const,
-            },
-          },
-          {
-            selector: 'input[name="websiteUrl"]',
-            action: 'click',
-            tooltip: {
-              text: 'Enter target website URL for demo automation',
-              position: 'right' as const,
-            },
-          },
-          {
-            selector: 'input[name="websiteUrl"]',
-            action: 'type',
-            value: 'https://target-website.com',
-            tooltip: {
-              text: 'Enter the website URL to create demos for',
-              position: 'right' as const,
-            },
-          },
-          {
-            selector: 'button[type="submit"]',
-            action: 'click',
-            tooltip: {
-              text: 'Generate WIS scripts for the target website',
-              position: 'top' as const,
-            },
-          },
-        ],
-      },
-      {
-        name: 'Results Review & Analysis',
-        description: 'View and analyze extracted features and results',
-        category: 'Analytics',
-        steps: [
-          {
-            selector: '.results-section',
-            action: 'click',
-            tooltip: {
-              text: 'View extracted features and analysis results',
-              position: 'bottom' as const,
-            },
-          },
-          {
-            selector: '.feature-list',
-            action: 'hover',
-            tooltip: {
-              text: 'Browse through extracted features and products',
-              position: 'right' as const,
-            },
-          },
-          {
-            selector: '.feature-details',
-            action: 'click',
-            tooltip: {
-              text: 'View detailed information about a specific feature',
-              position: 'top' as const,
-            },
-          },
-          {
-            selector: '.export-button',
-            action: 'click',
-            tooltip: {
-              text: 'Export results to various formats',
-              position: 'bottom' as const,
-            },
-          },
-        ],
-      },
+    // This method should not be used for external websites like Rattle
+    // It's only for internal application features
+    this.logger.warn('⚠️ This method should not be used for external websites');
+
+    return [];
+  }
+
+  private async navigateAndLoginToTargetApp(
+    page: puppeteer.Page,
+    targetUrl: string,
+    credentials: { username: string; password: string },
+  ): Promise<void> {
+    this.logger.log(`🌐 Navigating to target application: ${targetUrl}`);
+
+    await page.goto(targetUrl, { waitUntil: 'networkidle2' });
+
+    // Wait for page to load
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Try to find login form elements
+    const loginSelectors = [
+      'input[type="email"]',
+      'input[name="email"]',
+      'input[name="username"]',
+      'input[type="text"]',
+      'input[placeholder*="email" i]',
+      'input[placeholder*="username" i]',
     ];
 
+    const passwordSelectors = [
+      'input[type="password"]',
+      'input[name="password"]',
+    ];
+
+    // Find username/email input
+    let usernameInput = null;
+    for (const selector of loginSelectors) {
+      try {
+        usernameInput = await page.$(selector);
+        if (usernameInput) break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    // Find password input
+    let passwordInput = null;
+    for (const selector of passwordSelectors) {
+      try {
+        passwordInput = await page.$(selector);
+        if (passwordInput) break;
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (usernameInput && passwordInput) {
+      this.logger.log('🔐 Found login form, attempting to login...');
+
+      // Clear and fill username
+      await usernameInput.click({ clickCount: 3 });
+      await usernameInput.type(credentials.username);
+
+      // Clear and fill password
+      await passwordInput.click({ clickCount: 3 });
+      await passwordInput.type(credentials.password);
+
+      // Find and click submit button
+      const submitSelectors = [
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'button:contains("Sign In")',
+        'button:contains("Login")',
+        'button:contains("Log In")',
+      ];
+
+      for (const selector of submitSelectors) {
+        try {
+          const submitButton = await page.$(selector);
+          if (submitButton) {
+            await submitButton.click();
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      // Wait for login to complete and handle potential navigation
+      this.logger.log('⏳ Waiting for login to complete...');
+      try {
+        // Wait for navigation or timeout
+        await Promise.race([
+          page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }),
+          new Promise((resolve) => setTimeout(resolve, 5000)),
+        ]);
+        this.logger.log('✅ Login completed, page may have navigated');
+      } catch (error) {
+        this.logger.log('⚠️ No navigation detected after login, continuing...');
+      }
+    } else {
+      this.logger.log(
+        '⚠️ No login form found, proceeding without authentication',
+      );
+    }
+  }
+
+  private async extractFeaturesFromLocalApp(
+    page: puppeteer.Page,
+  ): Promise<any[]> {
     this.logger.log(
-      `✅ Generated ${scripts.length} application feature WIS scripts`,
+      '🧠 Extracting features from local application using LLM...',
     );
+
+    try {
+      // Get page content and structure
+      const pageContent = await page.evaluate(() => {
+        return {
+          title: document.title,
+          url: window.location.href,
+          text: document.body.innerText,
+          html: document.documentElement.outerHTML,
+          links: Array.from(document.querySelectorAll('a')).map((a) => ({
+            text: a.textContent?.trim(),
+            href: a.href,
+            selector:
+              a.tagName.toLowerCase() +
+              (a.id ? `#${a.id}` : '') +
+              (a.className ? `.${a.className.split(' ').join('.')}` : ''),
+          })),
+          buttons: Array.from(document.querySelectorAll('button')).map((b) => ({
+            text: b.textContent?.trim(),
+            selector:
+              b.tagName.toLowerCase() +
+              (b.id ? `#${b.id}` : '') +
+              (b.className ? `.${b.className.split(' ').join('.')}` : ''),
+          })),
+          forms: Array.from(document.querySelectorAll('form')).map((f) => ({
+            action: f.action,
+            method: f.method,
+            inputs: Array.from(f.querySelectorAll('input')).map((i) => ({
+              type: i.type,
+              name: i.name,
+              placeholder: i.placeholder,
+              selector:
+                i.tagName.toLowerCase() +
+                (i.id ? `#${i.id}` : '') +
+                (i.className ? `.${i.className.split(' ').join('.')}` : ''),
+            })),
+          })),
+        };
+      });
+
+      // Use LLM to extract features from the page content
+      const features = await this.llmService.extractProductsFromText(
+        `Application: ${pageContent.title}
+URL: ${pageContent.url}
+Content: ${pageContent.text}
+Links: ${JSON.stringify(pageContent.links)}
+Buttons: ${JSON.stringify(pageContent.buttons)}
+Forms: ${JSON.stringify(pageContent.forms)}`,
+      );
+
+      this.logger.log(
+        `✅ Extracted ${features.products.length} features from local application`,
+      );
+      return features.products;
+    } catch (error) {
+      this.logger.error(`❌ Failed to extract features: ${error.message}`);
+      return [];
+    }
+  }
+
+  private async generateWISFromFeatures(
+    features: any[],
+    uiElements: any[],
+    websiteUrl: string,
+  ): Promise<WebInteractionScriptDto[]> {
+    this.logger.log('🤖 Generating WIS scripts from extracted features...');
+
+    const scripts: WebInteractionScriptDto[] = [];
+
+    // Create WIS scripts for each extracted feature
+    for (const feature of features) {
+      const featureScript = await this.createWISForFeature(
+        feature,
+        uiElements,
+        websiteUrl,
+      );
+      if (featureScript) {
+        scripts.push(featureScript);
+      }
+    }
+
+    // Create general navigation and interaction scripts
+    const navigationScript = this.createNavigationWIS(uiElements, websiteUrl);
+    if (navigationScript) {
+      scripts.push(navigationScript);
+    }
+
+    this.logger.log(`✅ Generated ${scripts.length} WIS scripts from features`);
     return scripts;
+  }
+
+  private async createWISForFeature(
+    feature: any,
+    uiElements: any[],
+    websiteUrl: string,
+  ): Promise<WebInteractionScriptDto | null> {
+    try {
+      // Find UI elements that match the feature
+      const relevantElements = uiElements.filter((element) => {
+        const elementText = element.text?.toLowerCase() || '';
+        const featureName = feature.name?.toLowerCase() || '';
+        const featureDescription = feature.description?.toLowerCase() || '';
+
+        return (
+          elementText.includes(featureName) ||
+          elementText.includes(featureDescription) ||
+          featureName.includes(elementText) ||
+          featureDescription.includes(elementText)
+        );
+      });
+
+      if (relevantElements.length === 0) {
+        return null;
+      }
+
+      // Create WIS script for this feature
+      const steps = relevantElements.slice(0, 3).map((element, index) => ({
+        selector: element.selector,
+        action: element.tagName === 'input' ? 'type' : 'click',
+        value: element.tagName === 'input' ? 'Sample data' : undefined,
+        tooltip: {
+          text: `Interact with ${feature.name}: ${element.text || element.tagName}`,
+          position: 'bottom' as const,
+        },
+      }));
+
+      return {
+        name: `${feature.name} Feature Flow`,
+        description: `Demonstrate the ${feature.name} feature: ${feature.description}`,
+        category: feature.category || 'Feature',
+        steps,
+      };
+    } catch (error) {
+      this.logger.error(
+        `❌ Failed to create WIS for feature ${feature.name}: ${error.message}`,
+      );
+      return null;
+    }
+  }
+
+  private createNavigationWIS(
+    uiElements: any[],
+    websiteUrl: string,
+  ): WebInteractionScriptDto | null {
+    try {
+      // Find navigation elements
+      const navElements = uiElements.filter(
+        (element) =>
+          element.tagName === 'a' ||
+          element.className?.includes('nav') ||
+          element.text?.toLowerCase().includes('dashboard') ||
+          element.text?.toLowerCase().includes('extraction') ||
+          element.text?.toLowerCase().includes('demo') ||
+          element.text?.toLowerCase().includes('profile'),
+      );
+
+      if (navElements.length === 0) {
+        return null;
+      }
+
+      const steps = navElements.slice(0, 4).map((element, index) => ({
+        selector: element.selector,
+        action: 'click',
+        tooltip: {
+          text: `Navigate to ${element.text || 'next section'}`,
+          position: 'bottom' as const,
+        },
+      }));
+
+      return {
+        name: 'Application Navigation Flow',
+        description: 'Navigate through the main sections of the application',
+        category: 'Navigation',
+        steps,
+      };
+    } catch (error) {
+      this.logger.error(`❌ Failed to create navigation WIS: ${error.message}`);
+      return null;
+    }
+  }
+
+  async debugUIElements(
+    targetUrl: string,
+    credentials: { username: string; password: string },
+  ): Promise<any> {
+    this.logger.log(`🔍 Debugging UI elements for: ${targetUrl}`);
+
+    try {
+      const browser = await puppeteer.launch({
+        headless: false,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1920, height: 1080 });
+
+      // Navigate and login
+      await this.navigateAndLoginToTargetApp(page, targetUrl, credentials);
+
+      // Wait for page to stabilize
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      // Get page info
+      const pageInfo = await page.evaluate(() => {
+        return {
+          title: document.title,
+          url: window.location.href,
+          bodyText: document.body.innerText.substring(0, 1000),
+          totalElements: document.querySelectorAll('*').length,
+          buttons: document.querySelectorAll('button').length,
+          links: document.querySelectorAll('a').length,
+          inputs: document.querySelectorAll('input').length,
+          divs: document.querySelectorAll('div').length,
+          spans: document.querySelectorAll('span').length,
+        };
+      });
+
+      // Take screenshot
+      await page.screenshot({
+        path: 'logs/debug/debug-ui.png',
+        fullPage: true,
+      });
+
+      // Try UI exploration
+      const uiElements = await this.exploreUI(page);
+
+      await browser.close();
+
+      return {
+        pageInfo,
+        uiElements,
+        elementCount: uiElements.length,
+        screenshot: 'logs/debug/debug-ui.png',
+      };
+    } catch (error) {
+      this.logger.error(`❌ Debug failed: ${error.message}`);
+      throw error;
+    }
   }
 
   private sanitizeFileName(fileName: string): string {

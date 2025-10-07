@@ -26,6 +26,13 @@ A powerful NestJS-based system for extracting product features from documentatio
 - **📊 Comprehensive Logging**: Detailed progress tracking and error handling
 - **🛡️ Fallback Logic**: Robust error recovery and basic script generation
 
+### 🤖 Fully Automated Process (NEW!)
+- **🚀 Zero User Interaction**: Completely automated feature extraction and WIS generation
+- **🔐 Auto-Login**: Automatically logs into applications with provided credentials
+- **🧠 AI-Powered Analysis**: Uses LLM to extract features from any web application
+- **🎬 Auto WIS Generation**: Creates interactive demo scripts for all discovered features
+- **💾 File Storage**: Automatically saves WIS scripts to disk for immediate use
+
 ## 🏗️ Architecture
 
 ### 📄 Document & Website Analysis
@@ -55,7 +62,7 @@ Website URL + Credentials → Browser Automation → UI Exploration → AI Analy
 git clone <your-repo-url>
 cd ruemai-server
 
-# Install dependencies
+# Install backend dependencies
 npm install
 ```
 
@@ -74,7 +81,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 - Configuration values are out of acceptable ranges
 - Required environment variables are not set
 
-### 3. Start the Application
+### 3. Start the Backend
 
 ```bash
 # Development mode with hot reload
@@ -84,7 +91,24 @@ npm run start:dev
 npm run start:prod
 ```
 
-The server will start on `http://localhost:3000` 🎉
+The backend server will start on `http://localhost:3000` 🎉
+
+### 4. Test the Automated Process
+
+```bash
+# Test automated demo creation
+node test-automated-demo.js
+
+# Or use curl
+curl -X POST http://localhost:3000/demo/create-automated-demo
+```
+
+The system will automatically:
+- 🚀 Launch Puppeteer and navigate to your application
+- 🔐 Login with demo credentials
+- 🧠 Extract features using LLM
+- 🤖 Generate WIS scripts for all features
+- 💾 Save results to `logs/demo/` directory
 
 ## 📡 API Endpoints
 
@@ -112,6 +136,21 @@ Content-Type: application/json
   },
   "demoName": "My Demo" // Optional
 }
+```
+
+### 🤖 Automated Application Demo (NEW!)
+```http
+POST /demo/create-automated-demo
+Content-Type: application/json
+
+# No request body needed - completely automated process
+# This endpoint will:
+# 1. 🚀 Launch Puppeteer and navigate to your application
+# 2. 🔐 Automatically login with demo credentials  
+# 3. 🧠 Extract features using LLM from the application
+# 4. 🔍 Explore UI elements with Puppeteer
+# 5. 🤖 Generate WIS scripts for all extracted features
+# 6. 💾 Save WIS scripts to logs/demo/ directory
 ```
 
 ## 🧪 Testing
@@ -150,6 +189,16 @@ curl -X POST http://localhost:3000/demo/create-demo \
     },
     "demoName": "My Test Demo"
   }'
+```
+
+**5. Test Automated Application Demo (NEW!):**
+```bash
+# This will automatically work with your local application
+curl -X POST http://localhost:3000/demo/create-automated-demo \
+  -H "Content-Type: application/json"
+
+# Or use the test script
+node test-automated-demo.js
 ```
 
 ### Unit Tests
