@@ -45,10 +45,22 @@ export class DemoAutomationService {
       const uiElements = await this.exploreUI(page);
 
       // Step 4: Generate WIS scripts using AI
+      this.logger.log(`📊 UI Elements captured: ${uiElements.length}`);
+      this.logger.log(
+        `📊 Sample elements: ${JSON.stringify(uiElements.slice(0, 3), null, 2)}`,
+      );
+
       const generatedScripts = await this.generateWISScripts(
         uiElements,
         request.websiteUrl,
       );
+
+      this.logger.log(`📊 Generated scripts count: ${generatedScripts.length}`);
+      if (generatedScripts.length > 0) {
+        this.logger.log(
+          `📊 Sample script: ${JSON.stringify(generatedScripts[0], null, 2)}`,
+        );
+      }
 
       // Step 5: Clean up
       await browser.close();
@@ -180,10 +192,45 @@ export class DemoAutomationService {
   private async exploreUI(page: puppeteer.Page): Promise<any[]> {
     this.logger.log('🔍 Exploring UI elements...');
 
+    // Wait a bit for dynamic content to load
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
     const uiElements = await page.evaluate(() => {
+      // Helper function to generate CSS selectors
+      function generateSelector(element) {
+        if (element.id) {
+          return `#${element.id}`;
+        }
+
+        if (element.className) {
+          const classes = element.className
+            .split(' ')
+            .filter((c) => c.length > 0);
+          if (classes.length > 0) {
+            return `.${classes[0]}`;
+          }
+        }
+
+        // Fallback to tag name with attributes
+        const tagName = element.tagName.toLowerCase();
+        const attributes = Array.from(element.attributes);
+
+        for (const attr of attributes) {
+          if (
+            (attr as any).name === 'data-testid' ||
+            (attr as any).name === 'name' ||
+            (attr as any).name === 'type'
+          ) {
+            return `${tagName}[${(attr as any).name}="${(attr as any).value}"]`;
+          }
+        }
+
+        return tagName;
+      }
+
       const elements = [];
 
-      // Get all interactive elements
+      // Get all interactive elements with more comprehensive selectors
       const interactiveSelectors = [
         'button',
         'a',
@@ -191,24 +238,105 @@ export class DemoAutomationService {
         'select',
         'textarea',
         '[role="button"]',
+        '[role="link"]',
+        '[role="tab"]',
+        '[role="menuitem"]',
         '[onclick]',
         '[data-testid]',
+        '[data-test]',
+        '[data-cy]',
+        '[data-qa]',
         '.btn',
         '.button',
         '.link',
+        '.nav-link',
+        '.menu-item',
+        '.tab',
+        '.card',
+        '.tile',
+        '.item',
+        '[class*="btn"]',
+        '[class*="button"]',
+        '[class*="link"]',
+        '[class*="nav"]',
+        '[class*="menu"]',
+        '[class*="tab"]',
+        '[class*="card"]',
+        '[class*="tile"]',
+        '[class*="item"]',
       ];
 
       interactiveSelectors.forEach((selector) => {
         const nodes = document.querySelectorAll(selector);
         nodes.forEach((node: Element) => {
           const rect = node.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            // Only visible elements
+          if (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.top >= 0 &&
+            rect.left >= 0
+          ) {
+            // Only visible elements that are in viewport
+            const text = node.textContent?.trim();
+            const isVisible =
+              window.getComputedStyle(node).visibility !== 'hidden' &&
+              window.getComputedStyle(node).display !== 'none';
+
+            if (isVisible && text && text.length > 0) {
+              elements.push({
+                tagName: node.tagName.toLowerCase(),
+                id: node.id,
+                className: node.className,
+                text: text.substring(0, 100),
+                selector: generateSelector(node),
+                rect: {
+                  x: rect.x,
+                  y: rect.y,
+                  width: rect.width,
+                  height: rect.height,
+                },
+                attributes: Array.from(node.attributes).reduce((acc, attr) => {
+                  acc[attr.name] = attr.value;
+                  return acc;
+                }, {}),
+                // Add more metadata for better analysis
+                isClickable:
+                  node.tagName === 'BUTTON' ||
+                  node.tagName === 'A' ||
+                  node.getAttribute('onclick') ||
+                  node.getAttribute('role') === 'button',
+                hasText: text.length > 0,
+                textLength: text.length,
+              });
+            }
+          }
+        });
+      });
+
+      // Also capture form elements specifically
+      const formElements = document.querySelectorAll(
+        'form input, form select, form textarea, form button',
+      );
+      formElements.forEach((node: Element) => {
+        const rect = node.getBoundingClientRect();
+        if (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.top >= 0 &&
+          rect.left >= 0
+        ) {
+          const text =
+            node.textContent?.trim() || node.getAttribute('placeholder') || '';
+          const isVisible =
+            window.getComputedStyle(node).visibility !== 'hidden' &&
+            window.getComputedStyle(node).display !== 'none';
+
+          if (isVisible) {
             elements.push({
               tagName: node.tagName.toLowerCase(),
               id: node.id,
               className: node.className,
-              text: node.textContent?.trim().substring(0, 100),
+              text: text.substring(0, 100),
               selector: generateSelector(node),
               rect: {
                 x: rect.x,
@@ -220,16 +348,32 @@ export class DemoAutomationService {
                 acc[attr.name] = attr.value;
                 return acc;
               }, {}),
+              isClickable: true,
+              hasText: text.length > 0,
+              textLength: text.length,
+              isFormElement: true,
             });
           }
-        });
+        }
       });
 
       return elements;
     });
 
-    this.logger.log(`📊 Found ${uiElements.length} interactive elements`);
-    return uiElements;
+    // Remove duplicates based on selector
+    const uniqueElements = uiElements.filter(
+      (element, index, self) =>
+        index === self.findIndex((e) => e.selector === element.selector),
+    );
+
+    this.logger.log(
+      `📊 Found ${uniqueElements.length} unique interactive elements`,
+    );
+    this.logger.log(
+      `📊 Elements breakdown: ${uniqueElements.filter((e) => e.tagName === 'button').length} buttons, ${uniqueElements.filter((e) => e.tagName === 'a').length} links, ${uniqueElements.filter((e) => e.tagName === 'input').length} inputs`,
+    );
+
+    return uniqueElements;
   }
 
   private async generateWISScripts(
@@ -237,50 +381,72 @@ export class DemoAutomationService {
     websiteUrl: string,
   ): Promise<WebInteractionScriptDto[]> {
     this.logger.log('🤖 Generating WIS scripts using AI...');
-
-    const prompt = `
-    Analyze the following UI elements from a web application and generate Web Interaction Scripts (WIS) that represent common user flows.
-    
-    Website: ${websiteUrl}
-    UI Elements: ${JSON.stringify(uiElements, null, 2)}
-    
-    Please generate 2-3 different user flows as WIS JSON objects. Each flow should represent a logical sequence of user actions.
-    
-    Common flows to consider:
-    - User registration/signup
-    - User login
-    - Creating new content (posts, projects, etc.)
-    - Navigation between sections
-    - Settings/configuration
-    - Data entry forms
-    
-    For each flow, provide:
-    1. A descriptive name
-    2. A brief description
-    3. A category (e.g., "Authentication", "Content Creation", "Navigation")
-    4. A sequence of steps with selectors, actions, and tooltips
-    
-    Return the response as a JSON array of WIS objects.
-    `;
+    this.logger.log(`📊 Found ${uiElements.length} UI elements to analyze`);
 
     try {
-      // Use the existing LLM service to extract products and then generate WIS
-      const extractionResult = await this.llmService.extractProductsFromText(
-        JSON.stringify(uiElements, null, 2),
-      );
+      // Create a specialized prompt for WIS generation
+      const prompt = `
+You are an expert UI automation analyst. Analyze the following UI elements from a web application and generate Web Interaction Scripts (WIS) that represent common user flows.
 
-      // Generate WIS scripts based on extracted products
-      const scripts = this.generateWISFromProducts(
-        extractionResult.products,
+Website: ${websiteUrl}
+UI Elements: ${JSON.stringify(uiElements.slice(0, 50), null, 2)} // Limit to first 50 elements for performance
+
+Instructions:
+1. Identify logical user flows based on the available UI elements
+2. Group related elements into meaningful workflows
+3. Create 2-4 different user flows as WIS JSON objects
+4. Each flow should represent a logical sequence of user actions
+
+Common flows to consider:
+- Navigation flows (clicking links, buttons)
+- Form interactions (filling inputs, submitting)
+- Action flows (clicking buttons, toggles)
+- Data entry flows (typing in inputs, selecting options)
+
+For each flow, provide:
+1. A descriptive name
+2. A brief description
+3. A category (e.g., "Navigation", "Data Entry", "Actions", "Forms")
+4. A sequence of steps with selectors, actions, and tooltips
+
+Return the response as a JSON array of WIS objects in this exact format:
+[
+  {
+    "name": "Flow Name",
+    "description": "Flow description",
+    "category": "Category",
+    "steps": [
+      {
+        "selector": "element selector",
+        "action": "click|type|hover",
+        "value": "value if action is type",
+        "tooltip": {
+          "text": "Tooltip text",
+          "position": "top|bottom|left|right"
+        }
+      }
+    ]
+  }
+]
+
+Only return valid JSON. Do not include any other text.
+      `;
+
+      // Use the LLM service with a custom prompt for WIS generation
+      const response = await this.llmService.generateWISFromUIElements(
+        prompt,
         uiElements,
       );
 
-      this.logger.log(`✅ Generated ${scripts.length} WIS scripts`);
-      return scripts;
+      this.logger.log(`✅ Generated ${response.length} WIS scripts using AI`);
+      return response;
     } catch (error) {
-      this.logger.error(`❌ Failed to generate WIS scripts: ${error.message}`);
+      this.logger.error(
+        `❌ Failed to generate WIS scripts with AI: ${error.message}`,
+      );
+      this.logger.log('🔄 Falling back to rule-based script generation...');
 
-      // Return a fallback script if AI generation fails
+      // Return fallback scripts if AI generation fails
       return this.generateFallbackScripts(uiElements);
     }
   }
@@ -380,6 +546,9 @@ export class DemoAutomationService {
     uiElements: any[],
   ): WebInteractionScriptDto[] {
     this.logger.log('🔄 Generating fallback WIS scripts...');
+    this.logger.log(
+      `📊 Processing ${uiElements.length} UI elements for fallback scripts`,
+    );
 
     // Group elements by type and create basic flows
     const buttons = uiElements.filter(
@@ -387,6 +556,17 @@ export class DemoAutomationService {
     );
     const inputs = uiElements.filter((el) => el.tagName === 'input');
     const links = uiElements.filter((el) => el.tagName === 'a');
+    const clickableElements = uiElements.filter(
+      (el) =>
+        el.tagName === 'button' ||
+        el.tagName === 'a' ||
+        el.className.includes('btn') ||
+        el.className.includes('link'),
+    );
+
+    this.logger.log(
+      `📊 Found: ${buttons.length} buttons, ${inputs.length} inputs, ${links.length} links, ${clickableElements.length} clickable elements`,
+    );
 
     const scripts: WebInteractionScriptDto[] = [];
 
@@ -425,6 +605,59 @@ export class DemoAutomationService {
       });
     }
 
+    // Create a basic button interaction flow
+    if (buttons.length > 0) {
+      scripts.push({
+        name: 'Button Actions',
+        description: 'Interact with buttons and action elements',
+        category: 'Actions',
+        steps: buttons.slice(0, 2).map((button, index) => ({
+          selector: button.selector,
+          action: 'click',
+          tooltip: {
+            text: `Click this button to ${button.text || 'perform action'}`,
+            position: 'top' as const,
+          },
+        })),
+      });
+    }
+
+    // Create a general clickable elements flow if we have any clickable elements
+    if (clickableElements.length > 0 && scripts.length === 0) {
+      scripts.push({
+        name: 'General Interaction',
+        description: 'Interact with clickable elements on the page',
+        category: 'General',
+        steps: clickableElements.slice(0, 3).map((element, index) => ({
+          selector: element.selector,
+          action: 'click',
+          tooltip: {
+            text: `Click this element: ${element.text || element.tagName}`,
+            position: 'bottom' as const,
+          },
+        })),
+      });
+    }
+
+    // If we still have no scripts, create a minimal one with the first few elements
+    if (scripts.length === 0 && uiElements.length > 0) {
+      scripts.push({
+        name: 'Basic UI Interaction',
+        description: 'Basic interaction with available UI elements',
+        category: 'General',
+        steps: uiElements.slice(0, 2).map((element, index) => ({
+          selector: element.selector,
+          action: element.tagName === 'input' ? 'type' : 'click',
+          value: element.tagName === 'input' ? 'Sample text' : undefined,
+          tooltip: {
+            text: `Interact with this ${element.tagName} element`,
+            position: 'bottom' as const,
+          },
+        })),
+      });
+    }
+
+    this.logger.log(`✅ Generated ${scripts.length} fallback WIS scripts`);
     return scripts;
   }
 
@@ -511,34 +744,4 @@ export class DemoAutomationService {
       .toLowerCase()
       .substring(0, 50); // Limit length
   }
-}
-
-// Helper function to generate CSS selectors
-function generateSelector(element: Element): string {
-  if (element.id) {
-    return `#${element.id}`;
-  }
-
-  if (element.className) {
-    const classes = element.className.split(' ').filter((c) => c.length > 0);
-    if (classes.length > 0) {
-      return `.${classes[0]}`;
-    }
-  }
-
-  // Fallback to tag name with attributes
-  const tagName = element.tagName.toLowerCase();
-  const attributes = Array.from(element.attributes);
-
-  for (const attr of attributes) {
-    if (
-      attr.name === 'data-testid' ||
-      attr.name === 'name' ||
-      attr.name === 'type'
-    ) {
-      return `${tagName}[${attr.name}="${attr.value}"]`;
-    }
-  }
-
-  return tagName;
 }

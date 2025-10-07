@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
@@ -36,6 +36,7 @@ const ExtractionResultSchema = z.object({
 
 @Injectable()
 export class LLMService {
+  private readonly logger = new Logger(LLMService.name);
   private readonly model: ChatOpenAI;
   private readonly productExtractionPrompt: PromptTemplate;
   private readonly productAnalysisPrompt: PromptTemplate;
@@ -307,6 +308,52 @@ Only return valid JSON. Do not include any other text.
     } catch (error) {
       console.error('Error extracting products from website with LLM:', error);
       return this.fallbackExtraction(htmlContent);
+    }
+  }
+
+  async generateWISFromUIElements(
+    prompt: string,
+    uiElements: any[],
+  ): Promise<any[]> {
+    try {
+      // Create a specialized prompt for WIS generation
+      const wisPrompt = PromptTemplate.fromTemplate(`
+{prompt}
+
+Return only valid JSON array. Do not include any other text or explanations.
+      `);
+
+      // Use the model directly for WIS generation
+      const response = await this.model.invoke([
+        { role: 'user', content: prompt },
+      ]);
+
+      // Parse the JSON response
+      const responseText = response.content as string;
+      this.logger.log(`🤖 LLM Response: ${responseText.substring(0, 200)}...`);
+
+      // Try to extract JSON from the response
+      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const wisScripts = JSON.parse(jsonMatch[0]);
+        this.logger.log(
+          `✅ Parsed ${wisScripts.length} WIS scripts from LLM response`,
+        );
+        return wisScripts;
+      }
+
+      // If no JSON array found, try to parse as single object
+      const singleObjectMatch = responseText.match(/\{[\s\S]*\}/);
+      if (singleObjectMatch) {
+        const singleScript = JSON.parse(singleObjectMatch[0]);
+        this.logger.log(`✅ Parsed 1 WIS script from LLM response`);
+        return [singleScript];
+      }
+
+      throw new Error('No valid JSON found in LLM response');
+    } catch (error) {
+      console.error('Error generating WIS from UI elements with LLM:', error);
+      throw error;
     }
   }
 
