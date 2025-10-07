@@ -1,6 +1,6 @@
-# 🚀 Documentation Crawler & Feature Extractor
+# 🚀 Documentation Crawler & Feature Extractor + Demo Automation
 
-A powerful NestJS-based system for extracting product features from documentation and websites using AI-powered analysis.
+A powerful NestJS-based system for extracting product features from documentation and websites using AI-powered analysis, plus automated demo generation with browser automation.
 
 <p align="center">
   <img src="https://nestjs.com/img/logo-small.svg" width="200" alt="NestJS Logo" />
@@ -8,6 +8,7 @@ A powerful NestJS-based system for extracting product features from documentatio
 
 ## ✨ Features
 
+### 📄 Document & Website Analysis
 - **📄 Multi-format Document Support**: PDF, DOCX, TXT, MD, HTML
 - **🕷️ Intelligent Web Crawling**: Extract content from websites with smart crawling
 - **🤖 AI-Powered Extraction**: Uses OpenAI GPT-4 for intelligent feature extraction
@@ -16,12 +17,27 @@ A powerful NestJS-based system for extracting product features from documentatio
 - **🔗 RESTful API**: Clean API endpoints for all operations
 - **⚡ Real-time Processing**: Fast extraction with comprehensive statistics
 
+### 🎬 Demo Automation (NEW!)
+- **🌐 Browser Automation**: Automated website navigation using Puppeteer
+- **🔐 Auto-Login**: Intelligent form detection and credential filling
+- **🔍 UI Exploration**: Smart discovery of interactive elements
+- **🤖 AI-Powered WIS Generation**: Creates Web Interaction Scripts using AI analysis
+- **💾 File Storage**: Saves WIS scripts to `logs/demo/` directory
+- **📊 Comprehensive Logging**: Detailed progress tracking and error handling
+- **🛡️ Fallback Logic**: Robust error recovery and basic script generation
+
 ## 🏗️ Architecture
 
+### 📄 Document & Website Analysis
 ```
 Upload Docs → In-Memory Storage → Parser → Chunker → LLM → JSON Response
      ↓
 Web Crawler → Content Extraction → Chunker → LLM → JSON Response
+```
+
+### 🎬 Demo Automation
+```
+Website URL + Credentials → Browser Automation → UI Exploration → AI Analysis → WIS Scripts → File Storage
 ```
 
 ## 🚀 Quick Start
@@ -70,9 +86,9 @@ npm run start:prod
 
 The server will start on `http://localhost:3000` 🎉
 
-## 📡 API Endpoint
+## 📡 API Endpoints
 
-### Main Extraction Endpoint
+### 📄 Document & Website Analysis
 ```http
 POST /extract
 Content-Type: multipart/form-data
@@ -80,6 +96,22 @@ Content-Type: multipart/form-data
 # Form data:
 - files: File[] (optional) - Upload documents
 - url: string (optional) - Website URL to crawl (crawls entire website)
+```
+
+### 🎬 Demo Automation (NEW!)
+```http
+POST /demo/create-demo
+Content-Type: application/json
+
+# Request body:
+{
+  "websiteUrl": "https://example.com",
+  "credentials": {
+    "username": "user@example.com",
+    "password": "password123"
+  },
+  "demoName": "My Demo" // Optional
+}
 ```
 
 ## 🧪 Testing
@@ -106,6 +138,20 @@ curl -X POST http://localhost:3000/extract \
   -F "url=https://example.com"
 ```
 
+**4. Test Demo Automation (NEW!):**
+```bash
+curl -X POST http://localhost:3000/demo/create-demo \
+  -H "Content-Type: application/json" \
+  -d '{
+    "websiteUrl": "https://example.com",
+    "credentials": {
+      "username": "test@example.com",
+      "password": "password123"
+    },
+    "demoName": "My Test Demo"
+  }'
+```
+
 ### Unit Tests
 
 ```bash
@@ -122,8 +168,9 @@ npm run test:e2e
 npm run test:cov
 ```
 
-## 📊 Sample Response
+## 📊 Sample Responses
 
+### 📄 Document/Website Analysis Response
 ```json
 {
   "features": [
@@ -147,6 +194,44 @@ npm run test:cov
     "pagesCrawled": 15,
     "featuresFound": 47,
     "processingTime": "23.4s"
+  }
+}
+```
+
+### 🎬 Demo Automation Response (NEW!)
+```json
+{
+  "demoId": "uuid-generated-id",
+  "demoName": "Demo for example.com",
+  "websiteUrl": "https://example.com",
+  "generatedScripts": [
+    {
+      "name": "Application Navigation",
+      "description": "Navigate through the main sections of the application",
+      "category": "Navigation",
+      "steps": [
+        {
+          "selector": "#nav-link-1",
+          "action": "click",
+          "tooltip": {
+            "text": "Click to navigate to next section",
+            "position": "bottom"
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalFlows": 3,
+    "totalSteps": 8,
+    "processingTime": 15000
+  },
+  "filePaths": {
+    "demoFolder": "D:\\ruemai-server\\logs\\demo\\uuid-generated-id",
+    "wisFiles": [
+      "D:\\ruemai-server\\logs\\demo\\uuid-generated-id\\1-application-navigation.json"
+    ],
+    "metadataFile": "D:\\ruemai-server\\logs\\demo\\uuid-generated-id\\metadata.json"
   }
 }
 ```
@@ -187,11 +272,20 @@ src/
 ├── upload/              # File upload handling
 ├── parser/              # Document parsing
 ├── web-crawler/         # Website crawling
-├── extractor/           # LLM integration
+├── demo-automation/     # Demo automation service (NEW!)
+├── llm/                 # LLM integration
 ├── types/               # TypeScript interfaces
 ├── utils/               # Storage utilities
 ├── filters/             # Error handling
 └── dto/                 # Data transfer objects
+
+logs/
+├── debug/              # Debug logs
+└── demo/               # Demo WIS scripts (NEW!)
+    └── {demoId}/
+        ├── metadata.json
+        ├── 1-application-navigation.json
+        └── 2-data-entry-flow.json
 ```
 
 ## 🚨 Troubleshooting
@@ -214,11 +308,54 @@ echo "OPENAI_API_KEY=your_key_here" > .env
 - Check network connectivity
 - Verify URL format
 
+**4. Demo Automation Issues:**
+- Browser may fail to launch (check Puppeteer installation)
+- Login forms may not be detected (check website structure)
+- WIS generation may fail (check OpenAI API key)
+- Files not saved (check `logs/demo/` directory permissions)
+
 ### Performance Tips
 
 - **For Speed**: Use `gpt-4o` for fast and accurate results
 - **For Accuracy**: Use `gpt-4o` for high-quality extraction
 - **For Cost**: Limit document/page count and use smaller chunks
+- **Demo Automation**: Set `headless: true` for production (faster browser automation)
+- **File Storage**: Check `logs/demo/` directory for generated WIS scripts
+
+## 🎬 Demo Automation Details
+
+### What is Demo Automation?
+Demo automation automatically generates **Web Interaction Scripts (WIS)** that can be used to create interactive product demos and guided tours for any web application.
+
+### How It Works
+1. **🌐 Website Navigation**: Puppeteer navigates to your website
+2. **🔐 Auto-Login**: Intelligently detects and fills login forms
+3. **🔍 UI Exploration**: Discovers interactive elements (buttons, links, inputs)
+4. **🤖 AI Analysis**: Uses LLM to understand UI patterns and user flows
+5. **📝 WIS Generation**: Creates structured interaction scripts
+6. **💾 File Storage**: Saves scripts to `logs/demo/{demoId}/`
+
+### Generated WIS Scripts
+Each WIS script contains:
+- **Step-by-step instructions** for user interactions
+- **CSS selectors** for UI elements
+- **Tooltip content** for guided tours
+- **Action sequences** (click, type, hover, etc.)
+
+### Use Cases
+- **Product Onboarding**: Create guided tours for new users
+- **Feature Demos**: Showcase specific functionality
+- **Training Materials**: Interactive tutorials
+- **Chrome Extension Integration**: Playback WIS scripts in browsers
+
+### File Structure
+```
+logs/demo/{demoId}/
+├── metadata.json              # Demo overview and statistics
+├── 1-application-navigation.json  # Navigation flow script
+├── 2-data-entry-flow.json     # Form interaction script
+└── 3-action-flow.json         # Button/action script
+```
 
 ## 🤝 Contributing
 
@@ -238,3 +375,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [OpenAI](https://platform.openai.com/) - For the powerful AI models
 - [pdf-parse](https://github.com/modesty/pdf-parse) - PDF parsing library
 - [Cheerio](https://cheerio.js.org/) - Server-side HTML parsing
+- [Puppeteer](https://pptr.dev/) - Browser automation for demo generation
+- [UUID](https://www.npmjs.com/package/uuid) - Unique identifier generation
