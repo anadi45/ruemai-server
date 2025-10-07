@@ -41,10 +41,52 @@ export class DemoAutomationService {
         request.credentials,
       );
 
-      // Step 3: Explore the UI and capture elements
-      const uiElements = await this.exploreUI(page);
+      // Step 3: Wait for page to stabilize after login
+      this.logger.log('⏳ Waiting for page to stabilize after login...');
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
-      // Step 4: Generate WIS scripts using AI
+      // Step 4: Explore the UI and capture elements
+      let uiElements: any[] = [];
+      try {
+        uiElements = await this.exploreUI(page);
+      } catch (error) {
+        this.logger.error(`❌ Failed to explore UI: ${error.message}`);
+        this.logger.log(
+          '🔄 Attempting to recover by navigating to the original URL...',
+        );
+
+        // Try to navigate back to the original URL if context was destroyed
+        try {
+          await page.goto(request.websiteUrl, { waitUntil: 'networkidle2' });
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          uiElements = await this.exploreUI(page);
+        } catch (recoveryError) {
+          this.logger.error(`❌ Recovery failed: ${recoveryError.message}`);
+          this.logger.log(
+            '🔄 Creating new page and attempting fresh navigation...',
+          );
+
+          // Create a new page as last resort
+          try {
+            const newPage = await browser.newPage();
+            await newPage.setViewport({ width: 1920, height: 1080 });
+            await newPage.goto(request.websiteUrl, {
+              waitUntil: 'networkidle2',
+            });
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            uiElements = await this.exploreUI(newPage);
+            await newPage.close();
+          } catch (finalError) {
+            this.logger.error(
+              `❌ Final recovery attempt failed: ${finalError.message}`,
+            );
+            // Return empty array as fallback
+            uiElements = [];
+          }
+        }
+      }
+
+      // Step 5: Generate WIS scripts using AI
       this.logger.log(`📊 UI Elements captured: ${uiElements.length}`);
       this.logger.log(
         `📊 Sample elements: ${JSON.stringify(uiElements.slice(0, 3), null, 2)}`,
@@ -180,8 +222,18 @@ export class DemoAutomationService {
         }
       }
 
-      // Wait for login to complete
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      // Wait for login to complete and handle potential navigation
+      this.logger.log('⏳ Waiting for login to complete...');
+      try {
+        // Wait for navigation or timeout
+        await Promise.race([
+          page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }),
+          new Promise((resolve) => setTimeout(resolve, 5000)),
+        ]);
+        this.logger.log('✅ Login completed, page may have navigated');
+      } catch (error) {
+        this.logger.log('⚠️ No navigation detected after login, continuing...');
+      }
     } else {
       this.logger.log(
         '⚠️ No login form found, proceeding without authentication',
@@ -194,6 +246,15 @@ export class DemoAutomationService {
 
     // Wait a bit for dynamic content to load
     await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Check if page is still valid
+    try {
+      await page.evaluate(() => document.title);
+    } catch (error) {
+      throw new Error(
+        'Page context is no longer valid - likely due to navigation',
+      );
+    }
 
     const uiElements = await page.evaluate(() => {
       // Helper function to generate CSS selectors

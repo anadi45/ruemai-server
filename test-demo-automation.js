@@ -6,12 +6,12 @@ async function testDemoAutomation() {
         console.log('🧪 Testing Demo Automation with File Storage...\n');
 
         const testData = {
-            websiteUrl: 'https://example.com',
+            websiteUrl: 'https://httpbin.org/forms/post',
             credentials: {
                 username: 'test@example.com',
                 password: 'password123'
             },
-            demoName: 'Test Demo for Example.com'
+            demoName: 'Test Demo for HTTPBin Forms'
         };
 
         console.log('📤 Sending request to /demo/create-demo...');
@@ -52,7 +52,11 @@ async function testDemoAutomation() {
     } catch (error) {
         console.error('❌ Test failed:', error.message);
         if (error.response) {
-            console.error('Response data:', error.response.data);
+            console.error('Response status:', error.response.status);
+            console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+        }
+        if (error.stack) {
+            console.error('Stack trace:', error.stack);
         }
     }
 }
