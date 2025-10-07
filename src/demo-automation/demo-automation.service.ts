@@ -141,6 +141,53 @@ export class DemoAutomationService {
     }
   }
 
+  async createApplicationFeatureDemo(): Promise<CreateDemoResponseDto> {
+    const startTime = Date.now();
+    const demoId = uuidv4();
+
+    this.logger.log(`🚀 Creating application feature demo automation`);
+
+    try {
+      // Generate WIS scripts for application features without browser automation
+      const applicationScripts = this.generateApplicationFeatureScripts([]);
+
+      const processingTime = Date.now() - startTime;
+
+      this.logger.log(
+        `✅ Application feature demo completed in ${processingTime}ms`,
+      );
+
+      // Save WIS scripts to disk
+      const filePaths = await this.saveWISScripts(demoId, applicationScripts, {
+        websiteUrl: 'http://localhost:3000', // Default local URL
+        demoName: 'Application Feature Demo',
+        credentials: {
+          username: 'demo@example.com',
+          password: 'demo123',
+        },
+      });
+
+      return {
+        demoId,
+        demoName: 'Application Feature Demo',
+        websiteUrl: 'http://localhost:3000',
+        generatedScripts: applicationScripts,
+        summary: {
+          totalFlows: applicationScripts.length,
+          totalSteps: applicationScripts.reduce(
+            (sum, script) => sum + script.steps.length,
+            0,
+          ),
+          processingTime,
+        },
+        filePaths,
+      };
+    } catch (error) {
+      this.logger.error(`❌ Application feature demo failed: ${error.message}`);
+      throw new Error(`Application feature demo failed: ${error.message}`);
+    }
+  }
+
   private async navigateAndLogin(
     page: puppeteer.Page,
     websiteUrl: string,
@@ -445,45 +492,62 @@ export class DemoAutomationService {
     this.logger.log(`📊 Found ${uiElements.length} UI elements to analyze`);
 
     try {
-      // Create a specialized prompt for WIS generation
+      // Create a specialized prompt for WIS generation focused on application features
       const prompt = `
-You are an expert UI automation analyst. Analyze the following UI elements from a web application and generate Web Interaction Scripts (WIS) that represent common user flows.
+You are an expert UI automation analyst for a feature extraction application. Analyze the following UI elements and generate Web Interaction Scripts (WIS) that demonstrate the core application features.
 
 Website: ${websiteUrl}
-UI Elements: ${JSON.stringify(uiElements.slice(0, 50), null, 2)} // Limit to first 50 elements for performance
+UI Elements: ${JSON.stringify(uiElements.slice(0, 50), null, 2)}
+
+This application has the following core features:
+1. Document Upload & Processing (PDF, Word, HTML, Markdown, Text)
+2. Web Crawling & Content Extraction
+3. Feature Extraction using AI/LLM
+4. Performance Monitoring
+5. Demo Automation
 
 Instructions:
-1. Identify logical user flows based on the available UI elements
-2. Group related elements into meaningful workflows
-3. Create 2-4 different user flows as WIS JSON objects
-4. Each flow should represent a logical sequence of user actions
+1. Identify UI elements that relate to these core features
+2. Create WIS scripts that demonstrate each feature workflow
+3. Focus on realistic user journeys through the application
+4. Include file upload, form submissions, and result viewing flows
 
-Common flows to consider:
-- Navigation flows (clicking links, buttons)
-- Form interactions (filling inputs, submitting)
-- Action flows (clicking buttons, toggles)
-- Data entry flows (typing in inputs, selecting options)
+Create 4-6 different user flows as WIS JSON objects:
+
+1. Document Upload Flow - Upload and process documents
+2. Web Crawling Flow - Extract content from websites
+3. Feature Extraction Flow - Use AI to extract features from content
+4. Performance Monitoring Flow - View metrics and analytics
+5. Demo Automation Flow - Create automated demos
+6. Results Review Flow - View and analyze extracted features
 
 For each flow, provide:
 1. A descriptive name
 2. A brief description
-3. A category (e.g., "Navigation", "Data Entry", "Actions", "Forms")
+3. A category (e.g., "Document Processing", "Web Crawling", "AI Extraction", "Analytics", "Automation")
 4. A sequence of steps with selectors, actions, and tooltips
 
 Return the response as a JSON array of WIS objects in this exact format:
 [
   {
-    "name": "Flow Name",
-    "description": "Flow description",
-    "category": "Category",
+    "name": "Document Upload & Processing",
+    "description": "Upload documents and process them for feature extraction",
+    "category": "Document Processing",
     "steps": [
       {
-        "selector": "element selector",
-        "action": "click|type|hover",
-        "value": "value if action is type",
+        "selector": "input[type='file']",
+        "action": "click",
         "tooltip": {
-          "text": "Tooltip text",
-          "position": "top|bottom|left|right"
+          "text": "Click to select documents for upload",
+          "position": "bottom"
+        }
+      },
+      {
+        "selector": "button[type='submit']",
+        "action": "click",
+        "tooltip": {
+          "text": "Submit documents for processing",
+          "position": "top"
         }
       }
     ]
@@ -508,7 +572,7 @@ Only return valid JSON. Do not include any other text.
       this.logger.log('🔄 Falling back to rule-based script generation...');
 
       // Return fallback scripts if AI generation fails
-      return this.generateFallbackScripts(uiElements);
+      return this.generateApplicationFeatureScripts(uiElements);
     }
   }
 
@@ -601,6 +665,297 @@ Only return valid JSON. Do not include any other text.
       this.logger.warn(`⚠️ Failed to parse AI response: ${error.message}`);
       return [];
     }
+  }
+
+  private generateApplicationFeatureScripts(
+    uiElements: any[],
+  ): WebInteractionScriptDto[] {
+    this.logger.log('🔄 Generating application feature WIS scripts...');
+    this.logger.log(
+      `📊 Processing ${uiElements.length} UI elements for feature scripts`,
+    );
+
+    // Group elements by type and create application-specific flows
+    const fileInputs = uiElements.filter(
+      (el) => el.tagName === 'input' && el.attributes?.type === 'file',
+    );
+    const textInputs = uiElements.filter(
+      (el) => el.tagName === 'input' && el.attributes?.type === 'text',
+    );
+    const urlInputs = uiElements.filter(
+      (el) => el.tagName === 'input' && el.attributes?.type === 'url',
+    );
+    const buttons = uiElements.filter(
+      (el) => el.tagName === 'button' || el.className.includes('btn'),
+    );
+    const links = uiElements.filter((el) => el.tagName === 'a');
+    const forms = uiElements.filter((el) => el.tagName === 'form');
+
+    this.logger.log(
+      `📊 Found: ${fileInputs.length} file inputs, ${textInputs.length} text inputs, ${urlInputs.length} URL inputs, ${buttons.length} buttons, ${links.length} links, ${forms.length} forms`,
+    );
+
+    const scripts: WebInteractionScriptDto[] = [];
+
+    // 1. Document Upload & Processing Flow
+    if (fileInputs.length > 0) {
+      scripts.push({
+        name: 'Document Upload & Processing',
+        description:
+          'Upload documents (PDF, Word, HTML, etc.) for feature extraction',
+        category: 'Document Processing',
+        steps: [
+          {
+            selector: fileInputs[0].selector,
+            action: 'click',
+            tooltip: {
+              text: 'Click to select documents for upload (PDF, Word, HTML, Markdown, Text)',
+              position: 'bottom' as const,
+            },
+          },
+          ...(buttons.length > 0
+            ? [
+                {
+                  selector: buttons[0].selector,
+                  action: 'click' as const,
+                  tooltip: {
+                    text: 'Submit documents for processing',
+                    position: 'top' as const,
+                  },
+                },
+              ]
+            : []),
+        ],
+      });
+    }
+
+    // 2. Web Crawling Flow
+    if (
+      urlInputs.length > 0 ||
+      textInputs.some((input) =>
+        input.attributes?.placeholder?.toLowerCase().includes('url'),
+      )
+    ) {
+      const urlInput =
+        urlInputs[0] ||
+        textInputs.find((input) =>
+          input.attributes?.placeholder?.toLowerCase().includes('url'),
+        );
+
+      scripts.push({
+        name: 'Web Crawling & Content Extraction',
+        description: 'Extract content from websites for feature analysis',
+        category: 'Web Crawling',
+        steps: [
+          {
+            selector: urlInput.selector,
+            action: 'type',
+            value: 'https://example.com',
+            tooltip: {
+              text: 'Enter website URL to crawl and extract content',
+              position: 'right' as const,
+            },
+          },
+          ...(buttons.length > 0
+            ? [
+                {
+                  selector: buttons[0].selector,
+                  action: 'click' as const,
+                  tooltip: {
+                    text: 'Start web crawling process',
+                    position: 'top' as const,
+                  },
+                },
+              ]
+            : []),
+        ],
+      });
+    }
+
+    // 3. Feature Extraction Flow
+    if (textInputs.length > 0) {
+      scripts.push({
+        name: 'AI Feature Extraction',
+        description: 'Use AI/LLM to extract features from content',
+        category: 'AI Extraction',
+        steps: [
+          {
+            selector: textInputs[0].selector,
+            action: 'type',
+            value: 'Sample content for feature extraction',
+            tooltip: {
+              text: 'Enter or paste content for AI feature extraction',
+              position: 'right' as const,
+            },
+          },
+          ...(buttons.length > 0
+            ? [
+                {
+                  selector: buttons[0].selector,
+                  action: 'click' as const,
+                  tooltip: {
+                    text: 'Start AI feature extraction process',
+                    position: 'top' as const,
+                  },
+                },
+              ]
+            : []),
+        ],
+      });
+    }
+
+    // 4. Performance Monitoring Flow
+    if (
+      links.some(
+        (link) =>
+          link.text?.toLowerCase().includes('performance') ||
+          link.text?.toLowerCase().includes('metrics'),
+      )
+    ) {
+      const performanceLink = links.find(
+        (link) =>
+          link.text?.toLowerCase().includes('performance') ||
+          link.text?.toLowerCase().includes('metrics'),
+      );
+
+      scripts.push({
+        name: 'Performance Monitoring',
+        description: 'View performance metrics and analytics',
+        category: 'Analytics',
+        steps: [
+          {
+            selector: performanceLink.selector,
+            action: 'click',
+            tooltip: {
+              text: 'View performance metrics and analytics',
+              position: 'bottom' as const,
+            },
+          },
+        ],
+      });
+    }
+
+    // 5. Demo Automation Flow
+    if (
+      links.some(
+        (link) =>
+          link.text?.toLowerCase().includes('demo') ||
+          link.text?.toLowerCase().includes('automation'),
+      )
+    ) {
+      const demoLink = links.find(
+        (link) =>
+          link.text?.toLowerCase().includes('demo') ||
+          link.text?.toLowerCase().includes('automation'),
+      );
+
+      scripts.push({
+        name: 'Demo Automation',
+        description: 'Create automated demos and WIS scripts',
+        category: 'Automation',
+        steps: [
+          {
+            selector: demoLink.selector,
+            action: 'click',
+            tooltip: {
+              text: 'Access demo automation features',
+              position: 'bottom' as const,
+            },
+          },
+        ],
+      });
+    }
+
+    // 6. Results Review Flow
+    if (
+      links.some(
+        (link) =>
+          link.text?.toLowerCase().includes('results') ||
+          link.text?.toLowerCase().includes('features'),
+      )
+    ) {
+      const resultsLink = links.find(
+        (link) =>
+          link.text?.toLowerCase().includes('results') ||
+          link.text?.toLowerCase().includes('features'),
+      );
+
+      scripts.push({
+        name: 'Results Review & Analysis',
+        description: 'View and analyze extracted features and results',
+        category: 'Analytics',
+        steps: [
+          {
+            selector: resultsLink.selector,
+            action: 'click',
+            tooltip: {
+              text: 'View extracted features and analysis results',
+              position: 'bottom' as const,
+            },
+          },
+        ],
+      });
+    }
+
+    // Fallback: Create basic interaction flows if no specific features found
+    if (scripts.length === 0) {
+      // Basic navigation flow
+      if (links.length > 0) {
+        scripts.push({
+          name: 'Application Navigation',
+          description: 'Navigate through the main sections of the application',
+          category: 'Navigation',
+          steps: links.slice(0, 3).map((link, index) => ({
+            selector: link.selector,
+            action: 'click',
+            tooltip: {
+              text: `Click to navigate to ${link.text || 'next section'}`,
+              position: 'bottom' as const,
+            },
+          })),
+        });
+      }
+
+      // Basic form interaction flow
+      if (textInputs.length > 0) {
+        scripts.push({
+          name: 'Form Interaction',
+          description: 'Interact with form elements on the page',
+          category: 'Data Entry',
+          steps: textInputs.slice(0, 2).map((input, index) => ({
+            selector: input.selector,
+            action: 'type',
+            value: 'Sample text',
+            tooltip: {
+              text: `Enter information in this field`,
+              position: 'right' as const,
+            },
+          })),
+        });
+      }
+
+      // Basic button interaction flow
+      if (buttons.length > 0) {
+        scripts.push({
+          name: 'Button Actions',
+          description: 'Interact with buttons and action elements',
+          category: 'Actions',
+          steps: buttons.slice(0, 2).map((button, index) => ({
+            selector: button.selector,
+            action: 'click',
+            tooltip: {
+              text: `Click this button to ${button.text || 'perform action'}`,
+              position: 'top' as const,
+            },
+          })),
+        });
+      }
+    }
+
+    this.logger.log(
+      `✅ Generated ${scripts.length} application feature WIS scripts`,
+    );
+    return scripts;
   }
 
   private generateFallbackScripts(
@@ -796,6 +1151,258 @@ Only return valid JSON. Do not include any other text.
       this.logger.error(`❌ Failed to save WIS scripts: ${error.message}`);
       throw new Error(`Failed to save WIS scripts: ${error.message}`);
     }
+  }
+
+  private generateApplicationFeatureWIS(): WebInteractionScriptDto[] {
+    this.logger.log('🎯 Generating WIS scripts for application features...');
+
+    const scripts: WebInteractionScriptDto[] = [
+      {
+        name: 'Document Upload & Processing',
+        description:
+          'Upload and process various document types (PDF, Word, HTML, Markdown, Text) for feature extraction',
+        category: 'Document Processing',
+        steps: [
+          {
+            selector: 'input[type="file"]',
+            action: 'click',
+            tooltip: {
+              text: 'Click to select documents for upload (supports PDF, Word, HTML, Markdown, Text)',
+              position: 'bottom' as const,
+            },
+          },
+          {
+            selector: 'input[type="file"]',
+            action: 'type',
+            value: 'C:\\path\\to\\document.pdf',
+            tooltip: {
+              text: 'Select multiple documents for batch processing',
+              position: 'right' as const,
+            },
+          },
+          {
+            selector: 'button[type="submit"]',
+            action: 'click',
+            tooltip: {
+              text: 'Submit documents for processing and feature extraction',
+              position: 'top' as const,
+            },
+          },
+          {
+            selector: '.processing-status',
+            action: 'hover',
+            tooltip: {
+              text: 'Monitor document processing status',
+              position: 'bottom' as const,
+            },
+          },
+        ],
+      },
+      {
+        name: 'Web Crawling & Content Extraction',
+        description: 'Extract content from websites and analyze for features',
+        category: 'Web Crawling',
+        steps: [
+          {
+            selector: 'input[name="url"]',
+            action: 'click',
+            tooltip: {
+              text: 'Enter website URL to crawl and extract content',
+              position: 'right' as const,
+            },
+          },
+          {
+            selector: 'input[name="url"]',
+            action: 'type',
+            value: 'https://example.com',
+            tooltip: {
+              text: 'Enter the target website URL for content extraction',
+              position: 'right' as const,
+            },
+          },
+          {
+            selector: 'button[type="submit"]',
+            action: 'click',
+            tooltip: {
+              text: 'Start web crawling process',
+              position: 'top' as const,
+            },
+          },
+          {
+            selector: '.crawl-progress',
+            action: 'hover',
+            tooltip: {
+              text: 'Monitor crawling progress and extracted pages',
+              position: 'bottom' as const,
+            },
+          },
+        ],
+      },
+      {
+        name: 'AI Feature Extraction',
+        description: 'Use AI/LLM to extract features and products from content',
+        category: 'AI Extraction',
+        steps: [
+          {
+            selector: 'textarea[name="content"]',
+            action: 'click',
+            tooltip: {
+              text: 'Enter or paste content for AI feature extraction',
+              position: 'right' as const,
+            },
+          },
+          {
+            selector: 'textarea[name="content"]',
+            action: 'type',
+            value: 'Sample content with product descriptions and features...',
+            tooltip: {
+              text: 'Paste content containing product information for AI analysis',
+              position: 'right' as const,
+            },
+          },
+          {
+            selector: 'button[type="submit"]',
+            action: 'click',
+            tooltip: {
+              text: 'Start AI feature extraction process',
+              position: 'top' as const,
+            },
+          },
+          {
+            selector: '.extraction-results',
+            action: 'hover',
+            tooltip: {
+              text: 'View extracted features and products',
+              position: 'bottom' as const,
+            },
+          },
+        ],
+      },
+      {
+        name: 'Performance Monitoring',
+        description:
+          'View performance metrics and analytics for all operations',
+        category: 'Analytics',
+        steps: [
+          {
+            selector: 'a[href*="performance"]',
+            action: 'click',
+            tooltip: {
+              text: 'Navigate to performance monitoring dashboard',
+              position: 'bottom' as const,
+            },
+          },
+          {
+            selector: '.metrics-summary',
+            action: 'hover',
+            tooltip: {
+              text: 'View overall performance metrics',
+              position: 'bottom' as const,
+            },
+          },
+          {
+            selector: '.operation-stats',
+            action: 'click',
+            tooltip: {
+              text: 'View detailed operation statistics',
+              position: 'top' as const,
+            },
+          },
+          {
+            selector: '.success-rate',
+            action: 'hover',
+            tooltip: {
+              text: 'Monitor success rates for different operations',
+              position: 'right' as const,
+            },
+          },
+        ],
+      },
+      {
+        name: 'Demo Automation',
+        description: 'Create automated demos and WIS scripts for applications',
+        category: 'Automation',
+        steps: [
+          {
+            selector: 'a[href*="demo"]',
+            action: 'click',
+            tooltip: {
+              text: 'Access demo automation features',
+              position: 'bottom' as const,
+            },
+          },
+          {
+            selector: 'input[name="websiteUrl"]',
+            action: 'click',
+            tooltip: {
+              text: 'Enter target website URL for demo automation',
+              position: 'right' as const,
+            },
+          },
+          {
+            selector: 'input[name="websiteUrl"]',
+            action: 'type',
+            value: 'https://target-website.com',
+            tooltip: {
+              text: 'Enter the website URL to create demos for',
+              position: 'right' as const,
+            },
+          },
+          {
+            selector: 'button[type="submit"]',
+            action: 'click',
+            tooltip: {
+              text: 'Generate WIS scripts for the target website',
+              position: 'top' as const,
+            },
+          },
+        ],
+      },
+      {
+        name: 'Results Review & Analysis',
+        description: 'View and analyze extracted features and results',
+        category: 'Analytics',
+        steps: [
+          {
+            selector: '.results-section',
+            action: 'click',
+            tooltip: {
+              text: 'View extracted features and analysis results',
+              position: 'bottom' as const,
+            },
+          },
+          {
+            selector: '.feature-list',
+            action: 'hover',
+            tooltip: {
+              text: 'Browse through extracted features and products',
+              position: 'right' as const,
+            },
+          },
+          {
+            selector: '.feature-details',
+            action: 'click',
+            tooltip: {
+              text: 'View detailed information about a specific feature',
+              position: 'top' as const,
+            },
+          },
+          {
+            selector: '.export-button',
+            action: 'click',
+            tooltip: {
+              text: 'Export results to various formats',
+              position: 'bottom' as const,
+            },
+          },
+        ],
+      },
+    ];
+
+    this.logger.log(
+      `✅ Generated ${scripts.length} application feature WIS scripts`,
+    );
+    return scripts;
   }
 
   private sanitizeFileName(fileName: string): string {

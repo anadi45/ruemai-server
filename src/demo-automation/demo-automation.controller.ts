@@ -44,4 +44,26 @@ export class DemoAutomationController {
       throw error;
     }
   }
+
+  @Post('create-application-demo')
+  async createApplicationFeatureDemo(): Promise<CreateDemoResponseDto> {
+    this.logger.log('🎬 Creating application feature demo...');
+
+    try {
+      const result =
+        await this.demoAutomationService.createApplicationFeatureDemo();
+
+      this.logger.log(
+        `✅ Application feature demo created successfully: ${result.demoId} with ${result.generatedScripts.length} scripts`,
+      );
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `❌ Failed to create application feature demo: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
 }
