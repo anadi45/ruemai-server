@@ -43,9 +43,6 @@ async function bootstrap() {
     logger.log(`🎉 Server is running on http://localhost:${port}`);
     logger.log('📡 API Endpoints:');
     logger.log('  POST /extract - Combined document + website extraction');
-    logger.log(
-      '  POST /demo/create-demo - Create interactive demo from website',
-    );
   } catch (error) {
     logger.error('❌ Failed to start application:', error.message);
     logger.error('💡 Please check your configuration and try again.');

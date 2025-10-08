@@ -122,21 +122,6 @@ Content-Type: multipart/form-data
 - url: string (optional) - Website URL to crawl (crawls entire website)
 ```
 
-### 🎬 Demo Automation (NEW!)
-```http
-POST /demo/create-demo
-Content-Type: application/json
-
-# Request body:
-{
-  "websiteUrl": "https://example.com",
-  "credentials": {
-    "username": "user@example.com",
-    "password": "password123"
-  },
-  "demoName": "My Demo" // Optional
-}
-```
 
 ### 🤖 Automated Application Demo (NEW!)
 ```http
@@ -177,19 +162,6 @@ curl -X POST http://localhost:3000/extract \
   -F "url=https://example.com"
 ```
 
-**4. Test Demo Automation (NEW!):**
-```bash
-curl -X POST http://localhost:3000/demo/create-demo \
-  -H "Content-Type: application/json" \
-  -d '{
-    "websiteUrl": "https://example.com",
-    "credentials": {
-      "username": "test@example.com",
-      "password": "password123"
-    },
-    "demoName": "My Test Demo"
-  }'
-```
 
 **5. Test Automated Application Demo (NEW!):**
 ```bash

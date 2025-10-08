@@ -50,40 +50,6 @@ async function testApplicationFeatureDemo() {
     }
 }
 
-async function testRegularDemo() {
-    console.log('\n🌐 Testing Regular Demo Automation...\n');
-
-    try {
-        const demoRequest = {
-            websiteUrl: 'https://example.com',
-            demoName: 'Example Website Demo',
-            credentials: {
-                username: 'test@example.com',
-                password: 'password123'
-            }
-        };
-
-        console.log('📡 Calling /demo/create-demo endpoint...');
-        const response = await axios.post(`${BASE_URL}/demo/create-demo`, demoRequest);
-
-        console.log('✅ Regular Demo Created Successfully!');
-        console.log(`📊 Demo ID: ${response.data.demoId}`);
-        console.log(`📊 Demo Name: ${response.data.demoName}`);
-        console.log(`📊 Website URL: ${response.data.websiteUrl}`);
-        console.log(`📊 Total Flows: ${response.data.summary.totalFlows}`);
-        console.log(`📊 Total Steps: ${response.data.summary.totalSteps}`);
-        console.log(`📊 Processing Time: ${response.data.summary.processingTime}ms`);
-
-        return response.data;
-    } catch (error) {
-        console.error('❌ Error testing regular demo:', error.message);
-        if (error.response) {
-            console.error('Response status:', error.response.status);
-            console.error('Response data:', error.response.data);
-        }
-        throw error;
-    }
-}
 
 async function main() {
     console.log('🎬 Demo Automation Testing Suite');
@@ -92,9 +58,6 @@ async function main() {
     try {
         // Test application feature demo
         await testApplicationFeatureDemo();
-
-        // Test regular demo (commented out to avoid browser automation in test)
-        // await testRegularDemo();
 
         console.log('\n✅ All tests completed successfully!');
     } catch (error) {
@@ -109,6 +72,5 @@ if (require.main === module) {
 }
 
 module.exports = {
-    testApplicationFeatureDemo,
-    testRegularDemo
+    testApplicationFeatureDemo
 };

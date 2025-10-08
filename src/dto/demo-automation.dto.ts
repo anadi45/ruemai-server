@@ -4,38 +4,8 @@ import {
   IsOptional,
   IsObject,
   ValidateNested,
-  IsEmail,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-
-export class LoginCredentialsDto {
-  @IsString()
-  username: string;
-
-  @IsString()
-  password: string;
-
-  @IsOptional()
-  @IsEmail()
-  email?: string;
-}
-
-export class CreateDemoRequestDto {
-  @IsUrl({}, { message: 'Website URL must be a valid URL' })
-  websiteUrl: string;
-
-  @ValidateNested()
-  @Type(() => LoginCredentialsDto)
-  credentials: LoginCredentialsDto;
-
-  @IsOptional()
-  @IsString()
-  demoName?: string;
-
-  @IsOptional()
-  @IsObject()
-  additionalOptions?: Record<string, any>;
-}
 
 export class WISStepDto {
   @IsString()

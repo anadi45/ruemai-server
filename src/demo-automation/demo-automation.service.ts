@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  CreateDemoRequestDto,
   CreateDemoResponseDto,
   WebInteractionScriptDto,
 } from '../dto/demo-automation.dto';
@@ -15,131 +14,6 @@ export class DemoAutomationService {
   private readonly logger = new Logger(DemoAutomationService.name);
 
   constructor(private readonly llmService: LLMService) {}
-
-  async createDemo(
-    request: CreateDemoRequestDto,
-  ): Promise<CreateDemoResponseDto> {
-    const startTime = Date.now();
-    const demoId = uuidv4();
-
-    this.logger.log(`🚀 Starting demo automation for: ${request.websiteUrl}`);
-
-    try {
-      // Step 1: Launch browser and navigate to website
-      const browser = await puppeteer.launch({
-        headless: false, // Set to true for production
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
-
-      const page = await browser.newPage();
-      await page.setViewport({ width: 1920, height: 1080 });
-
-      // Step 2: Navigate to website and login
-      await this.navigateAndLogin(
-        page,
-        request.websiteUrl,
-        request.credentials,
-      );
-
-      // Step 3: Wait for page to stabilize after login
-      this.logger.log('⏳ Waiting for page to stabilize after login...');
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      // Step 4: Explore the UI and capture elements
-      let uiElements: any[] = [];
-      try {
-        uiElements = await this.exploreUI(page);
-      } catch (error) {
-        this.logger.error(`❌ Failed to explore UI: ${error.message}`);
-        this.logger.log(
-          '🔄 Attempting to recover by navigating to the original URL...',
-        );
-
-        // Try to navigate back to the original URL if context was destroyed
-        try {
-          await page.goto(request.websiteUrl, { waitUntil: 'networkidle2' });
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          uiElements = await this.exploreUI(page);
-        } catch (recoveryError) {
-          this.logger.error(`❌ Recovery failed: ${recoveryError.message}`);
-          this.logger.log(
-            '🔄 Creating new page and attempting fresh navigation...',
-          );
-
-          // Create a new page as last resort
-          try {
-            const newPage = await browser.newPage();
-            await newPage.setViewport({ width: 1920, height: 1080 });
-            await newPage.goto(request.websiteUrl, {
-              waitUntil: 'networkidle2',
-            });
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-            uiElements = await this.exploreUI(newPage);
-            await newPage.close();
-          } catch (finalError) {
-            this.logger.error(
-              `❌ Final recovery attempt failed: ${finalError.message}`,
-            );
-            // Return empty array as fallback
-            uiElements = [];
-          }
-        }
-      }
-
-      // Step 5: Generate WIS scripts using AI
-      this.logger.log(`📊 UI Elements captured: ${uiElements.length}`);
-      this.logger.log(
-        `📊 Sample elements: ${JSON.stringify(uiElements.slice(0, 3), null, 2)}`,
-      );
-
-      const generatedScripts = await this.generateWISScripts(
-        uiElements,
-        request.websiteUrl,
-      );
-
-      this.logger.log(`📊 Generated scripts count: ${generatedScripts.length}`);
-      if (generatedScripts.length > 0) {
-        this.logger.log(
-          `📊 Sample script: ${JSON.stringify(generatedScripts[0], null, 2)}`,
-        );
-      }
-
-      // Step 5: Clean up
-      await browser.close();
-
-      const processingTime = Date.now() - startTime;
-
-      this.logger.log(`✅ Demo automation completed in ${processingTime}ms`);
-
-      // Save WIS scripts to disk
-      const filePaths = await this.saveWISScripts(
-        demoId,
-        generatedScripts,
-        request,
-      );
-
-      return {
-        demoId,
-        demoName:
-          request.demoName ||
-          `Demo for ${new URL(request.websiteUrl).hostname}`,
-        websiteUrl: request.websiteUrl,
-        generatedScripts,
-        summary: {
-          totalFlows: generatedScripts.length,
-          totalSteps: generatedScripts.reduce(
-            (sum, script) => sum + script.steps.length,
-            0,
-          ),
-          processingTime,
-        },
-        filePaths,
-      };
-    } catch (error) {
-      this.logger.error(`❌ Demo automation failed: ${error.message}`);
-      throw new Error(`Demo automation failed: ${error.message}`);
-    }
-  }
 
   async createApplicationFeatureDemo(): Promise<CreateDemoResponseDto> {
     const startTime = Date.now();
@@ -158,14 +32,12 @@ export class DemoAutomationService {
       );
 
       // Save WIS scripts to disk
-      const filePaths = await this.saveWISScripts(demoId, applicationScripts, {
-        websiteUrl: 'http://localhost:3000', // Default local URL
-        demoName: 'Application Feature Demo',
-        credentials: {
-          username: 'demo@example.com',
-          password: 'demo123',
-        },
-      });
+      const filePaths = await this.saveWISScripts(
+        demoId,
+        applicationScripts,
+        'http://localhost:3000', // Default local URL
+        'Application Feature Demo',
+      );
 
       return {
         demoId,
@@ -260,11 +132,12 @@ export class DemoAutomationService {
       );
 
       // Save WIS scripts to disk
-      const filePaths = await this.saveWISScripts(demoId, generatedScripts, {
-        websiteUrl: targetUrl,
-        demoName: 'Automated Application Demo',
-        credentials,
-      });
+      const filePaths = await this.saveWISScripts(
+        demoId,
+        generatedScripts,
+        targetUrl,
+        'Automated Application Demo',
+      );
 
       return {
         demoId,
@@ -1066,7 +939,8 @@ Only return valid JSON. Do not include any other text.
   private async saveWISScripts(
     demoId: string,
     scripts: WebInteractionScriptDto[],
-    request: CreateDemoRequestDto,
+    websiteUrl: string,
+    demoName?: string,
   ): Promise<{
     demoFolder: string;
     wisFiles: string[];
@@ -1100,10 +974,8 @@ Only return valid JSON. Do not include any other text.
       // Create metadata file
       const metadata = {
         demoId,
-        demoName:
-          request.demoName ||
-          `Demo for ${new URL(request.websiteUrl).hostname}`,
-        websiteUrl: request.websiteUrl,
+        demoName: demoName || `Demo for ${new URL(websiteUrl).hostname}`,
+        websiteUrl: websiteUrl,
         createdAt: new Date().toISOString(),
         totalScripts: scripts.length,
         totalSteps: scripts.reduce(
