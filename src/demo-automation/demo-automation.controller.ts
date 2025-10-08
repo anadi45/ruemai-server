@@ -8,31 +8,6 @@ export class DemoAutomationController {
 
   constructor(private readonly demoAutomationService: DemoAutomationService) {}
 
-  @Post('login')
-  async loginToWebsite(
-    @Body()
-    body: {
-      websiteUrl: string;
-      credentials: { username: string; password: string };
-    },
-  ): Promise<CreateDemoResponseDto> {
-    this.logger.log(`🔐 Attempting login to: ${body.websiteUrl}`);
-
-    try {
-      const result = await this.demoAutomationService.loginToWebsite(
-        body.websiteUrl,
-        body.credentials,
-      );
-
-      this.logger.log(`✅ Login completed successfully: ${result.demoId}`);
-
-      return result;
-    } catch (error) {
-      this.logger.error(`❌ Login failed: ${error.message}`, error.stack);
-      throw error;
-    }
-  }
-
   @Post('create-demo')
   async createDemo(
     @Body()
