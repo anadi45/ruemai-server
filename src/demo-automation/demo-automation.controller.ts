@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Post,
-  Body,
-  ValidationPipe,
-  UsePipes,
-  Logger,
-} from '@nestjs/common';
+import { Controller, Post, Body, Logger } from '@nestjs/common';
 import { DemoAutomationService } from './demo-automation.service';
 import { CreateDemoResponseDto } from '../dto/demo-automation.dto';
 
@@ -15,82 +8,53 @@ export class DemoAutomationController {
 
   constructor(private readonly demoAutomationService: DemoAutomationService) {}
 
-  @Post('create-application-demo')
-  async createApplicationFeatureDemo(): Promise<CreateDemoResponseDto> {
-    this.logger.log('🎬 Creating application feature demo...');
-
-    try {
-      const result =
-        await this.demoAutomationService.createApplicationFeatureDemo();
-
-      this.logger.log(
-        `✅ Application feature demo created successfully: ${result.demoId} with ${result.generatedScripts.length} scripts`,
-      );
-
-      return result;
-    } catch (error) {
-      this.logger.error(
-        `❌ Failed to create application feature demo: ${error.message}`,
-        error.stack,
-      );
-      throw error;
-    }
-  }
-
-  @Post('create-automated-demo')
-  async createAutomatedApplicationDemo(
+  @Post('login')
+  async loginToWebsite(
     @Body()
-    body?: {
-      targetUrl?: string;
-      credentials?: { username: string; password: string };
+    body: {
+      websiteUrl: string;
+      credentials: { username: string; password: string };
     },
   ): Promise<CreateDemoResponseDto> {
-    this.logger.log('🤖 Creating automated application demo with Puppeteer...');
+    this.logger.log(`🔐 Attempting login to: ${body.websiteUrl}`);
 
     try {
-      const result =
-        await this.demoAutomationService.createAutomatedApplicationDemo(
-          body?.targetUrl,
-          body?.credentials,
-        );
-
-      this.logger.log(
-        `✅ Automated application demo created successfully: ${result.demoId} with ${result.generatedScripts.length} scripts`,
+      const result = await this.demoAutomationService.loginToWebsite(
+        body.websiteUrl,
+        body.credentials,
       );
+
+      this.logger.log(`✅ Login completed successfully: ${result.demoId}`);
 
       return result;
     } catch (error) {
-      this.logger.error(
-        `❌ Failed to create automated application demo: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`❌ Login failed: ${error.message}`, error.stack);
       throw error;
     }
   }
 
-  @Post('debug-ui')
-  async debugUI(
+  @Post('create-demo')
+  async createDemo(
     @Body()
-    body?: {
-      targetUrl?: string;
-      credentials?: { username: string; password: string };
+    body: {
+      websiteUrl: string;
+      credentials: { username: string; password: string };
     },
-  ): Promise<any> {
-    this.logger.log('🔍 Debugging UI element detection...');
+  ): Promise<CreateDemoResponseDto> {
+    this.logger.log(`🎬 Creating demo for: ${body.websiteUrl}`);
 
     try {
-      const result = await this.demoAutomationService.debugUIElements(
-        body?.targetUrl || 'http://localhost:3001',
-        body?.credentials || {
-          username: 'demo@example.com',
-          password: 'demo123',
-        },
+      const result = await this.demoAutomationService.loginToWebsite(
+        body.websiteUrl,
+        body.credentials,
       );
+
+      this.logger.log(`✅ Demo created successfully: ${result.demoId}`);
 
       return result;
     } catch (error) {
       this.logger.error(
-        `❌ Failed to debug UI elements: ${error.message}`,
+        `❌ Demo creation failed: ${error.message}`,
         error.stack,
       );
       throw error;
