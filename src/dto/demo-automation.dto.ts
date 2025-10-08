@@ -1,4 +1,10 @@
-import { IsString, IsUrl, IsOptional, IsObject } from 'class-validator';
+import {
+  IsString,
+  IsUrl,
+  IsOptional,
+  IsObject,
+  IsArray,
+} from 'class-validator';
 
 export class CreateDemoResponseDto {
   @IsString()
@@ -31,5 +37,27 @@ export class CreateDemoResponseDto {
     processingTime: number;
     loginAttempted: boolean;
     finalUrl: string;
+  };
+
+  @IsOptional()
+  @IsObject()
+  extractedFeatures?: {
+    features: Array<{
+      name: string;
+      description: string;
+      actions: string[];
+      selector?: string;
+      category: string;
+      importance: 'high' | 'medium' | 'low';
+    }>;
+    navigation: {
+      menus: string[];
+      buttons: string[];
+      forms: string[];
+    };
+    pageStructure: {
+      sections: string[];
+      interactiveElements: number;
+    };
   };
 }
