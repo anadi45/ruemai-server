@@ -98,9 +98,18 @@ export class DemoAutomationService {
             const pageDir = path.join(pagesDir, `page-${i + 1}`);
             fs.mkdirSync(pageDir, { recursive: true });
 
+            // Save HTML content
             const htmlPath = path.join(pageDir, 'content.html');
             fs.writeFileSync(htmlPath, page.html);
 
+            // Save comprehensive scraped data
+            const scrapedDataPath = path.join(pageDir, 'scraped-data.json');
+            fs.writeFileSync(
+              scrapedDataPath,
+              JSON.stringify(page.scrapedData || {}, null, 2),
+            );
+
+            // Save page metadata
             const metadataPath = path.join(pageDir, 'metadata.json');
             fs.writeFileSync(
               metadataPath,
@@ -110,11 +119,57 @@ export class DemoAutomationService {
                   title: page.title,
                   pageInfo: page.pageInfo,
                   timestamp: page.timestamp,
+                  hasScrapedData: !!page.scrapedData,
                 },
                 null,
                 2,
               ),
             );
+
+            // Save structured data summary
+            if (page.scrapedData) {
+              const summaryPath = path.join(pageDir, 'content-summary.txt');
+              const summary = `
+Page Content Summary
+====================
+Title: ${page.title}
+URL: ${page.url}
+Word Count: ${page.scrapedData.wordCount || 'N/A'}
+Character Count: ${page.scrapedData.characterCount || 'N/A'}
+
+Content Analysis:
+- Has Login Form: ${page.scrapedData.hasLoginForm || false}
+- Has Search Form: ${page.scrapedData.hasSearchForm || false}
+- Has Contact Info: ${page.scrapedData.hasContactInfo || false}
+- Has Pricing: ${page.scrapedData.hasPricing || false}
+- Has Social Media: ${page.scrapedData.hasSocialMedia || false}
+
+Elements Found:
+- Forms: ${page.scrapedData.forms?.length || 0}
+- Buttons: ${page.scrapedData.buttons?.length || 0}
+- Links: ${page.scrapedData.links?.length || 0}
+- Images: ${page.scrapedData.images?.length || 0}
+- Tables: ${page.scrapedData.tables?.length || 0}
+
+Headings:
+${Object.entries(page.scrapedData.headingsData || {})
+  .map(
+    ([level, headings]) =>
+      `${level.toUpperCase()}: ${(headings as string[]).join(', ')}`,
+  )
+  .join('\n')}
+
+Navigation:
+${page.scrapedData.navigationData?.menus?.map((menu) => `- ${menu.text}`).join('\n') || 'None found'}
+
+Meta Information:
+- Description: ${page.scrapedData.metaData?.description || 'None'}
+- Keywords: ${page.scrapedData.metaData?.keywords || 'None'}
+- Author: ${page.scrapedData.metaData?.author || 'None'}
+              `.trim();
+
+              fs.writeFileSync(summaryPath, summary);
+            }
           }
 
           // Create summary file
