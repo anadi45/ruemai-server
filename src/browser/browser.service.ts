@@ -272,7 +272,25 @@ export class BrowserService {
       // Wait for page to stabilize
       await page.waitForTimeout(3000);
 
-      // Start crawling from the current page
+      // Process the current page first
+      const currentUrl = page.url();
+      this.logger.log(`🔍 Processing initial page: ${currentUrl}`);
+
+      // Extract page information
+      const pageInfo = await this.extractPageInfo(page);
+      const html = await page.content();
+
+      crawledPages.push({
+        url: currentUrl,
+        title: pageInfo.title,
+        html,
+        pageInfo,
+        timestamp: new Date().toISOString(),
+      });
+
+      visitedUrls.add(currentUrl);
+
+      // Now start crawling from the current page
       await this.crawlPageRecursively(
         page,
         websiteUrl,
@@ -313,21 +331,28 @@ export class BrowserService {
     depth: number,
   ): Promise<void> {
     if (crawledPages.length >= maxPages || depth > 5) {
+      this.logger.log(
+        `🛑 Stopping crawl: maxPages=${maxPages}, depth=${depth}`,
+      );
       return;
     }
 
     const currentUrl = page.url();
+    this.logger.log(`🔍 Processing page: ${currentUrl} (depth: ${depth})`);
 
-    // Skip if already visited or external URL
-    if (
-      visitedUrls.has(currentUrl) ||
-      !this.isInternalUrl(currentUrl, baseUrl)
-    ) {
+    // Skip if already visited
+    if (visitedUrls.has(currentUrl)) {
+      this.logger.log(`⏭️ Skipping already visited: ${currentUrl}`);
+      return;
+    }
+
+    // Check if URL is internal
+    if (!this.isInternalUrl(currentUrl, baseUrl)) {
+      this.logger.log(`🚫 Skipping external URL: ${currentUrl}`);
       return;
     }
 
     visitedUrls.add(currentUrl);
-    this.logger.log(`🔍 Crawling page: ${currentUrl} (depth: ${depth})`);
 
     try {
       // Extract page information
@@ -342,10 +367,14 @@ export class BrowserService {
         timestamp: new Date().toISOString(),
       });
 
+      this.logger.log(
+        `✅ Crawled page ${crawledPages.length}: ${pageInfo.title}`,
+      );
+
       // Find all internal links on the page
       const links = await page.evaluate((baseUrl) => {
         const linkElements = Array.from(document.querySelectorAll('a[href]'));
-        return linkElements
+        const foundLinks = linkElements
           .map((link) => {
             const href = link.getAttribute('href');
             if (!href) return null;
@@ -360,19 +389,33 @@ export class BrowserService {
           })
           .filter((url) => url && url.startsWith(baseUrl))
           .slice(0, 20); // Limit to 20 links per page to avoid infinite loops
+
+        console.log(`Found ${foundLinks.length} internal links on page`);
+        return foundLinks;
       }, baseUrl);
+
+      this.logger.log(`🔗 Found ${links.length} internal links to crawl`);
 
       // Crawl found links
       for (const linkUrl of links) {
-        if (crawledPages.length >= maxPages) break;
-        if (visitedUrls.has(linkUrl)) continue;
+        if (crawledPages.length >= maxPages) {
+          this.logger.log(`🛑 Reached max pages limit: ${maxPages}`);
+          break;
+        }
+
+        if (visitedUrls.has(linkUrl)) {
+          this.logger.log(`⏭️ Already visited: ${linkUrl}`);
+          continue;
+        }
+
+        this.logger.log(`🌐 Navigating to: ${linkUrl}`);
 
         try {
           await page.goto(linkUrl, {
             waitUntil: 'networkidle',
-            timeout: 10000,
+            timeout: 15000,
           });
-          await page.waitForTimeout(1000); // Wait for dynamic content
+          await page.waitForTimeout(2000); // Wait for dynamic content
 
           await this.crawlPageRecursively(
             page,
@@ -398,8 +441,20 @@ export class BrowserService {
     try {
       const urlObj = new URL(url);
       const baseUrlObj = new URL(baseUrl);
-      return urlObj.hostname === baseUrlObj.hostname;
-    } catch {
+
+      // Check if same hostname
+      const isSameHost = urlObj.hostname === baseUrlObj.hostname;
+
+      // Also check if URL starts with base URL (for subdirectories)
+      const startsWithBase = url.startsWith(baseUrl);
+
+      this.logger.log(
+        `🔍 URL check: ${url} - Same host: ${isSameHost}, Starts with base: ${startsWithBase}`,
+      );
+
+      return isSameHost || startsWithBase;
+    } catch (error) {
+      this.logger.warn(`⚠️ URL parsing error: ${url} - ${error.message}`);
       return false;
     }
   }

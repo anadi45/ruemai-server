@@ -60,4 +60,27 @@ export class CreateDemoResponseDto {
       interactiveElements: number;
     };
   };
+
+  @IsOptional()
+  @IsObject()
+  crawlData?: {
+    success: boolean;
+    totalPages: number;
+    crawlTime: number;
+    dumpPath: string;
+    pages: Array<{
+      url: string;
+      title: string;
+      timestamp: string;
+      pageInfo: {
+        title: string;
+        url: string;
+        bodyText: string;
+        totalElements: number;
+        buttons: number;
+        links: number;
+        inputs: number;
+      };
+    }>;
+  };
 }

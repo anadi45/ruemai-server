@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CreateDemoResponseDto } from '../dto/demo-automation.dto';
-import { BrowserService, CrawlResult } from '../browser/browser.service';
-import { AiService, FeatureTree } from '../ai/ai.service';
+import { BrowserService } from '../browser/browser.service';
+import { AiService } from '../ai/ai.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -18,11 +18,14 @@ export class DemoAutomationService {
   async loginToWebsite(
     websiteUrl: string,
     credentials: { username: string; password: string },
+    maxPages: number = 50,
   ): Promise<CreateDemoResponseDto> {
     const startTime = Date.now();
     const demoId = uuidv4();
 
-    this.logger.log(`🚀 Starting feature extraction for: ${websiteUrl}`);
+    this.logger.log(
+      `🚀 Starting comprehensive demo automation for: ${websiteUrl}`,
+    );
 
     try {
       // Use browser service to login and extract page
@@ -44,105 +47,79 @@ export class DemoAutomationService {
         loginResult.pageInfo,
       );
 
-      const processingTime = Date.now() - startTime;
-
-      this.logger.log(`✅ Feature extraction completed in ${processingTime}ms`);
+      this.logger.log(`✅ Feature extraction completed`);
       this.logger.log(`📊 Extracted ${featureTree.features.length} features`);
 
-      return {
-        demoId,
-        demoName: 'AI-Powered Feature Extraction Demo',
-        websiteUrl,
-        loginStatus: loginResult.success ? 'success' : 'partial',
-        pageInfo: loginResult.pageInfo,
-        summary: {
-          processingTime,
-          loginAttempted: true,
-          finalUrl: loginResult.finalUrl,
-        },
-        extractedFeatures: featureTree,
-      };
-    } catch (error) {
-      this.logger.error(`❌ Feature extraction failed: ${error.message}`);
-      throw new Error(`Feature extraction failed: ${error.message}`);
-    }
-  }
-
-  async crawlAndDumpApp(
-    websiteUrl: string,
-    credentials: { username: string; password: string },
-    maxPages: number = 50,
-  ): Promise<{ success: boolean; dumpPath: string; crawlResult: CrawlResult }> {
-    const startTime = Date.now();
-    const demoId = uuidv4();
-
-    this.logger.log(`🕷️ Starting comprehensive app crawl for: ${websiteUrl}`);
-
-    try {
-      // Perform comprehensive crawl
-      const crawlResult = await this.browserService.crawlCompleteApp(
-        websiteUrl,
-        credentials,
-        maxPages,
-      );
-
-      // Create dump directory
-      const dumpDir = path.join(process.cwd(), 'demo-crawl-dump');
-      if (!fs.existsSync(dumpDir)) {
-        fs.mkdirSync(dumpDir, { recursive: true });
-      }
-
-      // Create demo-specific directory
-      const demoDir = path.join(dumpDir, demoId);
-      fs.mkdirSync(demoDir, { recursive: true });
-
-      // Save crawl results
-      const crawlData = {
-        demoId,
-        websiteUrl,
-        credentials: { username: credentials.username, password: '***' }, // Hide password
-        crawlResult,
-        timestamp: new Date().toISOString(),
-        processingTime: Date.now() - startTime,
-      };
-
-      // Save main crawl data
-      const crawlDataPath = path.join(demoDir, 'crawl-data.json');
-      fs.writeFileSync(crawlDataPath, JSON.stringify(crawlData, null, 2));
-
-      // Save individual pages
-      const pagesDir = path.join(demoDir, 'pages');
-      fs.mkdirSync(pagesDir, { recursive: true });
-
-      for (let i = 0; i < crawlResult.pages.length; i++) {
-        const page = crawlResult.pages[i];
-        const pageDir = path.join(pagesDir, `page-${i + 1}`);
-        fs.mkdirSync(pageDir, { recursive: true });
-
-        // Save page HTML
-        const htmlPath = path.join(pageDir, 'content.html');
-        fs.writeFileSync(htmlPath, page.html);
-
-        // Save page metadata
-        const metadataPath = path.join(pageDir, 'metadata.json');
-        fs.writeFileSync(
-          metadataPath,
-          JSON.stringify(
-            {
-              url: page.url,
-              title: page.title,
-              pageInfo: page.pageInfo,
-              timestamp: page.timestamp,
-            },
-            null,
-            2,
-          ),
+      // If login was successful, perform comprehensive crawling
+      let crawlData = null;
+      if (loginResult.success) {
+        this.logger.log(
+          '🕷️ Login successful, starting comprehensive app crawl...',
         );
-      }
 
-      // Create summary file
-      const summaryPath = path.join(demoDir, 'summary.txt');
-      const summary = `
+        try {
+          const crawlResult = await this.browserService.crawlCompleteApp(
+            websiteUrl,
+            credentials,
+            maxPages,
+          );
+
+          // Create dump directory and save crawl results
+          const dumpDir = path.join(process.cwd(), 'demo-crawl-dump');
+          if (!fs.existsSync(dumpDir)) {
+            fs.mkdirSync(dumpDir, { recursive: true });
+          }
+
+          const demoDir = path.join(dumpDir, demoId);
+          fs.mkdirSync(demoDir, { recursive: true });
+
+          // Save crawl results
+          const crawlDataToSave = {
+            demoId,
+            websiteUrl,
+            credentials: { username: credentials.username, password: '***' },
+            crawlResult,
+            timestamp: new Date().toISOString(),
+            processingTime: Date.now() - startTime,
+          };
+
+          const crawlDataPath = path.join(demoDir, 'crawl-data.json');
+          fs.writeFileSync(
+            crawlDataPath,
+            JSON.stringify(crawlDataToSave, null, 2),
+          );
+
+          // Save individual pages
+          const pagesDir = path.join(demoDir, 'pages');
+          fs.mkdirSync(pagesDir, { recursive: true });
+
+          for (let i = 0; i < crawlResult.pages.length; i++) {
+            const page = crawlResult.pages[i];
+            const pageDir = path.join(pagesDir, `page-${i + 1}`);
+            fs.mkdirSync(pageDir, { recursive: true });
+
+            const htmlPath = path.join(pageDir, 'content.html');
+            fs.writeFileSync(htmlPath, page.html);
+
+            const metadataPath = path.join(pageDir, 'metadata.json');
+            fs.writeFileSync(
+              metadataPath,
+              JSON.stringify(
+                {
+                  url: page.url,
+                  title: page.title,
+                  pageInfo: page.pageInfo,
+                  timestamp: page.timestamp,
+                },
+                null,
+                2,
+              ),
+            );
+          }
+
+          // Create summary file
+          const summaryPath = path.join(demoDir, 'summary.txt');
+          const summary = `
 Demo Crawl Summary
 ==================
 Demo ID: ${demoId}
@@ -156,20 +133,57 @@ Pages Crawled:
 ${crawlResult.pages
   .map((page, index) => `${index + 1}. ${page.title} (${page.url})`)
   .join('\n')}
-      `.trim();
+          `.trim();
 
-      fs.writeFileSync(summaryPath, summary);
+          fs.writeFileSync(summaryPath, summary);
 
-      this.logger.log(`✅ App crawl and dump completed: ${demoDir}`);
+          crawlData = {
+            success: crawlResult.success,
+            totalPages: crawlResult.totalPages,
+            crawlTime: crawlResult.crawlTime,
+            dumpPath: demoDir,
+            pages: crawlResult.pages.map((page) => ({
+              url: page.url,
+              title: page.title,
+              timestamp: page.timestamp,
+              pageInfo: page.pageInfo,
+            })),
+          };
+
+          this.logger.log(
+            `✅ App crawl completed: ${crawlResult.totalPages} pages`,
+          );
+          this.logger.log(`📁 Dump saved to: ${demoDir}`);
+        } catch (crawlError) {
+          this.logger.warn(
+            `⚠️ Crawl failed, continuing with feature extraction: ${crawlError.message}`,
+          );
+        }
+      } else {
+        this.logger.log('⚠️ Login failed, skipping app crawl');
+      }
+
+      const processingTime = Date.now() - startTime;
+
+      this.logger.log(`✅ Demo automation completed in ${processingTime}ms`);
 
       return {
-        success: true,
-        dumpPath: demoDir,
-        crawlResult,
+        demoId,
+        demoName: 'AI-Powered Feature Extraction & App Crawl Demo',
+        websiteUrl,
+        loginStatus: loginResult.success ? 'success' : 'partial',
+        pageInfo: loginResult.pageInfo,
+        summary: {
+          processingTime,
+          loginAttempted: true,
+          finalUrl: loginResult.finalUrl,
+        },
+        extractedFeatures: featureTree,
+        crawlData,
       };
     } catch (error) {
-      this.logger.error(`❌ App crawl and dump failed: ${error.message}`);
-      throw new Error(`App crawl and dump failed: ${error.message}`);
+      this.logger.error(`❌ Demo automation failed: ${error.message}`);
+      throw new Error(`Demo automation failed: ${error.message}`);
     }
   }
 }
