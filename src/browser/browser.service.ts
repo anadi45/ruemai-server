@@ -16,6 +16,27 @@ export interface LoginResult {
   html: string;
 }
 
+export interface CrawlResult {
+  success: boolean;
+  pages: Array<{
+    url: string;
+    title: string;
+    html: string;
+    pageInfo: {
+      title: string;
+      url: string;
+      bodyText: string;
+      totalElements: number;
+      buttons: number;
+      links: number;
+      inputs: number;
+    };
+    timestamp: string;
+  }>;
+  totalPages: number;
+  crawlTime: number;
+}
+
 @Injectable()
 export class BrowserService {
   private readonly logger = new Logger(BrowserService.name);
@@ -212,5 +233,174 @@ export class BrowserService {
 
   async getPageContent(page: Page): Promise<string> {
     return await page.content();
+  }
+
+  async crawlCompleteApp(
+    websiteUrl: string,
+    credentials: { username: string; password: string },
+    maxPages: number = 50,
+  ): Promise<CrawlResult> {
+    const startTime = Date.now();
+    this.logger.log(`🕷️ Starting comprehensive app crawl for: ${websiteUrl}`);
+
+    let browser: Browser | null = null;
+    const visitedUrls = new Set<string>();
+    const crawledPages: CrawlResult['pages'] = [];
+
+    try {
+      // Launch browser
+      browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+
+      const page = await browser.newPage();
+      await page.setViewportSize({ width: 1920, height: 1080 });
+
+      // Navigate to website and login
+      await page.goto(websiteUrl, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2000);
+
+      // Perform login
+      const loginSuccess = await this.performLogin(page, credentials);
+      if (loginSuccess) {
+        this.logger.log('✅ Login successful, starting app crawl');
+      } else {
+        this.logger.log('⚠️ Login failed, proceeding with public pages only');
+      }
+
+      // Wait for page to stabilize
+      await page.waitForTimeout(3000);
+
+      // Start crawling from the current page
+      await this.crawlPageRecursively(
+        page,
+        websiteUrl,
+        visitedUrls,
+        crawledPages,
+        maxPages,
+        0,
+      );
+
+      const crawlTime = Date.now() - startTime;
+
+      this.logger.log(
+        `✅ App crawl completed: ${crawledPages.length} pages in ${crawlTime}ms`,
+      );
+
+      return {
+        success: true,
+        pages: crawledPages,
+        totalPages: crawledPages.length,
+        crawlTime,
+      };
+    } catch (error) {
+      this.logger.error(`❌ App crawl failed: ${error.message}`);
+      throw new Error(`App crawl failed: ${error.message}`);
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
+    }
+  }
+
+  private async crawlPageRecursively(
+    page: Page,
+    baseUrl: string,
+    visitedUrls: Set<string>,
+    crawledPages: CrawlResult['pages'],
+    maxPages: number,
+    depth: number,
+  ): Promise<void> {
+    if (crawledPages.length >= maxPages || depth > 5) {
+      return;
+    }
+
+    const currentUrl = page.url();
+
+    // Skip if already visited or external URL
+    if (
+      visitedUrls.has(currentUrl) ||
+      !this.isInternalUrl(currentUrl, baseUrl)
+    ) {
+      return;
+    }
+
+    visitedUrls.add(currentUrl);
+    this.logger.log(`🔍 Crawling page: ${currentUrl} (depth: ${depth})`);
+
+    try {
+      // Extract page information
+      const pageInfo = await this.extractPageInfo(page);
+      const html = await page.content();
+
+      crawledPages.push({
+        url: currentUrl,
+        title: pageInfo.title,
+        html,
+        pageInfo,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Find all internal links on the page
+      const links = await page.evaluate((baseUrl) => {
+        const linkElements = Array.from(document.querySelectorAll('a[href]'));
+        return linkElements
+          .map((link) => {
+            const href = link.getAttribute('href');
+            if (!href) return null;
+
+            try {
+              // Convert relative URLs to absolute
+              const url = new URL(href, baseUrl).href;
+              return url;
+            } catch {
+              return null;
+            }
+          })
+          .filter((url) => url && url.startsWith(baseUrl))
+          .slice(0, 20); // Limit to 20 links per page to avoid infinite loops
+      }, baseUrl);
+
+      // Crawl found links
+      for (const linkUrl of links) {
+        if (crawledPages.length >= maxPages) break;
+        if (visitedUrls.has(linkUrl)) continue;
+
+        try {
+          await page.goto(linkUrl, {
+            waitUntil: 'networkidle',
+            timeout: 10000,
+          });
+          await page.waitForTimeout(1000); // Wait for dynamic content
+
+          await this.crawlPageRecursively(
+            page,
+            baseUrl,
+            visitedUrls,
+            crawledPages,
+            maxPages,
+            depth + 1,
+          );
+        } catch (error) {
+          this.logger.warn(`⚠️ Failed to crawl ${linkUrl}: ${error.message}`);
+          continue;
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `⚠️ Failed to process page ${currentUrl}: ${error.message}`,
+      );
+    }
+  }
+
+  private isInternalUrl(url: string, baseUrl: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      const baseUrlObj = new URL(baseUrl);
+      return urlObj.hostname === baseUrlObj.hostname;
+    } catch {
+      return false;
+    }
   }
 }
