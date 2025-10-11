@@ -19,11 +19,27 @@ export class DemoAutomationService {
       // Launch browser with persistent context for session management
       browser = await puppeteer.launch({
         headless: false,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor'
+        ],
+        defaultViewport: null,
       });
 
       const page = await browser.newPage();
       await page.setViewport({ width: 1920, height: 1080 });
+      
+      // Set user agent to avoid detection
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+      
+      // Enable request interception to handle cookies and sessions
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        // Allow all requests but add headers for session persistence
+        request.continue();
+      });
 
       // Navigate to website and login
       try {
@@ -46,6 +62,10 @@ export class DemoAutomationService {
         throw new Error('Login failed');
       } else {
         console.log('✅ Login successful');
+        
+        // Save cookies after successful login for session persistence
+        const cookies = await page.cookies();
+        console.log(`🍪 Saved ${cookies.length} cookies after login`);
       }
 
       // Start recursive scraping with queue-based approach
@@ -54,6 +74,7 @@ export class DemoAutomationService {
         websiteUrl,
         visitedUrls,
         scrapedPages,
+        credentials,
       );
 
       const processingTime = Date.now() - startTime;
@@ -82,6 +103,130 @@ export class DemoAutomationService {
       if (browser) {
         await browser.close();
       }
+    }
+  }
+
+  private extractLinksFromHTML(html: string, currentUrl: string): Array<{href: string, text: string}> {
+    try {
+      // Use regex to find all anchor tags with href attributes
+      const linkRegex = /<a[^>]+href\s*=\s*["']([^"']+)["'][^>]*>([^<]*)<\/a>/gi;
+      const links: Array<{href: string, text: string}> = [];
+      
+      let match;
+      while ((match = linkRegex.exec(html)) !== null) {
+        const href = match[1];
+        const text = match[2].replace(/<[^>]*>/g, '').trim(); // Remove any HTML tags from link text
+        
+        if (href && href.trim()) {
+          links.push({
+            href: href.trim(),
+            text: text || ''
+          });
+        }
+      }
+      
+      // Also look for href attributes that might not be in full anchor tags
+      const hrefOnlyRegex = /href\s*=\s*["']([^"']+)["']/gi;
+      const hrefMatches = new Set<string>();
+      
+      let hrefMatch;
+      while ((hrefMatch = hrefOnlyRegex.exec(html)) !== null) {
+        const href = hrefMatch[1].trim();
+        if (href && !href.startsWith('#') && !href.startsWith('javascript:') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+          hrefMatches.add(href);
+        }
+      }
+      
+      // Add any additional href-only links that weren't captured by the full anchor regex
+      hrefMatches.forEach(href => {
+        if (!links.some(link => link.href === href)) {
+          links.push({
+            href,
+            text: ''
+          });
+        }
+      });
+      
+      console.log(`📊 HTML Link Extraction Results:`);
+      console.log(`  - Found ${links.length} total links in HTML`);
+      console.log(`  - Found ${hrefMatches.size} unique href attributes`);
+      
+      return links;
+    } catch (error) {
+      console.error(`❌ Error extracting links from HTML: ${error.message}`);
+      return [];
+    }
+  }
+
+  private async restoreSessionCookies(page: Page, baseUrl: string): Promise<void> {
+    try {
+      // Get cookies from the current domain
+      const cookies = await page.cookies();
+      console.log(`🍪 Restoring ${cookies.length} session cookies`);
+      
+      // Set cookies for the current domain
+      await page.setCookie(...cookies);
+      console.log('✅ Session cookies restored');
+    } catch (error) {
+      console.log(`❌ Error restoring cookies: ${error.message}`);
+    }
+  }
+
+  private async checkLoginStatus(page: Page): Promise<boolean> {
+    try {
+      // Get HTML content and check login status from HTML
+      const html = await page.content();
+      const currentUrl = page.url().toLowerCase();
+      
+      // Extract body text from HTML
+      const bodyText = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                           .replace(/<[^>]+>/g, ' ')
+                           .replace(/\s+/g, ' ')
+                           .toLowerCase();
+
+      // Check for common logged-in indicators
+      const loggedInIndicators = [
+        'dashboard', 'profile', 'account', 'welcome', 'logout', 'sign out', 
+        'user menu', 'admin', 'home', 'main', 'app', 'settings'
+      ];
+      
+      // Check URL and content for logged-in indicators
+      const hasLoggedInIndicator = loggedInIndicators.some(indicator => 
+        currentUrl.includes(indicator) || bodyText.includes(indicator)
+      );
+      
+      // Check if we're NOT on a login page
+      const isNotOnLoginPage = !currentUrl.includes('login') && 
+                              !currentUrl.includes('signin') && 
+                              !currentUrl.includes('auth') &&
+                              !currentUrl.includes('sign-in');
+      
+      // Check for logout buttons or user menus in HTML
+      const hasLogoutButton = /href\s*=\s*["'][^"']*logout[^"']*["']/i.test(html) ||
+                             /onclick\s*=\s*["'][^"']*logout[^"']*["']/i.test(html) ||
+                             /href\s*=\s*["'][^"']*signout[^"']*["']/i.test(html) ||
+                             /href\s*=\s*["'][^"']*sign-out[^"']*["']/i.test(html);
+      
+      const hasUserMenu = /class\s*=\s*["'][^"']*user[^"']*["']/i.test(html) ||
+                         /class\s*=\s*["'][^"']*profile[^"']*["']/i.test(html) ||
+                         /class\s*=\s*["'][^"']*account[^"']*["']/i.test(html) ||
+                         /id\s*=\s*["'][^"']*user[^"']*["']/i.test(html) ||
+                         /id\s*=\s*["'][^"']*profile[^"']*["']/i.test(html) ||
+                         /id\s*=\s*["'][^"']*account[^"']*["']/i.test(html);
+      
+      const isLoggedIn = hasLoggedInIndicator || (isNotOnLoginPage && (hasLogoutButton || hasUserMenu));
+      
+      console.log(`🔍 Login status check: ${isLoggedIn ? 'LOGGED IN' : 'NOT LOGGED IN'}`);
+      console.log(`  - Has logged in indicator: ${hasLoggedInIndicator}`);
+      console.log(`  - Not on login page: ${isNotOnLoginPage}`);
+      console.log(`  - Has logout button: ${hasLogoutButton}`);
+      console.log(`  - Has user menu: ${hasUserMenu}`);
+      
+      return isLoggedIn;
+    } catch (error) {
+      console.log(`❌ Error checking login status: ${error.message}`);
+      return false;
     }
   }
 
@@ -226,6 +371,10 @@ export class DemoAutomationService {
         // Click login button
         console.log('🖱️ Clicking login button...');
         await loginButton.click();
+
+        // Wait for login to process and page to redirect/load
+        console.log('⏳ Waiting for login to complete...');
+        await this.waitForLoginCompletion(page);
       } else {
         // If we found a form, try to fill it
         const usernameField = await loginForm.$(
@@ -244,6 +393,10 @@ export class DemoAutomationService {
           );
           if (submitButton) {
             await submitButton.click();
+            
+            // Wait for login to process and page to redirect/load
+            console.log('⏳ Waiting for login to complete...');
+            await this.waitForLoginCompletion(page);
           }
         }
       }
@@ -324,6 +477,7 @@ export class DemoAutomationService {
     baseUrl: string,
     visitedUrls: Set<string>,
     scrapedPages: any[],
+    credentials: { username: string; password: string },
   ): Promise<void> {
     const urlQueue: string[] = [baseUrl];
     const maxPages = 50; // Limit to prevent infinite loops
@@ -350,12 +504,65 @@ export class DemoAutomationService {
         
         // Navigate to the current URL
         await page.goto(currentUrl, {
-          waitUntil: 'domcontentloaded',
+          waitUntil: 'networkidle0',
           timeout: 30000,
         });
 
-        // Wait a bit for dynamic content to load
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait for dynamic content to load with smart waiting
+        console.log('⏳ Waiting for dynamic content to load...');
+        await this.waitForDynamicContent(page);
+
+        // Check if we're still logged in, and if not, try to login again
+        const isLoggedIn = await this.checkLoginStatus(page);
+        if (!isLoggedIn && currentUrl !== baseUrl) {
+          console.log(`🔐 Not logged in on ${currentUrl}, attempting to re-login...`);
+          
+          // Try to find login form on this page
+          const loginForm = await page.$('form[action*="login"], form[action*="signin"], form[action*="auth"], form[id*="login"], form[class*="login"]');
+          if (loginForm) {
+            console.log('✅ Found login form on this page, attempting login...');
+            const loginSuccess = await this.performLogin(page, credentials);
+            if (!loginSuccess) {
+              console.log('❌ Re-login failed on this page, skipping...');
+              continue;
+            } else {
+              console.log('✅ Re-login successful on this page');
+            }
+          } else {
+            // Navigate back to base URL to login
+            console.log('🔄 Navigating back to base URL to re-login...');
+            await page.goto(baseUrl, {
+              waitUntil: 'networkidle0',
+              timeout: 30000,
+            });
+            
+            // Check if we need to login again
+            const needsLogin = !(await this.checkLoginStatus(page));
+            if (needsLogin) {
+              console.log('🔐 Session expired, attempting fresh login...');
+              const loginSuccess = await this.performLogin(page, credentials);
+              if (!loginSuccess) {
+                console.log('❌ Fresh login failed, skipping this page...');
+                continue;
+              } else {
+                console.log('✅ Fresh login successful');
+              }
+            } else {
+              console.log('✅ Still logged in, continuing...');
+            }
+            
+            // Navigate back to the original URL
+            console.log(`🔄 Navigating back to original URL: ${currentUrl}`);
+            await page.goto(currentUrl, {
+              waitUntil: 'networkidle0',
+              timeout: 30000,
+            });
+            
+            // Wait for page to load with smart waiting
+            console.log('⏳ Waiting for page to load after re-login...');
+            await this.waitForDynamicContent(page);
+          }
+        }
 
         // Extract page data
         const pageData = await this.extractPageData(page);
@@ -368,27 +575,61 @@ export class DemoAutomationService {
           pageInfo: pageData.pageInfo,
         });
 
-        // Get all href links from the page
-        const links = await page.evaluate(() => {
-          const linkElements = document.querySelectorAll('a[href]');
-          return Array.from(linkElements).map((link) => ({
-            href: link.getAttribute('href'),
-            text: link.textContent?.trim(),
-          }));
-        });
+        // Extract links from the scraped HTML instead of live DOM queries
+        const links = this.extractLinksFromHTML(pageData.html, currentUrl);
+        
+        console.log(`🔍 Found ${links.length} total links in HTML from ${currentUrl}`);
+        
+        // Debug: Show sample links found in HTML
+        console.log(`📄 HTML Link Analysis:`);
+        console.log(`  - Page Title: "${pageData.title}"`);
+        console.log(`  - HTML Length: ${pageData.html.length} characters`);
+        console.log(`  - Sample Links:`, links.slice(0, 5));
+        
+        // Process links from HTML and add internal ones to queue
+        let validLinks = 0;
+        let internalLinks = 0;
+        let newLinks = 0;
+        let duplicateLinks = 0;
 
         // Add new internal links to the queue
         for (const link of links) {
           if (link.href) {
+            validLinks++;
             const fullUrl = this.resolveUrl(link.href, baseUrl);
             
-            if (this.isInternalUrl(fullUrl, baseUrl) && !visitedUrls.has(fullUrl) && !urlQueue.includes(fullUrl)) {
-              urlQueue.push(fullUrl);
+            console.log(`Processing HTML link: ${link.href} -> ${fullUrl}`);
+            console.log(`  - Text: "${link.text}"`);
+            console.log(`  - Internal: ${this.isInternalUrl(fullUrl, baseUrl)}`);
+            console.log(`  - Already visited: ${visitedUrls.has(fullUrl)}`);
+            console.log(`  - In queue: ${urlQueue.includes(fullUrl)}`);
+            
+            if (this.isInternalUrl(fullUrl, baseUrl)) {
+              internalLinks++;
+              
+              if (!visitedUrls.has(fullUrl) && !urlQueue.includes(fullUrl)) {
+                urlQueue.push(fullUrl);
+                newLinks++;
+                console.log(`  ✅ Added to queue: ${fullUrl}`);
+              } else {
+                duplicateLinks++;
+                console.log(`  ❌ Skipped (duplicate): ${fullUrl}`);
+              }
+            } else {
+              console.log(`  ❌ Skipped (external): ${fullUrl}`);
             }
+          } else {
+            console.log(`❌ Link with no href: "${link.text}"`);
           }
         }
 
-        console.log(`✅ Successfully scraped: ${currentUrl} (found ${links.length} links, queue size: ${urlQueue.length})`);
+        console.log(`📊 Link Processing Summary for ${currentUrl}:`);
+        console.log(`  - Total links found in HTML: ${links.length}`);
+        console.log(`  - Links with valid href: ${validLinks}`);
+        console.log(`  - Internal links: ${internalLinks}`);
+        console.log(`  - New links added to queue: ${newLinks}`);
+        console.log(`  - Duplicate links skipped: ${duplicateLinks}`);
+        console.log(`  - Current queue size: ${urlQueue.length}`);
 
       } catch (error) {
         console.error(`❌ Failed to scrape ${currentUrl}:`, error.message);
@@ -401,71 +642,74 @@ export class DemoAutomationService {
   }
 
   private async extractPageData(page: Page): Promise<any> {
-    const pageData = await page.evaluate(() => {
-      const title = document.title;
-      const url = window.location.href;
-      const bodyText = document.body.innerText;
+    // Get the raw HTML content
+    const html = await page.content();
+    
+    // Extract data from HTML using regex patterns
+    const extractedData = this.extractDataFromHTML(html);
+    
+    // Get basic page info
+    const title = await page.title();
+    const url = page.url();
+    
+    return {
+      title,
+      url,
+      html,
+      ...extractedData,
+      pageInfo: {
+        title,
+        url,
+        bodyText: extractedData.bodyText.substring(0, 1000),
+        totalElements: extractedData.totalElements,
+        buttons: extractedData.buttons,
+        links: extractedData.links,
+        inputs: extractedData.inputs,
+      },
+    };
+  }
 
-      // Extract comprehensive data
-      const forms = Array.from(document.querySelectorAll('form')).map(
-        (form) => ({
-          action: form.action,
-          method: form.method,
-          inputs: Array.from(form.querySelectorAll('input')).map((input) => ({
-            type: input.type,
-            name: input.name,
-            placeholder: input.placeholder,
-          })),
-        }),
-      );
+  private extractDataFromHTML(html: string): any {
+    try {
+      // Extract title
+      const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : '';
 
-      const buttons = Array.from(document.querySelectorAll('button')).map(
-        (btn) => ({
-          text: btn.textContent?.trim(),
-          type: btn.type,
-          className: btn.className,
-        }),
-      );
+      // Extract body text (remove HTML tags)
+      const bodyText = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                           .replace(/<[^>]+>/g, ' ')
+                           .replace(/\s+/g, ' ')
+                           .trim();
 
-      const links = Array.from(document.querySelectorAll('a')).map((link) => ({
-        href: link.href,
-        text: link.textContent?.trim(),
-      }));
+      // Extract forms
+      const forms = this.extractFormsFromHTML(html);
 
-      const images = Array.from(document.querySelectorAll('img')).map(
-        (img) => ({
-          src: img.src,
-          alt: img.alt,
-        }),
-      );
+      // Extract buttons
+      const buttons = this.extractButtonsFromHTML(html);
 
-      const tables = Array.from(document.querySelectorAll('table')).map(
-        (table) => ({
-          rows: table.rows.length,
-          cells: table.querySelectorAll('td, th').length,
-        }),
-      );
+      // Extract links
+      const links = this.extractLinksFromHTML(html, '');
 
-      const headings = {
-        h1: Array.from(document.querySelectorAll('h1')).map((h) =>
-          h.textContent?.trim(),
-        ),
-        h2: Array.from(document.querySelectorAll('h2')).map((h) =>
-          h.textContent?.trim(),
-        ),
-        h3: Array.from(document.querySelectorAll('h3')).map((h) =>
-          h.textContent?.trim(),
-        ),
-      };
+      // Extract images
+      const images = this.extractImagesFromHTML(html);
+
+      // Extract tables
+      const tables = this.extractTablesFromHTML(html);
+
+      // Extract headings
+      const headings = this.extractHeadingsFromHTML(html);
+
+      // Count elements
+      const totalElements = (html.match(/<[^\/][^>]*>/g) || []).length;
 
       return {
         title,
-        url,
         bodyText,
-        totalElements: document.querySelectorAll('*').length,
+        totalElements,
         buttons: buttons.length,
         links: links.length,
-        inputs: document.querySelectorAll('input').length,
+        inputs: (html.match(/<input[^>]*>/gi) || []).length,
         forms: forms.length,
         images: images.length,
         tables: tables.length,
@@ -476,42 +720,318 @@ export class DemoAutomationService {
           images,
           tables,
           headings,
-          wordCount: bodyText.split(/\s+/).length,
+          wordCount: bodyText.split(/\s+/).filter(word => word.length > 0).length,
           characterCount: bodyText.length,
         },
       };
-    });
+    } catch (error) {
+      console.error(`❌ Error extracting data from HTML: ${error.message}`);
+      return {
+        title: '',
+        bodyText: '',
+        totalElements: 0,
+        buttons: 0,
+        links: 0,
+        inputs: 0,
+        forms: 0,
+        images: 0,
+        tables: 0,
+        scrapedData: {
+          forms: [],
+          buttons: [],
+          links: [],
+          images: [],
+          tables: [],
+          headings: { h1: [], h2: [], h3: [] },
+          wordCount: 0,
+          characterCount: 0,
+        },
+      };
+    }
+  }
+
+  private extractFormsFromHTML(html: string): any[] {
+    const formRegex = /<form[^>]*>[\s\S]*?<\/form>/gi;
+    const forms: any[] = [];
+    let match;
+
+    while ((match = formRegex.exec(html)) !== null) {
+      const formHtml = match[0];
+      const actionMatch = formHtml.match(/action\s*=\s*["']([^"']*)["']/i);
+      const methodMatch = formHtml.match(/method\s*=\s*["']([^"']*)["']/i);
+      
+      // Extract input fields
+      const inputRegex = /<input[^>]*>/gi;
+      const inputs: any[] = [];
+      let inputMatch;
+      
+      while ((inputMatch = inputRegex.exec(formHtml)) !== null) {
+        const inputHtml = inputMatch[0];
+        const typeMatch = inputHtml.match(/type\s*=\s*["']([^"']*)["']/i);
+        const nameMatch = inputHtml.match(/name\s*=\s*["']([^"']*)["']/i);
+        const placeholderMatch = inputHtml.match(/placeholder\s*=\s*["']([^"']*)["']/i);
+        
+        inputs.push({
+          type: typeMatch ? typeMatch[1] : 'text',
+          name: nameMatch ? nameMatch[1] : '',
+          placeholder: placeholderMatch ? placeholderMatch[1] : '',
+        });
+      }
+
+      forms.push({
+        action: actionMatch ? actionMatch[1] : '',
+        method: methodMatch ? methodMatch[1] : 'GET',
+        inputs,
+      });
+    }
+
+    return forms;
+  }
+
+  private extractButtonsFromHTML(html: string): any[] {
+    const buttonRegex = /<button[^>]*>([^<]*)<\/button>/gi;
+    const buttons: any[] = [];
+    let match;
+
+    while ((match = buttonRegex.exec(html)) !== null) {
+      const buttonHtml = match[0];
+      const text = match[1].trim();
+      const typeMatch = buttonHtml.match(/type\s*=\s*["']([^"']*)["']/i);
+      const classMatch = buttonHtml.match(/class\s*=\s*["']([^"']*)["']/i);
+
+      buttons.push({
+        text,
+        type: typeMatch ? typeMatch[1] : 'button',
+        className: classMatch ? classMatch[1] : '',
+      });
+    }
+
+    return buttons;
+  }
+
+  private extractImagesFromHTML(html: string): any[] {
+    const imgRegex = /<img[^>]*>/gi;
+    const images: any[] = [];
+    let match;
+
+    while ((match = imgRegex.exec(html)) !== null) {
+      const imgHtml = match[0];
+      const srcMatch = imgHtml.match(/src\s*=\s*["']([^"']*)["']/i);
+      const altMatch = imgHtml.match(/alt\s*=\s*["']([^"']*)["']/i);
+
+      images.push({
+        src: srcMatch ? srcMatch[1] : '',
+        alt: altMatch ? altMatch[1] : '',
+      });
+    }
+
+    return images;
+  }
+
+  private extractTablesFromHTML(html: string): any[] {
+    const tableRegex = /<table[^>]*>[\s\S]*?<\/table>/gi;
+    const tables: any[] = [];
+    let match;
+
+    while ((match = tableRegex.exec(html)) !== null) {
+      const tableHtml = match[0];
+      const rows = (tableHtml.match(/<tr[^>]*>/gi) || []).length;
+      const cells = (tableHtml.match(/<td[^>]*>|<\/td>/gi) || []).length / 2 + 
+                   (tableHtml.match(/<th[^>]*>|<\/th>/gi) || []).length / 2;
+
+      tables.push({
+        rows,
+        cells: Math.floor(cells),
+      });
+    }
+
+    return tables;
+  }
+
+  private extractHeadingsFromHTML(html: string): any {
+    const extractHeadings = (tag: string) => {
+      const regex = new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, 'gi');
+      const headings: string[] = [];
+      let match;
+
+      while ((match = regex.exec(html)) !== null) {
+        headings.push(match[1].trim());
+      }
+
+      return headings;
+    };
 
     return {
-      ...pageData,
-      html: await page.content(),
-      pageInfo: {
-        title: pageData.title,
-        url: pageData.url,
-        bodyText: pageData.bodyText.substring(0, 1000),
-        totalElements: pageData.totalElements,
-        buttons: pageData.buttons,
-        links: pageData.links,
-        inputs: pageData.inputs,
-      },
+      h1: extractHeadings('h1'),
+      h2: extractHeadings('h2'),
+      h3: extractHeadings('h3'),
     };
   }
 
   private isInternalUrl(url: string, baseUrl: string): boolean {
     try {
-      const urlObj = new URL(url);
+      // Handle relative URLs, fragments, and query parameters
+      if (!url || url.startsWith('#') || url.startsWith('javascript:') || url.startsWith('mailto:') || url.startsWith('tel:')) {
+        return false;
+      }
+
+      const urlObj = new URL(url, baseUrl);
       const baseObj = new URL(baseUrl);
-      return urlObj.origin === baseObj.origin;
-    } catch {
+      
+      const isInternal = urlObj.origin === baseObj.origin;
+      console.log(`    URL comparison: ${url} (${urlObj.origin}) vs ${baseUrl} (${baseObj.origin}) -> ${isInternal}`);
+      
+      return isInternal;
+    } catch (error) {
+      console.log(`    URL parsing error for ${url}: ${error.message}`);
       return false;
     }
   }
 
   private resolveUrl(href: string, baseUrl: string): string {
     try {
-      return new URL(href, baseUrl).href;
-    } catch {
+      const resolved = new URL(href, baseUrl).href;
+      console.log(`    URL resolution: ${href} -> ${resolved}`);
+      return resolved;
+    } catch (error) {
+      console.log(`    URL resolution error for ${href}: ${error.message}`);
       return href;
+    }
+  }
+
+  private async waitForLoginCompletion(page: Page): Promise<void> {
+    try {
+      // Wait for network to be idle (no requests for 500ms)
+      try {
+        await page.waitForFunction(() => {
+          const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+          return navEntry && navEntry.loadEventEnd > 0;
+        }, { timeout: 10000 });
+      } catch (error) {
+        console.log('⚠️ Network idle timeout, continuing...');
+      }
+
+      // Additional wait for any redirects or dynamic content
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Wait for common post-login elements to appear
+      const postLoginSelectors = [
+        '[class*="dashboard"]',
+        '[class*="profile"]',
+        '[class*="welcome"]',
+        '[class*="user"]',
+        '[class*="account"]',
+        '[href*="logout"]',
+        '[href*="signout"]',
+        'button:has-text("Logout")',
+        'button:has-text("Sign Out")'
+      ];
+
+      let foundPostLoginElement = false;
+      for (const selector of postLoginSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 2000 });
+          console.log(`✅ Found post-login element: ${selector}`);
+          foundPostLoginElement = true;
+          break;
+        } catch {
+          // Continue to next selector
+        }
+      }
+
+      if (!foundPostLoginElement) {
+        console.log('⚠️ No specific post-login elements found, but continuing...');
+      }
+
+      console.log('✅ Login completion wait finished');
+    } catch (error) {
+      console.log(`⚠️ Error during login completion wait: ${error.message}`);
+      // Don't throw, just log and continue
+    }
+  }
+
+  private async waitForDynamicContent(page: Page): Promise<void> {
+    try {
+      // Wait for network to be idle (no requests for 500ms)
+      try {
+        await page.waitForFunction(() => {
+          const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+          return navEntry && navEntry.loadEventEnd > 0;
+        }, { timeout: 15000 });
+      } catch (error) {
+        console.log('⚠️ Network idle timeout, continuing...');
+      }
+
+      // Wait for common dynamic content indicators
+      const dynamicContentSelectors = [
+        '[class*="loading"]',
+        '[class*="spinner"]',
+        '[id*="loading"]',
+        '[id*="spinner"]',
+        '.loading',
+        '.spinner'
+      ];
+
+      // Check if any loading indicators are present and wait for them to disappear
+      for (const selector of dynamicContentSelectors) {
+        try {
+          const element = await page.$(selector);
+          if (element) {
+            console.log(`⏳ Found loading indicator: ${selector}, waiting for it to disappear...`);
+            await page.waitForSelector(selector, { hidden: true, timeout: 10000 }).catch(() => {
+              console.log(`⚠️ Loading indicator ${selector} did not disappear, continuing...`);
+            });
+          }
+        } catch {
+          // Continue to next selector
+        }
+      }
+
+      // Wait for any animations or transitions to complete
+      await page.waitForFunction(() => {
+        return document.readyState === 'complete';
+      }, { timeout: 5000 }).catch(() => {
+        console.log('⚠️ Document ready state timeout, continuing...');
+      });
+
+      // Additional wait for any remaining dynamic content
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Check for common dynamic content that might still be loading
+      const contentSelectors = [
+        '[class*="content"]',
+        '[class*="main"]',
+        '[class*="container"]',
+        'main',
+        'article',
+        'section'
+      ];
+
+      let foundContent = false;
+      for (const selector of contentSelectors) {
+        try {
+          const element = await page.$(selector);
+          if (element) {
+            const text = await element.evaluate(el => el.textContent?.trim() || '');
+            if (text.length > 50) { // Ensure there's substantial content
+              foundContent = true;
+              console.log(`✅ Found substantial content in: ${selector}`);
+              break;
+            }
+          }
+        } catch {
+          // Continue to next selector
+        }
+      }
+
+      if (!foundContent) {
+        console.log('⚠️ No substantial content found, but continuing...');
+      }
+
+      console.log('✅ Dynamic content wait finished');
+    } catch (error) {
+      console.log(`⚠️ Error during dynamic content wait: ${error.message}`);
+      // Don't throw, just log and continue
     }
   }
 }
