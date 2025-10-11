@@ -801,7 +801,7 @@ export class DemoAutomationService {
           pageInfo: pageData.pageInfo,
         });
 
-        // Extract links from the scraped HTML instead of live DOM queries
+        // Extract links from the cleaned HTML instead of live DOM queries
         const links = this.extractLinksFromHTML(pageData.html, currentUrl);
         
         console.log(`🔍 Found ${links.length} total links in HTML from ${currentUrl}`);
@@ -904,15 +904,35 @@ export class DemoAutomationService {
     await new Promise(resolve => setTimeout(resolve, 500));
     
     // Get the fully rendered HTML content
-    const html = await page.content();
+    const rawHtml = await page.content();
     
-    // Also get the rendered HTML from the body to ensure we have the latest state
-    const bodyHtml = await page.evaluate(() => {
+    // Clean the HTML to remove CSS, JS, and other irrelevant elements
+    const cleanedHtml = this.cleanHtmlContent(rawHtml);
+    
+    // Also get the cleaned body HTML
+    const cleanedBodyHtml = await page.evaluate(() => {
+      // Remove unwanted elements from the DOM before getting innerHTML
+      const unwantedSelectors = [
+        'script', 'style', 'link[rel="stylesheet"]', 'noscript',
+        'meta[name="viewport"]', 'meta[name="generator"]',
+        'link[rel="icon"]', 'link[rel="shortcut icon"]',
+        'style', '[style]', // Remove inline styles
+        '.advertisement', '.ads', '.banner', '.sidebar',
+        '.footer', '.header', '.navigation', '.nav',
+        '[class*="ad-"]', '[id*="ad-"]', '[class*="banner"]',
+        '[class*="popup"]', '[class*="modal"]', '[class*="overlay"]'
+      ];
+      
+      unwantedSelectors.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(el => el.remove());
+      });
+      
       return document.body.innerHTML;
     });
     
-    // Extract data from HTML using regex patterns
-    const extractedData = this.extractDataFromHTML(html);
+    // Extract data from cleaned HTML using regex patterns
+    const extractedData = this.extractDataFromHTML(cleanedHtml);
     
     // Get basic page info
     const title = await page.title();
@@ -935,8 +955,9 @@ export class DemoAutomationService {
     return {
       title,
       url,
-      html,
-      bodyHtml,
+      html: cleanedHtml, // Use cleaned HTML instead of raw HTML
+      rawHtml, // Keep raw HTML for reference if needed
+      bodyHtml: cleanedBodyHtml, // Use cleaned body HTML
       pageMetadata,
       ...extractedData,
       pageInfo: {
@@ -949,20 +970,106 @@ export class DemoAutomationService {
         inputs: extractedData.inputs,
         readyState: pageMetadata.readyState,
         hasContent: pageMetadata.hasContent,
+        originalHtmlSize: rawHtml.length,
+        cleanedHtmlSize: cleanedHtml.length,
+        sizeReduction: `${((rawHtml.length - cleanedHtml.length) / rawHtml.length * 100).toFixed(1)}%`,
       },
     };
   }
 
+  /**
+   * Clean HTML content by removing CSS, JavaScript, and other irrelevant elements
+   */
+  private cleanHtmlContent(html: string): string {
+    try {
+      let cleanedHtml = html;
+      
+      console.log(`🧹 Cleaning HTML content (original length: ${html.length} chars)`);
+      
+      // Remove script tags and their content
+      cleanedHtml = cleanedHtml.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+      console.log(`  ✅ Removed script tags`);
+      
+      // Remove style tags and their content
+      cleanedHtml = cleanedHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+      console.log(`  ✅ Removed style tags`);
+      
+      // Remove link tags for stylesheets, icons, etc.
+      cleanedHtml = cleanedHtml.replace(/<link[^>]*rel=["']?(stylesheet|icon|shortcut icon|apple-touch-icon)["']?[^>]*>/gi, '');
+      console.log(`  ✅ Removed stylesheet and icon link tags`);
+      
+      // Remove meta tags (except essential ones)
+      cleanedHtml = cleanedHtml.replace(/<meta[^>]*name=["']?(viewport|generator|robots|author|keywords|description)["']?[^>]*>/gi, '');
+      console.log(`  ✅ Removed meta tags`);
+      
+      // Remove noscript tags
+      cleanedHtml = cleanedHtml.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '');
+      console.log(`  ✅ Removed noscript tags`);
+      
+      // Remove inline styles from all elements
+      cleanedHtml = cleanedHtml.replace(/\sstyle\s*=\s*["'][^"']*["']/gi, '');
+      console.log(`  ✅ Removed inline styles`);
+      
+      // Remove class attributes that contain styling-related keywords
+      cleanedHtml = cleanedHtml.replace(/\sclass\s*=\s*["'][^"']*(?:ad|banner|popup|modal|overlay|sidebar|footer|header|nav|ads|advertisement)[^"']*["']/gi, '');
+      console.log(`  ✅ Removed styling-related class attributes`);
+      
+      // Remove id attributes that contain styling-related keywords
+      cleanedHtml = cleanedHtml.replace(/\sid\s*=\s*["'][^"']*(?:ad|banner|popup|modal|overlay|sidebar|footer|header|nav|ads|advertisement)[^"']*["']/gi, '');
+      console.log(`  ✅ Removed styling-related id attributes`);
+      
+      // Remove comments
+      cleanedHtml = cleanedHtml.replace(/<!--[\s\S]*?-->/g, '');
+      console.log(`  ✅ Removed HTML comments`);
+      
+      // Remove empty elements that are likely styling-related
+      const emptyElements = ['div', 'span', 'p', 'section', 'article'];
+      emptyElements.forEach(tag => {
+        cleanedHtml = cleanedHtml.replace(new RegExp(`<${tag}[^>]*>\\s*</${tag}>`, 'gi'), '');
+      });
+      console.log(`  ✅ Removed empty elements`);
+      
+      // Clean up extra whitespace
+      cleanedHtml = cleanedHtml.replace(/\s+/g, ' ').trim();
+      console.log(`  ✅ Cleaned up whitespace`);
+      
+      // Remove elements with common advertisement/UI class patterns
+      const unwantedPatterns = [
+        /<[^>]*class[^>]*(?:ad|banner|popup|modal|overlay|sidebar|footer|header|nav|ads|advertisement)[^>]*>[\s\S]*?<\/[^>]*>/gi,
+        /<[^>]*id[^>]*(?:ad|banner|popup|modal|overlay|sidebar|footer|header|nav|ads|advertisement)[^>]*>[\s\S]*?<\/[^>]*>/gi,
+      ];
+      
+      unwantedPatterns.forEach(pattern => {
+        const matches = cleanedHtml.match(pattern);
+        if (matches) {
+          matches.forEach(match => {
+            cleanedHtml = cleanedHtml.replace(match, '');
+          });
+        }
+      });
+      console.log(`  ✅ Removed elements with unwanted patterns`);
+      
+      // Final cleanup
+      cleanedHtml = cleanedHtml.replace(/\s+/g, ' ').trim();
+      
+      console.log(`🧹 HTML cleaning complete (cleaned length: ${cleanedHtml.length} chars)`);
+      console.log(`  📊 Size reduction: ${((html.length - cleanedHtml.length) / html.length * 100).toFixed(1)}%`);
+      
+      return cleanedHtml;
+    } catch (error) {
+      console.error(`❌ Error cleaning HTML content: ${error.message}`);
+      return html; // Return original HTML if cleaning fails
+    }
+  }
+
   private extractDataFromHTML(html: string): any {
     try {
-      // Extract title
+      // Extract title (keep title tag since it's useful)
       const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
       const title = titleMatch ? titleMatch[1].trim() : '';
 
-      // Extract body text (remove HTML tags)
-      const bodyText = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-                           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-                           .replace(/<[^>]+>/g, ' ')
+      // Extract body text (remove HTML tags) - HTML is already cleaned
+      const bodyText = html.replace(/<[^>]+>/g, ' ')
                            .replace(/\s+/g, ' ')
                            .trim();
 
