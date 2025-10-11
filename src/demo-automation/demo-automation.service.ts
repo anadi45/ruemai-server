@@ -18,7 +18,7 @@ export class DemoAutomationService {
     try {
       // Launch browser with persistent context for session management
       browser = await puppeteer.launch({
-        headless: false, // Set to false for debugging
+        headless: false,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
 
@@ -26,30 +26,22 @@ export class DemoAutomationService {
       await page.setViewport({ width: 1920, height: 1080 });
 
       // Navigate to website and login
-      console.log(`Navigating to: ${websiteUrl}`);
       try {
         await page.goto(websiteUrl, {
-          waitUntil: 'domcontentloaded', // Changed from networkidle0 for faster loading
+          waitUntil: 'domcontentloaded',
           timeout: 30000,
         });
-        console.log(`Successfully loaded: ${websiteUrl}`);
       } catch (error) {
-        console.log(`Navigation failed for ${websiteUrl}:`, error.message);
         throw new Error(
           `Failed to navigate to ${websiteUrl}: ${error.message}`,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
       // Perform login
       const loginSuccess = await this.performLogin(page, credentials);
 
       if (!loginSuccess) {
         throw new Error('Login failed');
       }
-
-      // Wait for login to complete
-      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       // Start deep scraping with session persistence
       await this.deepScrapeWithSession(
@@ -148,7 +140,6 @@ export class DemoAutomationService {
         }
 
         if (!usernameField) {
-          console.log('No username field found');
           return false;
         }
 
@@ -173,14 +164,13 @@ export class DemoAutomationService {
         }
 
         if (!passwordField) {
-          console.log('No password field found');
           return false;
         }
 
         // Clear and fill credentials
-        await usernameField.click({ clickCount: 3 }); // Select all text
+        await usernameField.click({ clickCount: 3 });
         await usernameField.type(credentials.username);
-        await passwordField.click({ clickCount: 3 }); // Select all text
+        await passwordField.click({ clickCount: 3 });
         await passwordField.type(credentials.password);
 
         // Find and click login button with more selectors
@@ -215,7 +205,6 @@ export class DemoAutomationService {
         }
 
         if (!loginButton) {
-          console.log('No login button found');
           return false;
         }
 
@@ -229,9 +218,9 @@ export class DemoAutomationService {
         const passwordField = await loginForm.$('input[type="password"]');
 
         if (usernameField && passwordField) {
-          await usernameField.click({ clickCount: 3 }); // Select all text
+          await usernameField.click({ clickCount: 3 });
           await usernameField.type(credentials.username);
-          await passwordField.click({ clickCount: 3 }); // Select all text
+          await passwordField.click({ clickCount: 3 });
           await passwordField.type(credentials.password);
 
           const submitButton = await loginForm.$(
@@ -242,9 +231,6 @@ export class DemoAutomationService {
           }
         }
       }
-
-      // Wait for login to process
-      await new Promise((resolve) => setTimeout(resolve, 5000));
 
       // Check if login was successful with multiple indicators
       const currentUrl = page.url();
@@ -287,7 +273,6 @@ export class DemoAutomationService {
       );
 
       if (hasFailureIndicator) {
-        console.log('Login failure detected');
         return false;
       }
 
@@ -305,7 +290,6 @@ export class DemoAutomationService {
 
       return hasSuccessIndicator || isNotOnLoginPage;
     } catch (error) {
-      console.log('Login error:', error.message);
       return false;
     }
   }
@@ -367,12 +351,10 @@ export class DemoAutomationService {
           if (!visitedUrls.has(fullUrl)) {
             try {
               // Navigate to the link while maintaining session
-              console.log(`Navigating to link: ${fullUrl}`);
               await page.goto(fullUrl, {
-                waitUntil: 'domcontentloaded', // Changed from networkidle0 for faster loading
+                waitUntil: 'domcontentloaded',
                 timeout: 30000,
               });
-              console.log(`Successfully loaded link: ${fullUrl}`);
               await new Promise((resolve) => setTimeout(resolve, 2000));
 
               // Recursively scrape the new page
@@ -386,10 +368,6 @@ export class DemoAutomationService {
               );
             } catch (error) {
               // Continue with other links if this one fails
-              console.log(
-                `Failed to navigate to link ${fullUrl}:`,
-                error.message,
-              );
               continue;
             }
           }
