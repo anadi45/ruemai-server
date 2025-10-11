@@ -160,15 +160,225 @@ export class DemoAutomationService {
         }
       });
       
+      // Filter out non-HTML resources and unwanted file types
+      const filteredLinks = this.filterUsefulLinks(links, currentUrl);
+      
       console.log(`📊 HTML Link Extraction Results:`);
       console.log(`  - Found ${links.length} total links in HTML`);
       console.log(`  - Found ${hrefMatches.size} unique href attributes`);
+      console.log(`  - Filtered to ${filteredLinks.length} useful links`);
       
-      return links;
+      return filteredLinks;
     } catch (error) {
       console.error(`❌ Error extracting links from HTML: ${error.message}`);
       return [];
     }
+  }
+
+  /**
+   * Filter links to only include useful HTML pages and exclude resources like CSS, JS, images, etc.
+   */
+  private filterUsefulLinks(links: Array<{href: string, text: string}>, currentUrl: string): Array<{href: string, text: string}> {
+    const filteredLinks: Array<{href: string, text: string}> = [];
+    
+    // File extensions and patterns to exclude
+    const excludePatterns = [
+      // Static resource extensions
+      /\.(css|js|json|xml|txt|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|tar|gz)$/i,
+      /\.(jpg|jpeg|png|gif|svg|webp|ico|bmp|tiff|tif)$/i,
+      /\.(mp4|avi|mov|wmv|flv|webm|mkv|mp3|wav|ogg|flac|aac)$/i,
+      /\.(woff|woff2|ttf|otf|eot)$/i,
+      
+      // API endpoints and data sources
+      /\/api\//i,
+      /\/data\//i,
+      /\/assets\//i,
+      /\/static\//i,
+      /\/media\//i,
+      /\/uploads\//i,
+      /\/files\//i,
+      
+      // Common non-page paths
+      /\/admin\//i,
+      /\/login\//i,
+      /\/logout\//i,
+      /\/register\//i,
+      /\/signup\//i,
+      /\/signin\//i,
+      /\/auth\//i,
+      
+      // Query parameters that indicate non-HTML content
+      /\?.*format=(json|xml|csv|pdf)/i,
+      /\?.*download=true/i,
+      /\?.*action=(download|export|print)/i,
+    ];
+    
+    // Keywords in URLs that indicate non-HTML content
+    const excludeKeywords = [
+      'download',
+      'export',
+      'print',
+      'preview',
+      'thumbnail',
+      'embed',
+      'widget',
+      'iframe',
+      'popup',
+      'modal',
+      'ajax',
+      'xhr',
+      'api',
+      'service',
+      'endpoint',
+    ];
+    
+    let excludedCount = 0;
+    let excludedByExtension = 0;
+    let excludedByPattern = 0;
+    let excludedByKeyword = 0;
+    
+    for (const link of links) {
+      const href = link.href.toLowerCase();
+      let shouldExclude = false;
+      let exclusionReason = '';
+      
+      // Check file extensions
+      for (const pattern of excludePatterns) {
+        if (pattern.test(href)) {
+          shouldExclude = true;
+          exclusionReason = 'file extension';
+          excludedByExtension++;
+          break;
+        }
+      }
+      
+      // Check keywords in URL
+      if (!shouldExclude) {
+        for (const keyword of excludeKeywords) {
+          if (href.includes(keyword)) {
+            shouldExclude = true;
+            exclusionReason = 'keyword';
+            excludedByKeyword++;
+            break;
+          }
+        }
+      }
+      
+      // Additional checks for common non-HTML patterns
+      if (!shouldExclude) {
+        // Check for data URLs
+        if (href.startsWith('data:')) {
+          shouldExclude = true;
+          exclusionReason = 'data URL';
+        }
+        // Check for blob URLs
+        else if (href.startsWith('blob:')) {
+          shouldExclude = true;
+          exclusionReason = 'blob URL';
+        }
+        // Check for very short URLs (likely not pages)
+        else if (href.length < 10 && !href.includes('/')) {
+          shouldExclude = true;
+          exclusionReason = 'too short';
+        }
+      }
+      
+      if (shouldExclude) {
+        excludedCount++;
+        console.log(`  ❌ Excluded link (${exclusionReason}): ${link.href}`);
+      } else {
+        filteredLinks.push(link);
+        console.log(`  ✅ Included link: ${link.href}`);
+      }
+    }
+    
+    console.log(`📊 Link Filtering Summary:`);
+    console.log(`  - Total links: ${links.length}`);
+    console.log(`  - Excluded by extension: ${excludedByExtension}`);
+    console.log(`  - Excluded by keyword: ${excludedByKeyword}`);
+    console.log(`  - Total excluded: ${excludedCount}`);
+    console.log(`  - Useful links remaining: ${filteredLinks.length}`);
+    
+    return filteredLinks;
+  }
+
+  /**
+   * Calculate priority score for a URL (higher = more important)
+   */
+  private calculateUrlPriority(url: string, linkText: string): number {
+    const urlLower = url.toLowerCase();
+    const textLower = linkText.toLowerCase();
+    let priority = 1; // Base priority
+    
+    // High priority indicators
+    const highPriorityPatterns = [
+      /\/home/i,
+      /\/index/i,
+      /\/main/i,
+      /\/dashboard/i,
+      /\/products/i,
+      /\/services/i,
+      /\/about/i,
+      /\/contact/i,
+      /\/help/i,
+      /\/support/i,
+      /\/documentation/i,
+      /\/guide/i,
+      /\/tutorial/i,
+    ];
+    
+    const highPriorityKeywords = [
+      'home', 'main', 'index', 'dashboard', 'products', 'services',
+      'about', 'contact', 'help', 'support', 'documentation', 'guide',
+      'tutorial', 'overview', 'introduction', 'getting started'
+    ];
+    
+    // Check URL patterns
+    for (const pattern of highPriorityPatterns) {
+      if (pattern.test(urlLower)) {
+        priority += 3;
+        break;
+      }
+    }
+    
+    // Check link text keywords
+    for (const keyword of highPriorityKeywords) {
+      if (textLower.includes(keyword)) {
+        priority += 2;
+        break;
+      }
+    }
+    
+    // Penalize certain patterns
+    const lowPriorityPatterns = [
+      /\/tag\//i,
+      /\/category\//i,
+      /\/author\//i,
+      /\/date\//i,
+      /\/page\//i,
+      /\/search\//i,
+      /\/filter\//i,
+      /\?.*page=/i,
+      /\?.*sort=/i,
+    ];
+    
+    for (const pattern of lowPriorityPatterns) {
+      if (pattern.test(urlLower)) {
+        priority -= 1;
+      }
+    }
+    
+    // Ensure minimum priority of 1 if it's a valid page
+    return Math.max(1, priority);
+  }
+
+  /**
+   * Insert URL into queue based on priority (higher priority URLs first)
+   */
+  private insertUrlByPriority(urlQueue: string[], url: string, priority: number): void {
+    // For simplicity, we'll just add to the end for now
+    // In a more sophisticated implementation, you could maintain a priority queue
+    urlQueue.push(url);
   }
 
   private async restoreSessionCookies(page: Page, baseUrl: string): Promise<void> {
@@ -494,6 +704,9 @@ export class DemoAutomationService {
   ): Promise<void> {
     const urlQueue: string[] = [baseUrl];
     const maxPages = 50; // Limit to prevent infinite loops
+    const maxDepth = 3; // Limit crawling depth
+    const urlDepthMap = new Map<string, number>(); // Track depth of each URL
+    urlDepthMap.set(baseUrl, 0);
     let processedPages = 0;
 
     while (urlQueue.length > 0 && processedPages < maxPages) {
@@ -605,6 +818,9 @@ export class DemoAutomationService {
         let newLinks = 0;
         let duplicateLinks = 0;
 
+        // Get current depth for this page
+        const currentDepth = urlDepthMap.get(currentUrl) || 0;
+        
         // Add new internal links to the queue
         for (const link of links) {
           if (link.href) {
@@ -616,14 +832,31 @@ export class DemoAutomationService {
             console.log(`  - Internal: ${this.isInternalUrl(fullUrl, baseUrl)}`);
             console.log(`  - Already visited: ${visitedUrls.has(fullUrl)}`);
             console.log(`  - In queue: ${urlQueue.includes(fullUrl)}`);
+            console.log(`  - Current depth: ${currentDepth}`);
             
             if (this.isInternalUrl(fullUrl, baseUrl)) {
               internalLinks++;
               
+              // Check depth limit
+              const newDepth = currentDepth + 1;
+              if (newDepth > maxDepth) {
+                console.log(`  ❌ Skipped (depth limit ${maxDepth}): ${fullUrl}`);
+                continue;
+              }
+              
               if (!visitedUrls.has(fullUrl) && !urlQueue.includes(fullUrl)) {
-                urlQueue.push(fullUrl);
-                newLinks++;
-                console.log(`  ✅ Added to queue: ${fullUrl}`);
+                // Prioritize URLs based on importance
+                const priority = this.calculateUrlPriority(fullUrl, link.text);
+                
+                if (priority > 0) {
+                  // Insert at appropriate position based on priority
+                  this.insertUrlByPriority(urlQueue, fullUrl, priority);
+                  urlDepthMap.set(fullUrl, newDepth);
+                  newLinks++;
+                  console.log(`  ✅ Added to queue (depth ${newDepth}, priority ${priority}): ${fullUrl}`);
+                } else {
+                  console.log(`  ❌ Skipped (low priority): ${fullUrl}`);
+                }
               } else {
                 duplicateLinks++;
                 console.log(`  ❌ Skipped (duplicate): ${fullUrl}`);
@@ -926,13 +1159,68 @@ export class DemoAutomationService {
         return false;
       }
 
+      // First check if it's a valid URL and internal
       const urlObj = new URL(url, baseUrl);
       const baseObj = new URL(baseUrl);
       
       const isInternal = urlObj.origin === baseObj.origin;
-      console.log(`    URL comparison: ${url} (${urlObj.origin}) vs ${baseUrl} (${baseObj.origin}) -> ${isInternal}`);
       
-      return isInternal;
+      if (!isInternal) {
+        console.log(`    URL comparison: ${url} (${urlObj.origin}) vs ${baseUrl} (${baseObj.origin}) -> external`);
+        return false;
+      }
+
+      // Additional filtering for internal URLs - check if it's a useful page
+      const href = urlObj.href.toLowerCase();
+      
+      // File extensions and patterns to exclude (same as in filterUsefulLinks)
+      const excludePatterns = [
+        /\.(css|js|json|xml|txt|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|tar|gz)$/i,
+        /\.(jpg|jpeg|png|gif|svg|webp|ico|bmp|tiff|tif)$/i,
+        /\.(mp4|avi|mov|wmv|flv|webm|mkv|mp3|wav|ogg|flac|aac)$/i,
+        /\.(woff|woff2|ttf|otf|eot)$/i,
+        /\/api\//i,
+        /\/data\//i,
+        /\/assets\//i,
+        /\/static\//i,
+        /\/media\//i,
+        /\/uploads\//i,
+        /\/files\//i,
+        /\?.*format=(json|xml|csv|pdf)/i,
+        /\?.*download=true/i,
+        /\?.*action=(download|export|print)/i,
+      ];
+      
+      const excludeKeywords = [
+        'download', 'export', 'print', 'preview', 'thumbnail', 'embed',
+        'widget', 'iframe', 'popup', 'modal', 'ajax', 'xhr', 'api',
+        'service', 'endpoint'
+      ];
+      
+      // Check file extensions
+      for (const pattern of excludePatterns) {
+        if (pattern.test(href)) {
+          console.log(`    URL excluded by pattern: ${url}`);
+          return false;
+        }
+      }
+      
+      // Check keywords
+      for (const keyword of excludeKeywords) {
+        if (href.includes(keyword)) {
+          console.log(`    URL excluded by keyword: ${url}`);
+          return false;
+        }
+      }
+      
+      // Additional checks
+      if (href.startsWith('data:') || href.startsWith('blob:')) {
+        console.log(`    URL excluded (data/blob): ${url}`);
+        return false;
+      }
+      
+      console.log(`    URL approved: ${url}`);
+      return true;
     } catch (error) {
       console.log(`    URL parsing error for ${url}: ${error.message}`);
       return false;
