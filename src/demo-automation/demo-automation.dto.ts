@@ -1,10 +1,4 @@
-import {
-  IsString,
-  IsUrl,
-  IsOptional,
-  IsObject,
-  IsArray,
-} from 'class-validator';
+import { IsString, IsUrl, IsOptional, IsObject } from 'class-validator';
 
 export class CreateDemoResponseDto {
   @IsString()
@@ -41,36 +35,15 @@ export class CreateDemoResponseDto {
 
   @IsOptional()
   @IsObject()
-  extractedFeatures?: {
-    features: Array<{
-      name: string;
-      description: string;
-      actions: string[];
-      selector?: string;
-      category: string;
-      importance: 'high' | 'medium' | 'low';
-    }>;
-    navigation: {
-      menus: string[];
-      buttons: string[];
-      forms: string[];
-    };
-    pageStructure: {
-      sections: string[];
-      interactiveElements: number;
-    };
-  };
-
-  @IsOptional()
-  @IsObject()
-  crawlData?: {
+  scrapedData?: {
     success: boolean;
     totalPages: number;
     crawlTime: number;
-    dumpPath: string;
     pages: Array<{
       url: string;
       title: string;
+      html: string;
+      scrapedData: any;
       timestamp: string;
       pageInfo: {
         title: string;

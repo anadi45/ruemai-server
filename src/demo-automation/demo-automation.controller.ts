@@ -12,18 +12,13 @@ export class DemoAutomationController {
     body: {
       websiteUrl: string;
       credentials: { username: string; password: string };
-      maxPages?: number;
     },
   ): Promise<CreateDemoResponseDto> {
     try {
       const result = await this.demoAutomationService.loginToWebsite(
         body.websiteUrl,
         body.credentials,
-        body.maxPages || 50,
       );
-
-      if (result.crawlData) {
-      }
 
       return result;
     } catch (error) {
