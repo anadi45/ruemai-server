@@ -44,9 +44,22 @@ export class DemoAutomationService {
       // Navigate to website and login
       try {
         await page.goto(websiteUrl, {
-          waitUntil: 'domcontentloaded',
+          waitUntil: 'networkidle2', // Wait until network is idle for dynamic content
           timeout: 30000,
         });
+        
+        // Wait additional time for any remaining dynamic content to load
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Wait for any specific elements that might indicate page is fully loaded
+        try {
+          await page.waitForFunction(() => {
+            return document.readyState === 'complete';
+          }, { timeout: 5000 });
+        } catch (error) {
+          // If specific wait fails, continue anyway
+          console.log('Page ready state wait timeout, continuing...');
+        }
       } catch (error) {
         throw new Error(
           `Failed to navigate to ${websiteUrl}: ${error.message}`,
@@ -642,8 +655,28 @@ export class DemoAutomationService {
   }
 
   private async extractPageData(page: Page): Promise<any> {
-    // Get the raw HTML content
+    // Wait for any remaining dynamic content before extracting
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Scroll to ensure all lazy-loaded content is loaded
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Scroll back to top
+    await page.evaluate(() => {
+      window.scrollTo(0, 0);
+    });
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Get the fully rendered HTML content
     const html = await page.content();
+    
+    // Also get the rendered HTML from the body to ensure we have the latest state
+    const bodyHtml = await page.evaluate(() => {
+      return document.body.innerHTML;
+    });
     
     // Extract data from HTML using regex patterns
     const extractedData = this.extractDataFromHTML(html);
@@ -652,10 +685,26 @@ export class DemoAutomationService {
     const title = await page.title();
     const url = page.url();
     
+    // Get additional page metadata that might be dynamically set
+    const pageMetadata = await page.evaluate(() => {
+      return {
+        documentTitle: document.title,
+        url: window.location.href,
+        readyState: document.readyState,
+        hasContent: document.body?.textContent?.trim().length > 0,
+        bodyClasses: document.body?.className || '',
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth,
+        scrollHeight: document.body?.scrollHeight || 0,
+      };
+    });
+    
     return {
       title,
       url,
       html,
+      bodyHtml,
+      pageMetadata,
       ...extractedData,
       pageInfo: {
         title,
@@ -665,6 +714,8 @@ export class DemoAutomationService {
         buttons: extractedData.buttons,
         links: extractedData.links,
         inputs: extractedData.inputs,
+        readyState: pageMetadata.readyState,
+        hasContent: pageMetadata.hasContent,
       },
     };
   }
@@ -952,24 +1003,40 @@ export class DemoAutomationService {
 
   private async waitForDynamicContent(page: Page): Promise<void> {
     try {
+      console.log('⏳ Starting comprehensive dynamic content wait...');
+      
       // Wait for network to be idle (no requests for 500ms)
       try {
         await page.waitForFunction(() => {
           const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
           return navEntry && navEntry.loadEventEnd > 0;
         }, { timeout: 15000 });
+        console.log('✅ Navigation timing completed');
       } catch (error) {
         console.log('⚠️ Network idle timeout, continuing...');
       }
 
-      // Wait for common dynamic content indicators
+      // Wait for DOM to be fully ready
+      try {
+        await page.waitForFunction(() => {
+          return document.readyState === 'complete';
+        }, { timeout: 10000 });
+        console.log('✅ DOM ready state complete');
+      } catch (error) {
+        console.log('⚠️ DOM ready state timeout, continuing...');
+      }
+
+      // Wait for common dynamic content indicators to disappear
       const dynamicContentSelectors = [
         '[class*="loading"]',
         '[class*="spinner"]',
         '[id*="loading"]',
         '[id*="spinner"]',
         '.loading',
-        '.spinner'
+        '.spinner',
+        '[class*="skeleton"]',
+        '[data-testid*="loading"]',
+        '[aria-label*="loading"]'
       ];
 
       // Check if any loading indicators are present and wait for them to disappear
@@ -978,7 +1045,7 @@ export class DemoAutomationService {
           const element = await page.$(selector);
           if (element) {
             console.log(`⏳ Found loading indicator: ${selector}, waiting for it to disappear...`);
-            await page.waitForSelector(selector, { hidden: true, timeout: 10000 }).catch(() => {
+            await page.waitForSelector(selector, { hidden: true, timeout: 8000 }).catch(() => {
               console.log(`⚠️ Loading indicator ${selector} did not disappear, continuing...`);
             });
           }
@@ -987,12 +1054,39 @@ export class DemoAutomationService {
         }
       }
 
-      // Wait for any animations or transitions to complete
-      await page.waitForFunction(() => {
-        return document.readyState === 'complete';
-      }, { timeout: 5000 }).catch(() => {
-        console.log('⚠️ Document ready state timeout, continuing...');
-      });
+      // Wait for any lazy-loaded images to load
+      try {
+        await page.evaluate(async () => {
+          const images = Array.from(document.querySelectorAll('img'));
+          const imagePromises = images.map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise(resolve => {
+              img.onload = resolve;
+              img.onerror = resolve;
+              setTimeout(resolve, 3000); // Max wait 3 seconds per image
+            });
+          });
+          await Promise.all(imagePromises);
+        });
+        console.log('✅ Images loaded');
+      } catch (error) {
+        console.log('⚠️ Image loading timeout, continuing...');
+      }
+
+      // Wait for any pending fetch requests or AJAX calls
+      try {
+        await page.waitForFunction(() => {
+          // Check if there are any pending XMLHttpRequests
+          const hasPendingXHR = (window as any).XMLHttpRequest && 
+            (window as any).XMLHttpRequest.prototype._activeXHRs?.length > 0;
+          
+          // Check if fetch is still in progress (this is harder to detect)
+          return !hasPendingXHR;
+        }, { timeout: 5000 });
+        console.log('✅ Pending requests completed');
+      } catch (error) {
+        console.log('⚠️ Pending requests timeout, continuing...');
+      }
 
       // Additional wait for any remaining dynamic content
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1004,19 +1098,27 @@ export class DemoAutomationService {
         '[class*="container"]',
         'main',
         'article',
-        'section'
+        'section',
+        '[role="main"]',
+        '.main-content',
+        '.page-content'
       ];
 
       let foundContent = false;
+      let maxContentLength = 0;
+      let bestSelector = '';
+
       for (const selector of contentSelectors) {
         try {
           const element = await page.$(selector);
           if (element) {
             const text = await element.evaluate(el => el.textContent?.trim() || '');
+            if (text.length > maxContentLength) {
+              maxContentLength = text.length;
+              bestSelector = selector;
+            }
             if (text.length > 50) { // Ensure there's substantial content
               foundContent = true;
-              console.log(`✅ Found substantial content in: ${selector}`);
-              break;
             }
           }
         } catch {
@@ -1024,8 +1126,29 @@ export class DemoAutomationService {
         }
       }
 
-      if (!foundContent) {
+      if (foundContent) {
+        console.log(`✅ Found substantial content (${maxContentLength} chars) in: ${bestSelector}`);
+      } else {
         console.log('⚠️ No substantial content found, but continuing...');
+      }
+
+      // Final check: ensure the page has some visible content
+      const hasVisibleContent = await page.evaluate(() => {
+        const body = document.body;
+        if (!body) return false;
+        
+        const textContent = body.textContent?.trim() || '';
+        const hasText = textContent.length > 20;
+        
+        const hasElements = body.children.length > 0;
+        
+        return hasText || hasElements;
+      });
+
+      if (!hasVisibleContent) {
+        console.log('⚠️ Page appears to have no visible content, but continuing...');
+      } else {
+        console.log('✅ Page has visible content');
       }
 
       console.log('✅ Dynamic content wait finished');
