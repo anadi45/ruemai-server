@@ -48,7 +48,7 @@ export class DemoAutomationService {
         console.log('✅ Login successful');
       }
 
-      // Start recursive scraping - follow your exact logic
+      // Start recursive scraping with queue-based approach
       await this.recursiveScrapeAllLinks(
         page,
         websiteUrl,
@@ -325,71 +325,79 @@ export class DemoAutomationService {
     visitedUrls: Set<string>,
     scrapedPages: any[],
   ): Promise<void> {
-    const currentUrl = page.url();
+    const urlQueue: string[] = [baseUrl];
+    const maxPages = 50; // Limit to prevent infinite loops
+    let processedPages = 0;
 
-    // Skip if already visited
-    if (visitedUrls.has(currentUrl)) {
-      return;
-    }
+    while (urlQueue.length > 0 && processedPages < maxPages) {
+      const currentUrl = urlQueue.shift()!;
 
-    // Check if URL is internal
-    if (!this.isInternalUrl(currentUrl, baseUrl)) {
-      return;
-    }
+      // Skip if already visited
+      if (visitedUrls.has(currentUrl)) {
+        continue;
+      }
 
-    visitedUrls.add(currentUrl);
+      // Check if URL is internal
+      if (!this.isInternalUrl(currentUrl, baseUrl)) {
+        continue;
+      }
 
-    try {
-      // Extract page data
-      const pageData = await this.extractPageData(page);
-      scrapedPages.push({
-        url: currentUrl,
-        title: pageData.title,
-        html: pageData.html,
-        scrapedData: pageData.scrapedData,
-        timestamp: new Date().toISOString(),
-        pageInfo: pageData.pageInfo,
-      });
+      visitedUrls.add(currentUrl);
+      processedPages++;
 
-      // Get all href links from the page
-      const links = await page.evaluate(() => {
-        const linkElements = document.querySelectorAll('a[href]');
-        return Array.from(linkElements).map((link) => ({
-          href: link.getAttribute('href'),
-          text: link.textContent?.trim(),
-        }));
-      });
+      try {
+        console.log(`📄 Scraping page ${processedPages}/${maxPages}: ${currentUrl}`);
+        
+        // Navigate to the current URL
+        await page.goto(currentUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000,
+        });
 
-      // Process each link recursively
-      for (const link of links) {
-        if (link.href && this.isInternalUrl(link.href, baseUrl)) {
-          const fullUrl = this.resolveUrl(link.href, baseUrl);
+        // Wait a bit for dynamic content to load
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
-          if (!visitedUrls.has(fullUrl)) {
-            try {
-              // Navigate to the link while maintaining session
-              await page.goto(fullUrl, {
-                waitUntil: 'domcontentloaded',
-                timeout: 30000,
-              });
+        // Extract page data
+        const pageData = await this.extractPageData(page);
+        scrapedPages.push({
+          url: currentUrl,
+          title: pageData.title,
+          html: pageData.html,
+          scrapedData: pageData.scrapedData,
+          timestamp: new Date().toISOString(),
+          pageInfo: pageData.pageInfo,
+        });
 
-              // Recursively scrape the new page
-              await this.recursiveScrapeAllLinks(
-                page,
-                baseUrl,
-                visitedUrls,
-                scrapedPages,
-              );
-            } catch (error) {
-              // Continue with other links if this one fails
-              continue;
+        // Get all href links from the page
+        const links = await page.evaluate(() => {
+          const linkElements = document.querySelectorAll('a[href]');
+          return Array.from(linkElements).map((link) => ({
+            href: link.getAttribute('href'),
+            text: link.textContent?.trim(),
+          }));
+        });
+
+        // Add new internal links to the queue
+        for (const link of links) {
+          if (link.href) {
+            const fullUrl = this.resolveUrl(link.href, baseUrl);
+            
+            if (this.isInternalUrl(fullUrl, baseUrl) && !visitedUrls.has(fullUrl) && !urlQueue.includes(fullUrl)) {
+              urlQueue.push(fullUrl);
             }
           }
         }
+
+        console.log(`✅ Successfully scraped: ${currentUrl} (found ${links.length} links, queue size: ${urlQueue.length})`);
+
+      } catch (error) {
+        console.error(`❌ Failed to scrape ${currentUrl}:`, error.message);
+        // Continue with other URLs if this one fails
+        continue;
       }
-    } catch (error) {
-      // Continue scraping other pages if this one fails
     }
+
+    console.log(`🎉 Scraping completed! Processed ${processedPages} pages, found ${scrapedPages.length} successfully scraped pages`);
   }
 
   private async extractPageData(page: Page): Promise<any> {
