@@ -77,11 +77,6 @@ export class DocumentParserService {
       const result = await this.llmService.extractProductsFromText(text);
       return result.products;
     } catch (error) {
-      console.warn(
-        'LLM extraction failed, falling back to pattern matching:',
-        error.message,
-      );
-
       // Fallback to original pattern matching
       return this.fallbackExtraction(text);
     }

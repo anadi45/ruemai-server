@@ -24,13 +24,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message = exception.message;
     }
 
-    console.error(`Exception caught:`, {
-      message: exception instanceof Error ? exception.message : 'Unknown error',
-      stack: exception instanceof Error ? exception.stack : undefined,
-      url: request.url,
-      method: request.method,
-      timestamp: new Date().toISOString(),
-    });
 
     response.status(status).json({
       statusCode: status,

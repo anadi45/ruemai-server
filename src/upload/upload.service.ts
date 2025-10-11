@@ -71,10 +71,6 @@ export class UploadService {
       try {
         return await this.processUploadedFile(file);
       } catch (error) {
-        console.warn(
-          `Failed to process file ${file.originalname}:`,
-          error.message,
-        );
         return null;
       }
     });

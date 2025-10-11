@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
 
@@ -26,7 +26,6 @@ export interface FeatureTree {
 
 @Injectable()
 export class AiService {
-  private readonly logger = new Logger(AiService.name);
   private llm: ChatOpenAI;
 
   constructor(private configService: ConfigService) {
@@ -38,8 +37,6 @@ export class AiService {
   }
 
   async extractFeatures(html: string, pageInfo: any): Promise<FeatureTree> {
-    this.logger.log('🤖 Starting AI feature extraction...');
-
     try {
       const prompt = this.buildFeatureExtractionPrompt(html, pageInfo);
       const response = await this.llm.invoke(prompt);
@@ -48,13 +45,8 @@ export class AiService {
         response.content as string,
       );
 
-      this.logger.log(
-        `✅ Extracted ${extractedFeatures.features.length} features`,
-      );
-
       return extractedFeatures;
     } catch (error) {
-      this.logger.error(`❌ Feature extraction failed: ${error.message}`);
       throw new Error(`AI feature extraction failed: ${error.message}`);
     }
   }
@@ -132,8 +124,6 @@ Return only valid JSON, no additional text.
         },
       };
     } catch (error) {
-      this.logger.error(`Failed to parse AI response: ${error.message}`);
-
       // Return fallback structure
       return {
         features: [
@@ -178,9 +168,6 @@ Provide a 1-2 sentence description that explains what this feature does and why 
       const response = await this.llm.invoke(prompt);
       return response.content as string;
     } catch (error) {
-      this.logger.error(
-        `Failed to generate feature description: ${error.message}`,
-      );
       return feature.description;
     }
   }

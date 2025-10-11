@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { chromium, Browser, Page } from 'playwright';
 
 export interface LoginResult {
@@ -40,14 +40,10 @@ export interface CrawlResult {
 
 @Injectable()
 export class BrowserService {
-  private readonly logger = new Logger(BrowserService.name);
-
   async loginAndExtractPage(
     websiteUrl: string,
     credentials: { username: string; password: string },
   ): Promise<LoginResult> {
-    this.logger.log(`🌐 Starting browser automation for: ${websiteUrl}`);
-
     let browser: Browser | null = null;
 
     try {
@@ -74,8 +70,6 @@ export class BrowserService {
       const pageInfo = await this.extractPageInfo(page);
       const html = await page.content();
 
-      this.logger.log(`✅ Browser automation completed successfully`);
-
       return {
         success: loginSuccess,
         finalUrl: page.url(),
@@ -83,7 +77,6 @@ export class BrowserService {
         html,
       };
     } catch (error) {
-      this.logger.error(`❌ Browser automation failed: ${error.message}`);
       throw new Error(`Browser automation failed: ${error.message}`);
     } finally {
       if (browser) {
@@ -96,8 +89,6 @@ export class BrowserService {
     page: Page,
     credentials: { username: string; password: string },
   ): Promise<boolean> {
-    this.logger.log('🔐 Attempting to find and fill login form...');
-
     try {
       // Common selectors for username/email fields
       const usernameSelectors = [
@@ -127,7 +118,6 @@ export class BrowserService {
         try {
           usernameField = await page.$(selector);
           if (usernameField) {
-            this.logger.log(`Found username field: ${selector}`);
             break;
           }
         } catch (e) {
@@ -141,7 +131,6 @@ export class BrowserService {
         try {
           passwordField = await page.$(selector);
           if (passwordField) {
-            this.logger.log(`Found password field: ${selector}`);
             break;
           }
         } catch (e) {
@@ -173,7 +162,6 @@ export class BrowserService {
             if (submitButton) {
               await submitButton.click();
               submitted = true;
-              this.logger.log(`Clicked submit button: ${selector}`);
               break;
             }
           } catch (e) {
@@ -191,25 +179,17 @@ export class BrowserService {
               }),
               page.waitForTimeout(5000),
             ]);
-            this.logger.log('✅ Login form submitted successfully');
             return true;
           } catch (error) {
-            this.logger.log(
-              '⚠️ No navigation detected, but form was submitted',
-            );
             return true;
           }
         }
       } else {
-        this.logger.log(
-          '⚠️ No login form found, proceeding without authentication',
-        );
         return false;
       }
 
       return false;
     } catch (error) {
-      this.logger.error(`Login attempt failed: ${error.message}`);
       return false;
     }
   }
@@ -506,7 +486,6 @@ export class BrowserService {
     maxPages: number = 50,
   ): Promise<CrawlResult> {
     const startTime = Date.now();
-    this.logger.log(`🕷️ Starting comprehensive app crawl for: ${websiteUrl}`);
 
     let browser: Browser | null = null;
     const visitedUrls = new Set<string>();
@@ -529,9 +508,7 @@ export class BrowserService {
       // Perform login
       const loginSuccess = await this.performLogin(page, credentials);
       if (loginSuccess) {
-        this.logger.log('✅ Login successful, starting app crawl');
       } else {
-        this.logger.log('⚠️ Login failed, proceeding with public pages only');
       }
 
       // Wait for page to stabilize
@@ -542,7 +519,6 @@ export class BrowserService {
 
       // Process the current page first
       const currentUrl = page.url();
-      this.logger.log(`🔍 Processing initial page: ${currentUrl}`);
 
       // Extract page information
       const pageInfo = await this.extractPageInfo(page);
@@ -570,10 +546,6 @@ export class BrowserService {
 
       const crawlTime = Date.now() - startTime;
 
-      this.logger.log(
-        `✅ App crawl completed: ${crawledPages.length} pages in ${crawlTime}ms`,
-      );
-
       return {
         success: true,
         pages: crawledPages,
@@ -581,7 +553,6 @@ export class BrowserService {
         crawlTime,
       };
     } catch (error) {
-      this.logger.error(`❌ App crawl failed: ${error.message}`);
       throw new Error(`App crawl failed: ${error.message}`);
     } finally {
       if (browser) {
@@ -599,24 +570,18 @@ export class BrowserService {
     depth: number,
   ): Promise<void> {
     if (crawledPages.length >= maxPages || depth > 5) {
-      this.logger.log(
-        `🛑 Stopping crawl: maxPages=${maxPages}, depth=${depth}`,
-      );
       return;
     }
 
     const currentUrl = page.url();
-    this.logger.log(`🔍 Processing page: ${currentUrl} (depth: ${depth})`);
 
     // Skip if already visited
     if (visitedUrls.has(currentUrl)) {
-      this.logger.log(`⏭️ Skipping already visited: ${currentUrl}`);
       return;
     }
 
     // Check if URL is internal
     if (!this.isInternalUrl(currentUrl, baseUrl)) {
-      this.logger.log(`🚫 Skipping external URL: ${currentUrl}`);
       return;
     }
 
@@ -624,7 +589,6 @@ export class BrowserService {
 
     try {
       // Extract comprehensive page data (scraping)
-      this.logger.log(`🔍 Scraping comprehensive data from: ${currentUrl}`);
       const scrapedData = await this.extractComprehensivePageData(page);
       const html = await page.content();
 
@@ -645,10 +609,6 @@ export class BrowserService {
         timestamp: new Date().toISOString(),
       });
 
-      this.logger.log(
-        `✅ Crawled page ${crawledPages.length}: ${scrapedData.title}`,
-      );
-
       // DEEP INTERACTIVE SCRAPING - Click on ALL interactive elements
       await this.performDeepInteractiveScraping(
         page,
@@ -658,11 +618,7 @@ export class BrowserService {
         maxPages,
         depth,
       );
-    } catch (error) {
-      this.logger.warn(
-        `⚠️ Failed to process page ${currentUrl}: ${error.message}`,
-      );
-    }
+    } catch (error) {}
   }
 
   private async performDeepInteractiveScraping(
@@ -673,8 +629,6 @@ export class BrowserService {
     maxPages: number,
     depth: number,
   ): Promise<void> {
-    this.logger.log(`🕷️ Starting deep interactive scraping...`);
-
     try {
       // Get all interactive elements
       const interactiveElements = await page.evaluate(() => {
@@ -734,10 +688,6 @@ export class BrowserService {
         return elements;
       });
 
-      this.logger.log(
-        `🎯 Found ${interactiveElements.length} interactive elements to test`,
-      );
-
       // Test each interactive element
       for (
         let i = 0;
@@ -747,10 +697,6 @@ export class BrowserService {
         const element = interactiveElements[i];
 
         try {
-          this.logger.log(
-            `🖱️ Testing element ${i + 1}/${interactiveElements.length}: ${element.tagName} - "${element.text}"`,
-          );
-
           // Try to click the element
           const beforeUrl = page.url();
           const beforeTitle = await page.title();
@@ -767,17 +713,11 @@ export class BrowserService {
 
             // Check if we navigated to a new page or content changed
             if (afterUrl !== beforeUrl || afterTitle !== beforeTitle) {
-              this.logger.log(
-                `🔄 Navigation detected: ${beforeUrl} → ${afterUrl}`,
-              );
-
               // Check if this is a new page we haven't visited
               if (
                 !visitedUrls.has(afterUrl) &&
                 this.isInternalUrl(afterUrl, baseUrl)
               ) {
-                this.logger.log(`🆕 New page discovered: ${afterUrl}`);
-
                 // Recursively crawl this new page
                 await this.crawlPageRecursively(
                   page,
@@ -788,7 +728,6 @@ export class BrowserService {
                   depth + 1,
                 );
               } else {
-                this.logger.log(`⏭️ Already visited or external: ${afterUrl}`);
                 // Go back to continue testing other elements
                 if (afterUrl !== beforeUrl) {
                   await page.goBack();
@@ -796,8 +735,6 @@ export class BrowserService {
                 }
               }
             } else {
-              this.logger.log(`📄 No navigation - content may have changed`);
-
               // Even if no navigation, the content might have changed
               // Check if we should scrape this "new" state
               const currentUrl = page.url();
@@ -825,25 +762,14 @@ export class BrowserService {
                   scrapedData,
                   timestamp: new Date().toISOString(),
                 });
-
-                this.logger.log(
-                  `✅ Scraped interacted state: ${scrapedData.title}`,
-                );
               }
             }
           }
         } catch (error) {
-          this.logger.warn(
-            `⚠️ Failed to interact with element: ${error.message}`,
-          );
           continue;
         }
       }
-
-      this.logger.log(`✅ Deep interactive scraping completed`);
-    } catch (error) {
-      this.logger.warn(`⚠️ Deep interactive scraping failed: ${error.message}`);
-    }
+    } catch (error) {}
   }
 
   private async findAndClickElement(
@@ -902,14 +828,11 @@ export class BrowserService {
 
       return false;
     } catch (error) {
-      this.logger.warn(`⚠️ Failed to find element: ${error.message}`);
       return false;
     }
   }
 
   private async interactWithReactApp(page: Page): Promise<void> {
-    this.logger.log('🔄 Interacting with React app to reveal content...');
-
     try {
       // 1. Try to click on common navigation elements
       const navSelectors = [
@@ -1004,11 +927,7 @@ export class BrowserService {
           // Ignore errors
         }
       }
-
-      this.logger.log('✅ React app interaction completed');
-    } catch (error) {
-      this.logger.warn(`⚠️ React app interaction failed: ${error.message}`);
-    }
+    } catch (error) {}
   }
 
   private isInternalUrl(url: string, baseUrl: string): boolean {
@@ -1022,13 +941,8 @@ export class BrowserService {
       // Also check if URL starts with base URL (for subdirectories)
       const startsWithBase = url.startsWith(baseUrl);
 
-      this.logger.log(
-        `🔍 URL check: ${url} - Same host: ${isSameHost}, Starts with base: ${startsWithBase}`,
-      );
-
       return isSameHost || startsWithBase;
     } catch (error) {
-      this.logger.warn(`⚠️ URL parsing error: ${url} - ${error.message}`);
       return false;
     }
   }

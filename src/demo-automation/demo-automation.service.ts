@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { CreateDemoResponseDto } from '../dto/demo-automation.dto';
 import { BrowserService } from '../browser/browser.service';
 import { AiService } from '../ai/ai.service';
@@ -8,8 +8,6 @@ import * as path from 'path';
 
 @Injectable()
 export class DemoAutomationService {
-  private readonly logger = new Logger(DemoAutomationService.name);
-
   constructor(
     private readonly browserService: BrowserService,
     private readonly aiService: AiService,
@@ -23,10 +21,6 @@ export class DemoAutomationService {
     const startTime = Date.now();
     const demoId = uuidv4();
 
-    this.logger.log(
-      `🚀 Starting comprehensive demo automation for: ${websiteUrl}`,
-    );
-
     try {
       // Use browser service to login and extract page
       const loginResult = await this.browserService.loginAndExtractPage(
@@ -35,28 +29,17 @@ export class DemoAutomationService {
       );
 
       if (!loginResult.success) {
-        this.logger.warn(
-          '⚠️ Login may not have been successful, but continuing with feature extraction',
-        );
       }
 
       // Extract features using AI
-      this.logger.log('🤖 Starting AI feature extraction...');
       const featureTree = await this.aiService.extractFeatures(
         loginResult.html,
         loginResult.pageInfo,
       );
 
-      this.logger.log(`✅ Feature extraction completed`);
-      this.logger.log(`📊 Extracted ${featureTree.features.length} features`);
-
       // If login was successful, perform comprehensive crawling
       let crawlData = null;
       if (loginResult.success) {
-        this.logger.log(
-          '🕷️ Login successful, starting comprehensive app crawl...',
-        );
-
         try {
           const crawlResult = await this.browserService.crawlCompleteApp(
             websiteUrl,
@@ -204,23 +187,11 @@ ${crawlResult.pages
               pageInfo: page.pageInfo,
             })),
           };
-
-          this.logger.log(
-            `✅ App crawl completed: ${crawlResult.totalPages} pages`,
-          );
-          this.logger.log(`📁 Dump saved to: ${demoDir}`);
-        } catch (crawlError) {
-          this.logger.warn(
-            `⚠️ Crawl failed, continuing with feature extraction: ${crawlError.message}`,
-          );
-        }
+        } catch (crawlError) {}
       } else {
-        this.logger.log('⚠️ Login failed, skipping app crawl');
       }
 
       const processingTime = Date.now() - startTime;
-
-      this.logger.log(`✅ Demo automation completed in ${processingTime}ms`);
 
       return {
         demoId,
@@ -237,7 +208,6 @@ ${crawlResult.pages
         crawlData,
       };
     } catch (error) {
-      this.logger.error(`❌ Demo automation failed: ${error.message}`);
       throw new Error(`Demo automation failed: ${error.message}`);
     }
   }

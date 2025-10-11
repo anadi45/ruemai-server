@@ -4,7 +4,6 @@ import * as cheerio from 'cheerio';
 import { ParserService } from '../parser/parser.service';
 import { storage } from '../utils/storage';
 import { CrawledPage } from '../types/feature.interface';
-import { DebugLogger } from '../utils/debug-logger';
 
 export interface CrawlResult {
   pages: CrawledPage[];
@@ -20,10 +19,7 @@ export class WebCrawlerService {
   private readonly BATCH_SIZE = 15; // Increased batch size
   private readonly REQUEST_DELAY = 100; // Small delay to be respectful
 
-  constructor(
-    private readonly parserService: ParserService,
-    private readonly debugLogger: DebugLogger,
-  ) {}
+  constructor(private readonly parserService: ParserService) {}
 
   async crawlWebsite(baseUrl: string): Promise<CrawlResult> {
     const visitedUrls = new Set<string>();
@@ -68,18 +64,11 @@ export class WebCrawlerService {
                     }
                   });
                 })
-                .catch((error) => {
-                  console.warn(
-                    `Failed to find links from ${url}:`,
-                    error.message,
-                  );
-                });
+                .catch((error) => {});
 
               return page;
             }
-          } catch (error) {
-            console.warn(`Failed to crawl ${url}: ${error.message}`);
-          }
+          } catch (error) {}
 
           return null;
         });
@@ -139,16 +128,8 @@ export class WebCrawlerService {
         title: extractedContent.metadata?.title,
       };
 
-      // Log crawled content for debugging
-      await this.debugLogger.logCrawledContent(url, extractedContent.text, {
-        title: extractedContent.metadata?.title,
-        contentLength: extractedContent.text.length,
-        crawledAt: page.crawledAt,
-      });
-
       return page;
     } catch (error) {
-      console.warn(`Failed to crawl page ${url}: ${error.message}`);
       return null;
     }
   }

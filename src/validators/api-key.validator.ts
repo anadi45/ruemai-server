@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export interface ApiKeyConfig {
@@ -14,8 +14,6 @@ export interface ValidationResult {
 
 @Injectable()
 export class ApiKeyValidator {
-  private readonly logger = new Logger(ApiKeyValidator.name);
-
   constructor(private configService: ConfigService) {}
 
   /**
@@ -25,8 +23,6 @@ export class ApiKeyValidator {
     const { keyName, envVar } = config;
 
     try {
-      this.logger.log(`🔍 Checking ${keyName} API key existence...`);
-
       const apiKey = this.configService.get<string>(envVar);
 
       // Check if key exists
@@ -38,7 +34,6 @@ export class ApiKeyValidator {
         };
       }
 
-      this.logger.log(`✅ ${keyName} API key exists`);
       return {
         isValid: true,
         keyName,

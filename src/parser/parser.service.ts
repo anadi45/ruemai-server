@@ -6,7 +6,6 @@ import * as cheerio from 'cheerio';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { encode } from 'gpt-3-encoder';
-import { DebugLogger } from '../utils/debug-logger';
 
 export interface ExtractedContent {
   text: string;
@@ -26,7 +25,7 @@ export class ParserService {
   private readonly MAX_CHUNK_TOKENS = 6000; // Increased for better context
   private readonly CHUNK_OVERLAP = 300; // Increased overlap for better context
 
-  constructor(private readonly debugLogger: DebugLogger) {}
+  constructor() {}
 
   async parseDocument(
     file: Buffer,
@@ -71,30 +70,8 @@ export class ParserService {
         ? `[Binary file - ${file.length} bytes]`
         : file.toString('utf8', 0, Math.min(5000, file.length));
 
-      await this.debugLogger.logParsedContent(
-        filename,
-        originalContent,
-        result.text,
-        {
-          filename,
-          mimeType,
-          fileSize: file.length,
-          parsedTextLength: result.text.length,
-          hasMetadata: !!result.metadata,
-          title: result.metadata?.title,
-        },
-      );
-
       return result;
     } catch (error) {
-      // Log parsing errors
-      await this.debugLogger.logError('DOCUMENT_PARSING', error, {
-        filename,
-        mimeType,
-        fileSize: file.length,
-        filePreview: file.toString('utf8', 0, Math.min(1000, file.length)),
-      });
-
       throw new Error(`Failed to parse document ${filename}: ${error.message}`);
     }
   }
@@ -188,29 +165,8 @@ export class ParserService {
         };
       }
 
-      // Log parsed content for debugging
-      await this.debugLogger.logParsedContent(
-        url,
-        html.substring(0, 5000), // Log first 5k chars of HTML
-        result.text,
-        {
-          url,
-          originalHtmlLength: html.length,
-          parsedTextLength: result.text.length,
-          hasMetadata: !!result.metadata,
-          title: result.metadata?.title,
-        },
-      );
-
       return result;
     } catch (error) {
-      // Log parsing errors
-      await this.debugLogger.logError('HTML_PARSING', error, {
-        url,
-        htmlLength: html.length,
-        htmlPreview: html.substring(0, 1000),
-      });
-
       throw new Error(
         `Failed to parse HTML content from ${url}: ${error.message}`,
       );

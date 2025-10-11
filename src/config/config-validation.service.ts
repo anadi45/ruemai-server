@@ -1,26 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiKeyValidator, ApiKeyConfig } from '../validators/api-key.validator';
 
 @Injectable()
 export class ConfigValidationService {
-  private readonly logger = new Logger(ConfigValidationService.name);
-
   constructor(
     private configService: ConfigService,
     private apiKeyValidator: ApiKeyValidator,
   ) {}
 
   async validateConfiguration(): Promise<void> {
-    this.logger.log('🔍 Validating application configuration...');
-
     // Validate API Keys
     await this.validateApiKeys();
 
     // Validate other configuration
     this.validateAppConfiguration();
-
-    this.logger.log('✅ Configuration validation completed successfully');
   }
 
   private async validateApiKeys(): Promise<void> {
@@ -40,7 +34,6 @@ export class ConfigValidationService {
     }
 
     const validKeys = this.apiKeyValidator.getValidApiKeys(results);
-    this.logger.log(`✅ Validated API keys: ${validKeys.join(', ')}`);
   }
 
   private validateAppConfiguration(): void {
@@ -78,8 +71,6 @@ export class ConfigValidationService {
         `❌ Invalid CHUNK_SIZE: ${chunkSize}. Must be between 100 and 10000 tokens.`,
       );
     }
-
-    this.logger.log('✅ Application configuration is valid');
   }
 
   getConfigurationSummary(): object {

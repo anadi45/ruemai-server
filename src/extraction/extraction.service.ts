@@ -3,9 +3,7 @@ import { UploadService } from '../upload/upload.service';
 import { WebCrawlerService } from '../web-crawler/web-crawler.service';
 import { ParserService } from '../parser/parser.service';
 import { FeatureExtractorService } from '../feature-extractor/feature-extractor.service';
-import { PerformanceService } from '../performance/performance.service';
 import { storage } from '../utils/storage';
-import { DebugLogger } from '../utils/debug-logger';
 import {
   Feature,
   ExtractionResult,
@@ -24,17 +22,9 @@ export class ExtractionService {
     private readonly webCrawlerService: WebCrawlerService,
     private readonly parserService: ParserService,
     private readonly featureExtractorService: FeatureExtractorService,
-    private readonly performanceService: PerformanceService,
-    private readonly debugLogger: DebugLogger,
   ) {}
 
   async extractFeatures(request: ExtractionRequest): Promise<ExtractionResult> {
-    const timingId = this.performanceService.startTiming('extractFeatures', {
-      hasFiles: !!request.files?.length,
-      fileCount: request.files?.length || 0,
-      hasUrl: !!request.url,
-    });
-
     const startTime = Date.now();
     let documentsProcessed = 0;
     let pagesCrawled = 0;
@@ -52,7 +42,6 @@ export class ExtractionService {
         documentsProcessed = fileResults.value.documentsProcessed;
         featuresFound += fileResults.value.featuresFound;
       } else {
-        console.warn('File processing failed:', fileResults.reason);
       }
 
       // Handle URL processing results
@@ -60,7 +49,6 @@ export class ExtractionService {
         pagesCrawled = urlResults.value.pagesCrawled;
         featuresFound += urlResults.value.featuresFound;
       } else {
-        console.warn('URL processing failed:', urlResults.reason);
       }
 
       // Get all features and deduplicate
@@ -82,22 +70,8 @@ export class ExtractionService {
         stats,
       };
 
-      // Log extraction results for debugging
-      await this.debugLogger.logExtractionResults('FEATURE_EXTRACTION', {
-        request: {
-          hasFiles: !!request.files?.length,
-          fileCount: request.files?.length || 0,
-          hasUrl: !!request.url,
-          url: request.url,
-        },
-        results: result,
-        processingTime: `${processingTime}s`,
-      });
-
-      this.performanceService.endTiming(timingId, true);
       return result;
     } catch (error) {
-      this.performanceService.endTiming(timingId, false);
       throw new Error(`Extraction failed: ${error.message}`);
     }
   }
@@ -196,10 +170,6 @@ export class ExtractionService {
         storage.addFeatures(features);
         return features.length;
       } catch (error) {
-        console.warn(
-          `Failed to process document ${document.filename}:`,
-          error.message,
-        );
         return 0;
       }
     });
@@ -237,7 +207,6 @@ export class ExtractionService {
         storage.addFeatures(features);
         return features.length;
       } catch (error) {
-        console.warn(`Failed to process page ${page.url}:`, error.message);
         return 0;
       }
     });

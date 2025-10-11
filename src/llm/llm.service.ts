@@ -1,11 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { z } from 'zod';
-import { CacheService } from '../cache/cache.service';
 
 export interface ProductFeature {
   name: string;
@@ -36,15 +35,11 @@ const ExtractionResultSchema = z.object({
 
 @Injectable()
 export class LLMService {
-  private readonly logger = new Logger(LLMService.name);
   private readonly model: ChatOpenAI;
   private readonly productExtractionPrompt: PromptTemplate;
   private readonly productAnalysisPrompt: PromptTemplate;
 
-  constructor(
-    private readonly configService: ConfigService,
-    private readonly cacheService: CacheService,
-  ) {
+  constructor(private readonly configService: ConfigService) {
     // Initialize OpenAI model with optimized settings
     this.model = new ChatOpenAI({
       model: 'gpt-4o-mini', // Faster and cheaper model
@@ -125,12 +120,6 @@ Only return valid JSON. Do not include any other text.
   }
 
   async extractProductsFromText(text: string): Promise<ExtractionResult> {
-    // Check cache first
-    const cached = this.cacheService.get<ExtractionResult>(text, 'extraction');
-    if (cached) {
-      return cached;
-    }
-
     try {
       const structuredModel = this.model.withStructuredOutput(
         ExtractionResultSchema,
@@ -153,18 +142,8 @@ Only return valid JSON. Do not include any other text.
         summary: result.summary,
       };
 
-      // Cache the result for 1 hour
-      this.cacheService.set(
-        text,
-        'extraction',
-        extractionResult,
-        60 * 60 * 1000,
-      );
-
       return extractionResult;
     } catch (error) {
-      console.error('Error extracting products with LLM:', error);
-
       // Fallback to basic extraction if LLM fails
       return this.fallbackExtraction(text);
     }
@@ -196,14 +175,12 @@ Only return valid JSON. Do not include any other text.
             summary: result.summary,
           };
         } catch (error) {
-          console.warn('Error in batch extraction:', error);
           return this.fallbackExtraction(text);
         }
       });
 
       return await Promise.all(batchPromises);
     } catch (error) {
-      console.error('Error in batch extraction:', error);
       // Fallback to individual processing
       return Promise.all(
         texts.map((text) => this.extractProductsFromText(text)),
@@ -240,8 +217,6 @@ Only return valid JSON. Do not include any other text.
         summary: result.summary,
       };
     } catch (error) {
-      console.error('Error enhancing products with LLM:', error);
-
       // Return original products if enhancement fails
       return {
         products: products,
@@ -306,7 +281,6 @@ Only return valid JSON. Do not include any other text.
         summary: result.summary,
       };
     } catch (error) {
-      console.error('Error extracting products from website with LLM:', error);
       return this.fallbackExtraction(htmlContent);
     }
   }
@@ -330,15 +304,11 @@ Return only valid JSON array. Do not include any other text or explanations.
 
       // Parse the JSON response
       const responseText = response.content as string;
-      this.logger.log(`🤖 LLM Response: ${responseText.substring(0, 200)}...`);
 
       // Try to extract JSON from the response
       const jsonMatch = responseText.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const wisScripts = JSON.parse(jsonMatch[0]);
-        this.logger.log(
-          `✅ Parsed ${wisScripts.length} WIS scripts from LLM response`,
-        );
         return wisScripts;
       }
 
@@ -346,13 +316,11 @@ Return only valid JSON array. Do not include any other text or explanations.
       const singleObjectMatch = responseText.match(/\{[\s\S]*\}/);
       if (singleObjectMatch) {
         const singleScript = JSON.parse(singleObjectMatch[0]);
-        this.logger.log(`✅ Parsed 1 WIS script from LLM response`);
         return [singleScript];
       }
 
       throw new Error('No valid JSON found in LLM response');
     } catch (error) {
-      console.error('Error generating WIS from UI elements with LLM:', error);
       throw error;
     }
   }

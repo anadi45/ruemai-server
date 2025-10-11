@@ -21,7 +21,6 @@ export class FeatureExtractorService {
 
       return features;
     } catch (error) {
-      console.error('Feature extraction failed:', error);
       throw new Error(`Failed to extract features: ${error.message}`);
     }
   }
@@ -56,21 +55,12 @@ export class FeatureExtractorService {
           allFeatures.push(...features);
         }
       } catch (error) {
-        console.warn(
-          `Failed to extract features from batch ${Math.floor(i / BATCH_SIZE) + 1}:`,
-          error.message,
-        );
-
         // Fallback to individual processing for this batch
         const fallbackPromises = batch.map(async (chunk, index) => {
           try {
             const features = await this.extractFeatures(chunk, source);
             return features;
           } catch (error) {
-            console.warn(
-              `Failed to extract features from chunk ${i + index + 1}:`,
-              error.message,
-            );
             return [];
           }
         });
