@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { CreateDemoResponseDto } from '../dto/demo-automation.dto';
+import { CreateDemoResponseDto } from './demo-automation.dto';
 import { BrowserService } from '../browser/browser.service';
 import { AiService } from '../ai/ai.service';
 import { v4 as uuidv4 } from 'uuid';

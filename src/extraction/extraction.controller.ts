@@ -12,7 +12,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { ExtractionService, ExtractionRequest } from './extraction.service';
 import { ExtractionResult } from '../types/feature.interface';
 import { UploadService } from '../upload/upload.service';
-import { ExtractionRequestDto } from '../dto/extraction.dto';
+import { ExtractionRequestDto } from './extraction.dto';
 
 @Controller('extract')
 export class ExtractionController {

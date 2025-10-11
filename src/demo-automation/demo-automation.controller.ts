@@ -1,6 +1,6 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { DemoAutomationService } from './demo-automation.service';
-import { CreateDemoResponseDto } from '../dto/demo-automation.dto';
+import { CreateDemoResponseDto } from './demo-automation.dto';
 
 @Controller('demo')
 export class DemoAutomationController {
