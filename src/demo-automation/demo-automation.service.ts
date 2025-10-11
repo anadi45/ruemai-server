@@ -36,21 +36,24 @@ export class DemoAutomationService {
           `Failed to navigate to ${websiteUrl}: ${error.message}`,
         );
       }
+
       // Perform login
+      console.log('Attempting to login...');
       const loginSuccess = await this.performLogin(page, credentials);
 
       if (!loginSuccess) {
+        console.log('❌ Login failed');
         throw new Error('Login failed');
+      } else {
+        console.log('✅ Login successful');
       }
 
-      // Start deep scraping with session persistence
-      await this.deepScrapeWithSession(
+      // Start recursive scraping - follow your exact logic
+      await this.recursiveScrapeAllLinks(
         page,
         websiteUrl,
         visitedUrls,
         scrapedPages,
-        100, // Max pages
-        0, // Current depth
       );
 
       const processingTime = Date.now() - startTime;
@@ -87,8 +90,7 @@ export class DemoAutomationService {
     credentials: { username: string; password: string },
   ): Promise<boolean> {
     try {
-      // Wait for page to load completely
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      console.log('🔍 Looking for login form...');
 
       // Try to find login form with multiple strategies
       const loginFormSelectors = [
@@ -104,12 +106,18 @@ export class DemoAutomationService {
       for (const selector of loginFormSelectors) {
         try {
           loginForm = await page.waitForSelector(selector, { timeout: 3000 });
-          if (loginForm) break;
+          if (loginForm) {
+            console.log(`✅ Found login form with selector: ${selector}`);
+            break;
+          }
         } catch {}
       }
 
       // If no form found, try to find input fields directly
       if (!loginForm) {
+        console.log(
+          '🔍 No login form found, looking for input fields directly...',
+        );
         // Find username/email field with more comprehensive selectors
         const usernameSelectors = [
           'input[type="email"]',
@@ -140,8 +148,10 @@ export class DemoAutomationService {
         }
 
         if (!usernameField) {
+          console.log('❌ No username field found');
           return false;
         }
+        console.log('✅ Found username field');
 
         // Find password field
         const passwordSelectors = [
@@ -164,10 +174,13 @@ export class DemoAutomationService {
         }
 
         if (!passwordField) {
+          console.log('❌ No password field found');
           return false;
         }
+        console.log('✅ Found password field');
 
         // Clear and fill credentials
+        console.log('📝 Filling in credentials...');
         await usernameField.click({ clickCount: 3 });
         await usernameField.type(credentials.username);
         await passwordField.click({ clickCount: 3 });
@@ -205,10 +218,13 @@ export class DemoAutomationService {
         }
 
         if (!loginButton) {
+          console.log('❌ No login button found');
           return false;
         }
+        console.log('✅ Found login button');
 
         // Click login button
+        console.log('🖱️ Clicking login button...');
         await loginButton.click();
       } else {
         // If we found a form, try to fill it
@@ -273,6 +289,7 @@ export class DemoAutomationService {
       );
 
       if (hasFailureIndicator) {
+        console.log('❌ Login failed - failure indicators detected');
         return false;
       }
 
@@ -288,24 +305,26 @@ export class DemoAutomationService {
         !currentUrl.toLowerCase().includes('signin') &&
         !currentUrl.toLowerCase().includes('auth');
 
-      return hasSuccessIndicator || isNotOnLoginPage;
+      const loginResult = hasSuccessIndicator || isNotOnLoginPage;
+
+      if (loginResult) {
+        console.log('✅ Login successful - success indicators detected');
+      } else {
+        console.log('❌ Login failed - no success indicators found');
+      }
+
+      return loginResult;
     } catch (error) {
       return false;
     }
   }
 
-  private async deepScrapeWithSession(
+  private async recursiveScrapeAllLinks(
     page: Page,
     baseUrl: string,
     visitedUrls: Set<string>,
     scrapedPages: any[],
-    maxPages: number,
-    depth: number,
   ): Promise<void> {
-    if (scrapedPages.length >= maxPages || depth > 10) {
-      return;
-    }
-
     const currentUrl = page.url();
 
     // Skip if already visited
@@ -321,7 +340,7 @@ export class DemoAutomationService {
     visitedUrls.add(currentUrl);
 
     try {
-      // Extract comprehensive page data
+      // Extract page data
       const pageData = await this.extractPageData(page);
       scrapedPages.push({
         url: currentUrl,
@@ -341,10 +360,8 @@ export class DemoAutomationService {
         }));
       });
 
-      // Process each link
+      // Process each link recursively
       for (const link of links) {
-        if (scrapedPages.length >= maxPages) break;
-
         if (link.href && this.isInternalUrl(link.href, baseUrl)) {
           const fullUrl = this.resolveUrl(link.href, baseUrl);
 
@@ -355,16 +372,13 @@ export class DemoAutomationService {
                 waitUntil: 'domcontentloaded',
                 timeout: 30000,
               });
-              await new Promise((resolve) => setTimeout(resolve, 2000));
 
               // Recursively scrape the new page
-              await this.deepScrapeWithSession(
+              await this.recursiveScrapeAllLinks(
                 page,
                 baseUrl,
                 visitedUrls,
                 scrapedPages,
-                maxPages,
-                depth + 1,
               );
             } catch (error) {
               // Continue with other links if this one fails
