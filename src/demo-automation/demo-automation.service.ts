@@ -1301,6 +1301,61 @@ export class DemoAutomationService {
     return page.evaluate(() => {
       const elements: any[] = [];
 
+      // Helper function to generate CSS selector for an element
+      const generateSelector = (element: Element): string => {
+        if (element.id) {
+          return `#${element.id}`;
+        }
+
+        if (element.className) {
+          const classes = element.className.split(' ').filter((c) => c.trim());
+          if (classes.length > 0) {
+            return `.${classes.join('.')}`;
+          }
+        }
+
+        if (element.getAttribute('data-testid')) {
+          return `[data-testid="${element.getAttribute('data-testid')}"]`;
+        }
+
+        if (element.getAttribute('aria-label')) {
+          return `[aria-label="${element.getAttribute('aria-label')}"]`;
+        }
+
+        // Fallback to tag name with nth-child
+        const parent = element.parentElement;
+        if (parent) {
+          const siblings = Array.from(parent.children);
+          const index = siblings.indexOf(element);
+          return `${element.tagName.toLowerCase()}:nth-child(${index + 1})`;
+        }
+
+        return element.tagName.toLowerCase();
+      };
+
+      // Helper function to check if an element is interactive
+      const isInteractiveElement = (element: Element): boolean => {
+        const interactiveTags = ['button', 'a', 'input', 'select', 'textarea'];
+        const interactiveRoles = ['button', 'link', 'tab', 'menuitem', 'option'];
+
+        if (interactiveTags.includes(element.tagName.toLowerCase())) {
+          return true;
+        }
+
+        if (interactiveRoles.includes(element.getAttribute('role') || '')) {
+          return true;
+        }
+
+        if (
+          element.getAttribute('onclick') ||
+          element.getAttribute('onmousedown')
+        ) {
+          return true;
+        }
+
+        return false;
+      };
+
       // Find all interactive elements
       const selectors = [
         'button',
@@ -1341,7 +1396,7 @@ export class DemoAutomationService {
             window.getComputedStyle(element).visibility !== 'hidden'
           ) {
             const elementData = {
-              selector: this.generateSelector(element),
+              selector: generateSelector(element),
               tagName: element.tagName.toLowerCase(),
               text: element.textContent?.trim() || '',
               href: element.getAttribute('href') || '',
@@ -1359,7 +1414,7 @@ export class DemoAutomationService {
                 height: rect.height,
               },
               isVisible: true,
-              isInteractive: this.isInteractiveElement(element),
+              isInteractive: isInteractiveElement(element),
             };
 
             elements.push(elementData);
@@ -1371,64 +1426,6 @@ export class DemoAutomationService {
     });
   }
 
-  /**
-   * Generate a unique CSS selector for an element
-   */
-  private generateSelector(element: Element): string {
-    if (element.id) {
-      return `#${element.id}`;
-    }
-
-    if (element.className) {
-      const classes = element.className.split(' ').filter((c) => c.trim());
-      if (classes.length > 0) {
-        return `.${classes.join('.')}`;
-      }
-    }
-
-    if (element.getAttribute('data-testid')) {
-      return `[data-testid="${element.getAttribute('data-testid')}"]`;
-    }
-
-    if (element.getAttribute('aria-label')) {
-      return `[aria-label="${element.getAttribute('aria-label')}"]`;
-    }
-
-    // Fallback to tag name with nth-child
-    const parent = element.parentElement;
-    if (parent) {
-      const siblings = Array.from(parent.children);
-      const index = siblings.indexOf(element);
-      return `${element.tagName.toLowerCase()}:nth-child(${index + 1})`;
-    }
-
-    return element.tagName.toLowerCase();
-  }
-
-  /**
-   * Check if an element is interactive
-   */
-  private isInteractiveElement(element: Element): boolean {
-    const interactiveTags = ['button', 'a', 'input', 'select', 'textarea'];
-    const interactiveRoles = ['button', 'link', 'tab', 'menuitem', 'option'];
-
-    if (interactiveTags.includes(element.tagName.toLowerCase())) {
-      return true;
-    }
-
-    if (interactiveRoles.includes(element.getAttribute('role') || '')) {
-      return true;
-    }
-
-    if (
-      element.getAttribute('onclick') ||
-      element.getAttribute('onmousedown')
-    ) {
-      return true;
-    }
-
-    return false;
-  }
 
   /**
    * Extract links from current page
