@@ -24,7 +24,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message = exception.message;
     }
 
-
     response.status(status).json({
       statusCode: status,
       message,

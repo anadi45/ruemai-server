@@ -138,7 +138,11 @@ describe('ExtractionService', () => {
     const mockFeatures = [
       { name: 'Feature 1', description: 'Description 1', source: 'test1.pdf' },
       { name: 'Feature 2', description: 'Description 2', source: 'test2.pdf' },
-      { name: 'Web Feature', description: 'Web Description', source: 'https://example.com' },
+      {
+        name: 'Web Feature',
+        description: 'Web Description',
+        source: 'https://example.com',
+      },
     ];
 
     // Mock the services
@@ -188,7 +192,9 @@ describe('ExtractionService', () => {
 
     uploadService.processMultipleFiles.mockResolvedValue(mockDocuments);
     parserService.processContentWithOverlap.mockResolvedValue(mockChunks);
-    featureExtractorService.extractFeaturesFromChunks.mockResolvedValue(mockFeatures);
+    featureExtractorService.extractFeaturesFromChunks.mockResolvedValue(
+      mockFeatures,
+    );
 
     const request = {
       files: mockFiles,
@@ -220,12 +226,18 @@ describe('ExtractionService', () => {
 
     const mockChunks = ['chunk1'];
     const mockFeatures = [
-      { name: 'Web Feature', description: 'Web Description', source: 'https://example.com' },
+      {
+        name: 'Web Feature',
+        description: 'Web Description',
+        source: 'https://example.com',
+      },
     ];
 
     webCrawlerService.crawlWebsite.mockResolvedValue(mockCrawlResult);
     parserService.processContentWithOverlap.mockResolvedValue(mockChunks);
-    featureExtractorService.extractFeaturesFromChunks.mockResolvedValue(mockFeatures);
+    featureExtractorService.extractFeaturesFromChunks.mockResolvedValue(
+      mockFeatures,
+    );
 
     const request = {
       url: mockUrl,
@@ -252,7 +264,7 @@ describe('ExtractionService', () => {
 
     // Mock file processing to succeed
     uploadService.processMultipleFiles.mockResolvedValue([]);
-    
+
     // Mock URL processing to fail
     webCrawlerService.crawlWebsite.mockRejectedValue(new Error('Crawl failed'));
 
