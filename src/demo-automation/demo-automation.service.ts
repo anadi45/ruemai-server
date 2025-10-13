@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { CreateDemoResponseDto } from './demo-automation.dto';
+import { CreateDemoResponseDto, FeatureFileDto } from './demo-automation.dto';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
@@ -60,9 +60,745 @@ export class DemoAutomationService {
     // });
   }
 
+  /**
+   * Process uploaded feature files to extract relevant information
+   */
+  private async processFeatureFiles(
+    featureFiles?: FeatureFileDto[],
+  ): Promise<{
+    apiDocs: string[];
+    productDocs: string[];
+    techDocs: string[];
+    otherDocs: string[];
+  }> {
+    if (!featureFiles || featureFiles.length === 0) {
+      return {
+        apiDocs: [],
+        productDocs: [],
+        techDocs: [],
+        otherDocs: [],
+      };
+    }
+
+    console.log(`📁 Processing ${featureFiles.length} feature files...`);
+
+    const processed = {
+      apiDocs: [] as string[],
+      productDocs: [] as string[],
+      techDocs: [] as string[],
+      otherDocs: [] as string[],
+    };
+
+    for (const file of featureFiles) {
+      console.log(`📄 Processing file: ${file.filename} (${file.type})`);
+      
+      switch (file.type) {
+        case 'api-docs':
+          processed.apiDocs.push(`File: ${file.filename}\n${file.content}`);
+          break;
+        case 'product-docs':
+          processed.productDocs.push(`File: ${file.filename}\n${file.content}`);
+          break;
+        case 'tech-docs':
+          processed.techDocs.push(`File: ${file.filename}\n${file.content}`);
+          break;
+        default:
+          processed.otherDocs.push(`File: ${file.filename}\n${file.content}`);
+          break;
+      }
+    }
+
+    console.log(`✅ Processed files: API docs (${processed.apiDocs.length}), Product docs (${processed.productDocs.length}), Tech docs (${processed.techDocs.length}), Other (${processed.otherDocs.length})`);
+    
+    return processed;
+  }
+
+  /**
+   * Extract feature-specific URLs from crawl instructions
+   */
+  private extractFeatureUrlsFromInstructions(
+    instructions: string,
+    baseUrl: string,
+  ): string[] {
+    const urls: string[] = [];
+    
+    // Look for URLs in the instructions
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const matches = instructions.match(urlRegex);
+    
+    if (matches) {
+      matches.forEach(match => {
+        if (this.isInternalUrl(match, baseUrl)) {
+          urls.push(match);
+        }
+      });
+    }
+    
+    // Look for relative paths
+    const pathRegex = /\/[a-zA-Z0-9\/\-_]+/g;
+    const pathMatches = instructions.match(pathRegex);
+    
+    if (pathMatches) {
+      pathMatches.forEach(path => {
+        const fullUrl = this.resolveUrl(path, baseUrl);
+        if (this.isInternalUrl(fullUrl, baseUrl)) {
+          urls.push(fullUrl);
+        }
+      });
+    }
+    
+    return [...new Set(urls)]; // Remove duplicates
+  }
+
+  /**
+   * Create a roadmap for Puppeteer using LLM analysis of documentation
+   */
+  private async createPuppeteerRoadmap(
+    processedFiles: {
+      apiDocs: string[];
+      productDocs: string[];
+      techDocs: string[];
+      otherDocs: string[];
+    },
+    targetFeature?: string,
+  ): Promise<{
+    roadmap: Array<{
+      step: number;
+      action: string;
+      url?: string;
+      selector?: string;
+      description: string;
+      expectedOutcome: string;
+      waitFor?: string;
+      screenshot?: boolean;
+    }>;
+    featureContext: string;
+    keyUrls: string[];
+  }> {
+    console.log('🗺️ Creating Puppeteer roadmap using LLM analysis...');
+
+    // Extract feature context from documentation
+    const featureContext = this.extractFeatureContext(processedFiles, targetFeature);
+    
+    // Use LLM to analyze documentation and create intelligent roadmap
+    const llmRoadmap = await this.generateRoadmapWithLLM(
+      processedFiles,
+      targetFeature,
+      featureContext
+    );
+
+    console.log(`✅ LLM-generated roadmap created with ${llmRoadmap.roadmap.length} steps`);
+    console.log(`📍 Key URLs identified: ${llmRoadmap.keyUrls.length}`);
+    
+    return llmRoadmap;
+  }
+
+  /**
+   * Use LLM to generate intelligent roadmap from documentation
+   */
+  private async generateRoadmapWithLLM(
+    processedFiles: {
+      apiDocs: string[];
+      productDocs: string[];
+      techDocs: string[];
+      otherDocs: string[];
+    },
+    targetFeature?: string,
+    featureContext?: string,
+  ): Promise<{
+    roadmap: Array<{
+      step: number;
+      action: string;
+      url?: string;
+      selector?: string;
+      description: string;
+      expectedOutcome: string;
+      waitFor?: string;
+      screenshot?: boolean;
+    }>;
+    featureContext: string;
+    keyUrls: string[];
+  }> {
+    console.log('🤖 Using LLM to analyze documentation and create roadmap...');
+
+    try {
+      // Create LLM prompt for roadmap generation
+      const roadmapPrompt = this.createRoadmapPrompt(
+        processedFiles,
+        targetFeature,
+        featureContext
+      );
+
+      // Call LLM service to generate roadmap
+      const llmResponse = await this.callLLMForRoadmap(roadmapPrompt);
+
+      // Parse LLM response into roadmap structure
+      const roadmap = this.parseRoadmapResponse(llmResponse);
+
+      // Extract key URLs from the roadmap
+      const keyUrls = this.extractUrlsFromRoadmap(roadmap);
+
+      return {
+        roadmap,
+        featureContext: featureContext || '',
+        keyUrls,
+      };
+    } catch (error) {
+      console.error('❌ LLM roadmap generation failed, using fallback:', error);
+      
+      // Fallback to basic roadmap generation
+      const keyUrls = this.extractKeyUrlsFromDocs(processedFiles);
+      const roadmap = this.generateRoadmapSteps(processedFiles, targetFeature, keyUrls);
+      
+      return {
+        roadmap,
+        featureContext: featureContext || '',
+        keyUrls,
+      };
+    }
+  }
+
+  /**
+   * Create LLM prompt for roadmap generation
+   */
+  private createRoadmapPrompt(
+    processedFiles: {
+      apiDocs: string[];
+      productDocs: string[];
+      techDocs: string[];
+      otherDocs: string[];
+    },
+    targetFeature?: string,
+    featureContext?: string,
+  ): string {
+    const allDocs = [
+      ...processedFiles.apiDocs,
+      ...processedFiles.productDocs,
+      ...processedFiles.techDocs,
+      ...processedFiles.otherDocs,
+    ];
+
+    return `
+You are an expert web automation specialist tasked with creating a detailed Puppeteer roadmap for crawling and testing a web application.
+
+TARGET FEATURE: ${targetFeature || 'General application features'}
+
+DOCUMENTATION PROVIDED:
+${allDocs.length > 0 ? allDocs.join('\n\n---\n\n') : 'No documentation provided'}
+
+FEATURE CONTEXT:
+${featureContext || 'No additional context'}
+
+TASK:
+Create a detailed roadmap for Puppeteer automation that will:
+1. Navigate through the application systematically
+2. Test the target feature thoroughly
+3. Follow the documentation workflows
+4. Capture relevant data for tour generation
+
+REQUIREMENTS:
+- Create 5-10 specific steps maximum
+- Each step should have clear actions (navigate, click, type, wait, etc.)
+- Include expected outcomes for each step
+- Focus on the target feature and documentation workflows
+- Include URLs and selectors where possible
+- Add appropriate wait conditions
+- Include screenshot capture for important steps
+
+RESPONSE FORMAT:
+Return a JSON object with this structure:
+{
+  "roadmap": [
+    {
+      "step": 1,
+      "action": "navigate|click|type|wait|scroll|hover",
+      "url": "optional URL for navigation",
+      "selector": "optional CSS selector",
+      "description": "Clear description of what this step does",
+      "expectedOutcome": "What should happen after this step",
+      "waitFor": "networkidle2|navigation|selector|timeout",
+      "screenshot": true|false
+    }
+  ],
+  "keyUrls": ["list of important URLs found in documentation"],
+  "featureSummary": "Brief summary of the target feature"
+}
+
+Focus on creating actionable steps that will effectively demonstrate the target feature.
+`;
+  }
+
+  /**
+   * Call LLM service for roadmap generation
+   */
+  private async callLLMForRoadmap(prompt: string): Promise<string> {
+    // This would integrate with your actual LLM service
+    // For now, return a mock response structure
+    console.log('🤖 Calling LLM service for roadmap generation...');
+    
+    // Mock response for now - replace with actual LLM service call
+    return JSON.stringify({
+      roadmap: [
+        {
+          step: 1,
+          action: "navigate",
+          description: "Navigate to main application page",
+          expectedOutcome: "Main page loads successfully",
+          waitFor: "networkidle2",
+          screenshot: true
+        },
+        {
+          step: 2,
+          action: "login",
+          description: "Perform login with provided credentials",
+          expectedOutcome: "User successfully logged in",
+          waitFor: "navigation",
+          screenshot: true
+        }
+      ],
+      keyUrls: [],
+      featureSummary: "Target feature analysis"
+    });
+  }
+
+  /**
+   * Parse LLM response into roadmap structure
+   */
+  private parseRoadmapResponse(llmResponse: string): Array<{
+    step: number;
+    action: string;
+    url?: string;
+    selector?: string;
+    description: string;
+    expectedOutcome: string;
+    waitFor?: string;
+    screenshot?: boolean;
+  }> {
+    try {
+      const parsed = JSON.parse(llmResponse);
+      return parsed.roadmap || [];
+    } catch (error) {
+      console.error('❌ Failed to parse LLM roadmap response:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Extract URLs from roadmap
+   */
+  private extractUrlsFromRoadmap(roadmap: Array<{
+    step: number;
+    action: string;
+    url?: string;
+    selector?: string;
+    description: string;
+    expectedOutcome: string;
+    waitFor?: string;
+    screenshot?: boolean;
+  }>): string[] {
+    return roadmap
+      .filter(step => step.url)
+      .map(step => step.url!)
+      .filter(url => url && url.length > 0);
+  }
+
+  /**
+   * Extract feature context from all documentation
+   */
+  private extractFeatureContext(
+    processedFiles: {
+      apiDocs: string[];
+      productDocs: string[];
+      techDocs: string[];
+      otherDocs: string[];
+    },
+    targetFeature?: string,
+  ): string {
+    const contextParts: string[] = [];
+    
+    if (targetFeature) {
+      contextParts.push(`Target Feature: ${targetFeature}`);
+    }
+    
+    // Combine all documentation
+    const allDocs = [
+      ...processedFiles.apiDocs,
+      ...processedFiles.productDocs,
+      ...processedFiles.techDocs,
+      ...processedFiles.otherDocs,
+    ];
+    
+    if (allDocs.length > 0) {
+      contextParts.push('Documentation Context:');
+      contextParts.push(allDocs.join('\n\n---\n\n'));
+    }
+    
+    return contextParts.join('\n\n');
+  }
+
+  /**
+   * Extract key URLs from documentation and instructions
+   */
+  private extractKeyUrlsFromDocs(
+    processedFiles: {
+      apiDocs: string[];
+      productDocs: string[];
+      techDocs: string[];
+      otherDocs: string[];
+    },
+  ): string[] {
+    const urls: string[] = [];
+    
+    // Extract from all documentation
+    const allDocs = [
+      ...processedFiles.apiDocs,
+      ...processedFiles.productDocs,
+      ...processedFiles.techDocs,
+      ...processedFiles.otherDocs,
+    ];
+    
+    // Look for URLs in documentation
+    const urlRegex = /(https?:\/\/[^\s\)]+)/g;
+    const pathRegex = /\/[a-zA-Z0-9\/\-_\.]+/g;
+    
+    allDocs.forEach(doc => {
+      // Extract full URLs
+      const urlMatches = doc.match(urlRegex);
+      if (urlMatches) {
+        urls.push(...urlMatches);
+      }
+      
+      // Extract relative paths
+      const pathMatches = doc.match(pathRegex);
+      if (pathMatches) {
+        urls.push(...pathMatches);
+      }
+    });
+    
+    return [...new Set(urls)]; // Remove duplicates
+  }
+
+  /**
+   * Generate roadmap steps based on documentation
+   */
+  private generateRoadmapSteps(
+    processedFiles: {
+      apiDocs: string[];
+      productDocs: string[];
+      techDocs: string[];
+      otherDocs: string[];
+    },
+    targetFeature?: string,
+    keyUrls: string[] = [],
+  ): Array<{
+    step: number;
+    action: string;
+    url?: string;
+    selector?: string;
+    description: string;
+    expectedOutcome: string;
+    waitFor?: string;
+    screenshot?: boolean;
+  }> {
+    const steps: Array<{
+      step: number;
+      action: string;
+      url?: string;
+      selector?: string;
+      description: string;
+      expectedOutcome: string;
+      waitFor?: string;
+      screenshot?: boolean;
+    }> = [];
+    
+    let stepNumber = 1;
+    
+    // Step 1: Navigate to main page
+    steps.push({
+      step: stepNumber++,
+      action: 'navigate',
+      description: 'Navigate to the main application page',
+      expectedOutcome: 'Main page loads successfully',
+      waitFor: 'networkidle2',
+      screenshot: true,
+    });
+    
+    // Step 2: Login (if credentials provided)
+    steps.push({
+      step: stepNumber++,
+      action: 'login',
+      description: 'Perform login with provided credentials',
+      expectedOutcome: 'User successfully logged in',
+      waitFor: 'navigation',
+      screenshot: true,
+    });
+    
+    // Add steps for key URLs from documentation
+    keyUrls.slice(0, 5).forEach((url, index) => {
+      steps.push({
+        step: stepNumber++,
+        action: 'navigate',
+        url: url,
+        description: `Navigate to ${url} to explore feature`,
+        expectedOutcome: `Page loads and shows relevant content`,
+        waitFor: 'networkidle2',
+        screenshot: true,
+      });
+    });
+    
+    // Add feature-specific steps based on target feature
+    if (targetFeature) {
+      steps.push({
+        step: stepNumber++,
+        action: 'explore',
+        description: `Explore ${targetFeature} functionality`,
+        expectedOutcome: `User understands ${targetFeature} features`,
+        waitFor: 'networkidle2',
+        screenshot: true,
+      });
+    }
+    
+    // Add steps based on API documentation
+    if (processedFiles.apiDocs.length > 0) {
+      steps.push({
+        step: stepNumber++,
+        action: 'test-api-features',
+        description: 'Test API-related features based on documentation',
+        expectedOutcome: 'API features work as documented',
+        waitFor: 'networkidle2',
+        screenshot: true,
+      });
+    }
+    
+    // Add steps based on product documentation
+    if (processedFiles.productDocs.length > 0) {
+      steps.push({
+        step: stepNumber++,
+        action: 'follow-product-guide',
+        description: 'Follow product documentation workflow',
+        expectedOutcome: 'Product features work as documented',
+        waitFor: 'networkidle2',
+        screenshot: true,
+      });
+    }
+    
+    return steps;
+  }
+
+  /**
+   * Execute the roadmap using Puppeteer
+   */
+  private async executeRoadmap(
+    page: Page,
+    baseUrl: string,
+    roadmap: {
+      roadmap: Array<{
+        step: number;
+        action: string;
+        url?: string;
+        selector?: string;
+        description: string;
+        expectedOutcome: string;
+        waitFor?: string;
+        screenshot?: boolean;
+      }>;
+      featureContext: string;
+      keyUrls: string[];
+    },
+    credentials: { username: string; password: string },
+  ): Promise<{
+    pages: any[];
+    elements: any[];
+    screenshots: string[];
+    metadata: any;
+  }> {
+    console.log('🚀 Executing roadmap with Puppeteer...');
+
+    const pages: any[] = [];
+    const elements: any[] = [];
+    const screenshots: string[] = [];
+    const metadata: any = {
+      roadmapSteps: roadmap.roadmap.length,
+      executedSteps: 0,
+      featureContext: roadmap.featureContext,
+      keyUrls: roadmap.keyUrls,
+    };
+
+    try {
+      for (const step of roadmap.roadmap) {
+        console.log(`📍 Executing step ${step.step}: ${step.description}`);
+        
+        try {
+          const stepResult = await this.executeRoadmapStep(page, step, baseUrl, credentials);
+          
+          if (stepResult.pageData) {
+            pages.push(stepResult.pageData);
+          }
+          
+          if (stepResult.elements) {
+            elements.push(...stepResult.elements);
+          }
+          
+          if (stepResult.screenshot) {
+            screenshots.push(stepResult.screenshot);
+          }
+          
+          metadata.executedSteps++;
+          
+          console.log(`✅ Step ${step.step} completed: ${step.expectedOutcome}`);
+        } catch (error) {
+          console.error(`❌ Step ${step.step} failed:`, error.message);
+          // Continue with next step
+        }
+      }
+    } catch (error) {
+      console.error('❌ Roadmap execution failed:', error);
+    }
+
+    console.log(`✅ Roadmap execution completed: ${metadata.executedSteps}/${metadata.roadmapSteps} steps executed`);
+    console.log(`📊 Collected: ${pages.length} pages, ${elements.length} elements, ${screenshots.length} screenshots`);
+
+    return {
+      pages,
+      elements,
+      screenshots,
+      metadata,
+    };
+  }
+
+  /**
+   * Execute a single roadmap step
+   */
+  private async executeRoadmapStep(
+    page: Page,
+    step: {
+      step: number;
+      action: string;
+      url?: string;
+      selector?: string;
+      description: string;
+      expectedOutcome: string;
+      waitFor?: string;
+      screenshot?: boolean;
+    },
+    baseUrl: string,
+    credentials: { username: string; password: string },
+  ): Promise<{
+    pageData?: any;
+    elements?: any[];
+    screenshot?: string;
+  }> {
+    const result: {
+      pageData?: any;
+      elements?: any[];
+      screenshot?: string;
+    } = {};
+
+    switch (step.action) {
+      case 'navigate':
+        if (step.url) {
+          const fullUrl = this.resolveUrl(step.url, baseUrl);
+          await page.goto(fullUrl, {
+            waitUntil: (step.waitFor as any) || 'networkidle2',
+            timeout: 30000,
+          });
+          
+          // Extract page data
+          result.pageData = await this.extractPageData(page);
+          result.elements = await this.extractInteractiveElements(page);
+        }
+        break;
+
+      case 'login':
+        await this.performLogin(page, credentials);
+        result.pageData = await this.extractPageData(page);
+        result.elements = await this.extractInteractiveElements(page);
+        break;
+
+      case 'click':
+        if (step.selector) {
+          await page.waitForSelector(step.selector, { timeout: 10000 });
+          await page.click(step.selector);
+          
+          if (step.waitFor) {
+            await page.waitForNavigation({ waitUntil: 'networkidle2' });
+          }
+          
+          result.pageData = await this.extractPageData(page);
+          result.elements = await this.extractInteractiveElements(page);
+        }
+        break;
+
+      case 'type':
+        if (step.selector) {
+          await page.waitForSelector(step.selector, { timeout: 10000 });
+          await page.type(step.selector, 'test input');
+        }
+        break;
+
+      case 'wait':
+        if (step.waitFor === 'selector' && step.selector) {
+          await page.waitForSelector(step.selector, { timeout: 10000 });
+        } else if (step.waitFor === 'navigation') {
+          await page.waitForNavigation({ waitUntil: 'networkidle2' });
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        break;
+
+      case 'scroll':
+        await page.evaluate(() => {
+          window.scrollTo(0, document.body.scrollHeight);
+        });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        break;
+
+      case 'hover':
+        if (step.selector) {
+          await page.waitForSelector(step.selector, { timeout: 10000 });
+          await page.hover(step.selector);
+        }
+        break;
+
+      case 'explore':
+        // Explore the current page for interactive elements
+        result.elements = await this.extractInteractiveElements(page);
+        result.pageData = await this.extractPageData(page);
+        break;
+
+      case 'test-api-features':
+        // Test API-related features (this would be customized based on your needs)
+        result.pageData = await this.extractPageData(page);
+        result.elements = await this.extractInteractiveElements(page);
+        break;
+
+      case 'follow-product-guide':
+        // Follow product documentation workflow
+        result.pageData = await this.extractPageData(page);
+        result.elements = await this.extractInteractiveElements(page);
+        break;
+
+      default:
+        console.log(`⚠️ Unknown action: ${step.action}`);
+    }
+
+    // Take screenshot if requested
+    if (step.screenshot) {
+      const screenshot = await page.screenshot({
+        fullPage: true,
+        encoding: 'base64',
+      });
+      result.screenshot = screenshot;
+    }
+
+    return result;
+  }
+
   async generateProductTour(
     websiteUrl: string,
     credentials: { username: string; password: string },
+    featureFiles?: FeatureFileDto[],
+    targetFeature?: string,
   ): Promise<CreateDemoResponseDto> {
     const startTime = Date.now();
     const demoId = uuidv4();
@@ -81,11 +817,31 @@ export class DemoAutomationService {
       // Step 3: Navigate and login
       await this.navigateAndLogin(page, websiteUrl, credentials);
 
-      // Step 4: Crawl and extract data
-      const scrapedData = await this.crawlWebsite(page, websiteUrl);
+      // Step 4: Process feature files and extract relevant information
+      const processedFiles = await this.processFeatureFiles(featureFiles);
 
-      // Step 5: Generate tour using LLM
-      const tour = await this.generateTourWithLLM(scrapedData, websiteUrl);
+      // Step 5: Create roadmap from documentation
+      const roadmap = await this.createPuppeteerRoadmap(
+        processedFiles,
+        targetFeature
+      );
+
+      // Step 6: Execute roadmap and crawl data
+      const scrapedData = await this.executeRoadmap(
+        page,
+        websiteUrl,
+        roadmap,
+        credentials
+      );
+
+      // Step 7: Generate tour using LLM with roadmap context
+      const tour = await this.generateTourWithLLM(
+        scrapedData, 
+        websiteUrl, 
+        processedFiles, 
+        targetFeature,
+        roadmap
+      );
 
       // Step 6: Validate and structure response
       const validatedTour = TourSchema.parse(tour);
@@ -1110,20 +1866,46 @@ export class DemoAutomationService {
   private async crawlWebsite(
     page: Page,
     baseUrl: string,
+    targetFeature?: string,
+    crawlInstructions?: string,
+    processedFiles?: {
+      apiDocs: string[];
+      productDocs: string[];
+      crawlInstructions: string[];
+      otherDocs: string[];
+    },
   ): Promise<{
     pages: any[];
     elements: any[];
     screenshots: string[];
     metadata: any;
   }> {
-    console.log('🕷️ Starting website crawl...');
+    console.log('🕷️ Starting feature-focused website crawl...');
 
+    // Initialize feature-focused crawling
     const visitedUrls = new Set<string>();
     const urlQueue: string[] = [baseUrl];
-    const maxPages = 10; // Limit for tour generation
-    const maxDepth = 2;
+    const maxPages = targetFeature ? 5 : 10; // Reduce pages for feature-focused crawling
+    const maxDepth = targetFeature ? 1 : 2; // Reduce depth for feature-focused crawling
     const urlDepthMap = new Map<string, number>();
     urlDepthMap.set(baseUrl, 0);
+
+    // If we have feature files or target feature, prioritize relevant pages
+    if (targetFeature || processedFiles) {
+      console.log(`🎯 Feature-focused crawling for: ${targetFeature || 'specific features'}`);
+      
+      // Add feature-specific URLs if provided in crawl instructions
+      if (crawlInstructions) {
+        const featureUrls = this.extractFeatureUrlsFromInstructions(crawlInstructions, baseUrl);
+        featureUrls.forEach(url => {
+          if (!urlQueue.includes(url)) {
+            urlQueue.push(url);
+            urlDepthMap.set(url, 0);
+          }
+        });
+        console.log(`📍 Added ${featureUrls.length} feature-specific URLs from instructions`);
+      }
+    }
 
     const pages: any[] = [];
     const elements: any[] = [];
@@ -1224,25 +2006,66 @@ export class DemoAutomationService {
   }
 
   /**
-   * Extract comprehensive page data including HTML, markdown, and metadata
+   * Extract comprehensive page data including HTML, markdown, and metadata with intelligent re-scraping
    */
   private async extractPageData(page: Page): Promise<any> {
+    console.log('📄 Extracting comprehensive page data...');
+    
     // Wait for dynamic content to load
     await this.waitForDynamicContent(page);
 
-    // Scroll to load lazy content
-    await page.evaluate(() => {
-      window.scrollTo(0, document.body.scrollHeight);
-    });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Get initial content snapshot
+    let previousSnapshot = await this.getContentSnapshot(page);
+    let extractionAttempts = 0;
+    const maxExtractionAttempts = 3;
+    let allElements: any[] = [];
+    let allScreenshots: string[] = [];
 
-    // Get HTML content
+    // Iterative extraction to capture all dynamic content
+    while (extractionAttempts < maxExtractionAttempts) {
+      console.log(`🔄 Extraction attempt ${extractionAttempts + 1}/${maxExtractionAttempts}`);
+      
+      // Wait for content to stabilize
+      await this.stabilizeContent(page);
+      
+      // Extract current elements
+      const currentElements = await this.extractInteractiveElements(page);
+      allElements = this.mergeElements(allElements, currentElements);
+      
+      // Take screenshot
+      const screenshot = await page.screenshot({
+        fullPage: true,
+        encoding: 'base64',
+      });
+      allScreenshots.push(screenshot);
+      
+      // Get current content snapshot
+      const currentSnapshot = await this.getContentSnapshot(page);
+      
+      // Check if content has changed significantly
+      const hasSignificantChange = this.compareContentSnapshots(previousSnapshot, currentSnapshot);
+      
+      if (!hasSignificantChange || extractionAttempts >= maxExtractionAttempts - 1) {
+        console.log('✅ Content extraction complete');
+        break;
+      }
+      
+      // Trigger additional interactions to reveal more content
+      await this.triggerAdditionalInteractions(page);
+      previousSnapshot = currentSnapshot;
+      extractionAttempts++;
+    }
+
+    // Final content extraction
+    await this.stabilizeContent(page);
+    
+    // Get final HTML content
     const html = await page.content();
 
-    // Convert to markdown for LLM processing (simplified version)
+    // Convert to markdown for LLM processing
     const markdown = this.convertHtmlToMarkdown(html);
 
-    // Extract page metadata
+    // Extract comprehensive page metadata
     const metadata = await page.evaluate(() => ({
       title: document.title,
       url: window.location.href,
@@ -1273,130 +2096,510 @@ export class DemoAutomationService {
         document
           .querySelector('meta[property="og:image"]')
           ?.getAttribute('content') || '',
+      // Additional metadata
+      totalElements: document.querySelectorAll('*').length,
+      interactiveElements: document.querySelectorAll('button, a, input, select, textarea').length,
+      forms: document.querySelectorAll('form').length,
+      images: document.querySelectorAll('img').length,
+      links: document.querySelectorAll('a[href]').length,
+      scripts: document.querySelectorAll('script').length,
+      stylesheets: document.querySelectorAll('link[rel="stylesheet"]').length,
     }));
 
-    // Extract interactive elements
-    const elements = await this.extractInteractiveElements(page);
-
-    // Take screenshot
-    const screenshot = await page.screenshot({
+    // Take final screenshot
+    const finalScreenshot = await page.screenshot({
       fullPage: true,
       encoding: 'base64',
     });
+
+    console.log(`✅ Page data extracted: ${allElements.length} elements, ${allScreenshots.length + 1} screenshots`);
 
     return {
       title: metadata.title,
       html,
       markdown,
-      elements,
-      screenshot,
+      elements: allElements,
+      screenshots: [...allScreenshots, finalScreenshot],
+      screenshot: finalScreenshot,
       metadata,
+      extractionAttempts: extractionAttempts + 1,
     };
   }
 
   /**
-   * Extract interactive elements that could be tour steps
+   * Trigger additional interactions to reveal more dynamic content
+   */
+  private async triggerAdditionalInteractions(page: Page): Promise<void> {
+    console.log('🔄 Triggering additional interactions...');
+    
+    // Strategy 1: Click on tabs and accordions
+    await this.interactWithTabsAndAccordions(page);
+    
+    // Strategy 2: Hover over more elements
+    await this.hoverOverAdditionalElements(page);
+    
+    // Strategy 3: Interact with dropdowns and menus
+    await this.interactWithDropdowns(page);
+    
+    // Strategy 4: Trigger form field interactions
+    await this.triggerFormFieldInteractions(page);
+    
+    // Strategy 5: Handle modal and popup triggers
+    await this.handleModalTriggers(page);
+  }
+
+  /**
+   * Interact with tabs and accordions to reveal content
+   */
+  private async interactWithTabsAndAccordions(page: Page): Promise<void> {
+    console.log('📑 Interacting with tabs and accordions...');
+    
+    const tabSelectors = [
+      '[role="tab"]', '.tab', '.tabs a', '.nav-tabs a',
+      '[data-toggle="tab"]', '[data-bs-toggle="tab"]',
+      '.accordion-header', '.accordion-button', '.collapse-toggle'
+    ];
+    
+    for (const selector of tabSelectors) {
+      try {
+        const elements = await page.$$(selector);
+        for (const element of elements.slice(0, 5)) { // Limit interactions
+          try {
+            await element.click();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log('✅ Clicked tab/accordion element');
+          } catch (error) {
+            // Continue with next element
+          }
+        }
+      } catch (error) {
+        // Continue with next selector
+      }
+    }
+  }
+
+  /**
+   * Hover over additional elements to reveal content
+   */
+  private async hoverOverAdditionalElements(page: Page): Promise<void> {
+    console.log('🖱️ Hovering over additional elements...');
+    
+    const hoverSelectors = [
+      '.card', '.widget', '.tile', '.item', '.product',
+      '[data-hover]', '[data-tooltip]', '[data-popover]',
+      '.hover', '.tooltip', '.popover', '.dropdown-toggle'
+    ];
+    
+    for (const selector of hoverSelectors) {
+      try {
+        const elements = await page.$$(selector);
+        for (const element of elements.slice(0, 10)) { // Limit interactions
+          try {
+            await element.hover();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            console.log('✅ Hovered over element');
+          } catch (error) {
+            // Continue with next element
+          }
+        }
+      } catch (error) {
+        // Continue with next selector
+      }
+    }
+  }
+
+  /**
+   * Interact with dropdowns and menus
+   */
+  private async interactWithDropdowns(page: Page): Promise<void> {
+    console.log('📋 Interacting with dropdowns and menus...');
+    
+    const dropdownSelectors = [
+      '.dropdown-toggle', '.dropdown-trigger', '.menu-toggle',
+      '[data-toggle="dropdown"]', '[data-bs-toggle="dropdown"]',
+      '.select', '.combobox', '[role="combobox"]'
+    ];
+    
+    for (const selector of dropdownSelectors) {
+      try {
+        const elements = await page.$$(selector);
+        for (const element of elements.slice(0, 5)) { // Limit interactions
+          try {
+            await element.click();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Try to interact with dropdown options
+            const options = await page.$$('.dropdown-menu a, .dropdown-item, .option');
+            for (const option of options.slice(0, 3)) {
+              try {
+                await option.hover();
+                await new Promise(resolve => setTimeout(resolve, 300));
+              } catch (error) {
+                // Continue
+              }
+            }
+            
+            // Close dropdown
+            await element.click();
+            console.log('✅ Interacted with dropdown');
+          } catch (error) {
+            // Continue with next element
+          }
+        }
+      } catch (error) {
+        // Continue with next selector
+      }
+    }
+  }
+
+  /**
+   * Trigger form field interactions
+   */
+  private async triggerFormFieldInteractions(page: Page): Promise<void> {
+    console.log('📝 Triggering form field interactions...');
+    
+    const formSelectors = [
+      'input[type="text"]', 'input[type="email"]', 'input[type="search"]',
+      'select', 'textarea', '[role="combobox"]', '[role="textbox"]'
+    ];
+    
+    for (const selector of formSelectors) {
+      try {
+        const elements = await page.$$(selector);
+        for (const element of elements.slice(0, 3)) { // Limit interactions
+          try {
+            await element.click();
+            await element.type('test', { delay: 50 });
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Clear the input
+            await element.click({ clickCount: 3 });
+            await element.press('Backspace');
+            console.log('✅ Tested form field');
+          } catch (error) {
+            // Continue with next element
+          }
+        }
+      } catch (error) {
+        // Continue with next selector
+      }
+    }
+  }
+
+  /**
+   * Handle modal and popup triggers
+   */
+  private async handleModalTriggers(page: Page): Promise<void> {
+    console.log('🪟 Handling modal and popup triggers...');
+    
+    const modalSelectors = [
+      '[data-toggle="modal"]', '[data-bs-toggle="modal"]',
+      '.modal-trigger', '.popup-trigger', '.lightbox-trigger',
+      '[data-target*="modal"]', '[data-bs-target*="modal"]'
+    ];
+    
+    for (const selector of modalSelectors) {
+      try {
+        const elements = await page.$$(selector);
+        for (const element of elements.slice(0, 3)) { // Limit interactions
+          try {
+            await element.click();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Try to close modal if it opened
+            const closeButtons = await page.$$('.modal-close, .close, [data-dismiss="modal"]');
+            for (const closeBtn of closeButtons) {
+              try {
+                await closeBtn.click();
+                break;
+              } catch (error) {
+                // Continue
+              }
+            }
+            
+            console.log('✅ Handled modal trigger');
+          } catch (error) {
+            // Continue with next element
+          }
+        }
+      } catch (error) {
+        // Continue with next selector
+      }
+    }
+  }
+
+  /**
+   * Merge elements from multiple extractions, removing duplicates
+   */
+  private mergeElements(existingElements: any[], newElements: any[]): any[] {
+    const elementMap = new Map<string, any>();
+    
+    // Add existing elements
+    existingElements.forEach(element => {
+      elementMap.set(element.selector, element);
+    });
+    
+    // Add new elements, updating existing ones if they have higher importance
+    newElements.forEach(element => {
+      const existing = elementMap.get(element.selector);
+      if (!existing || element.importance > existing.importance) {
+        elementMap.set(element.selector, element);
+      }
+    });
+    
+    return Array.from(elementMap.values()).sort((a, b) => b.importance - a.importance);
+  }
+
+  /**
+   * Extract comprehensive interactive elements including dynamically loaded content
    */
   private async extractInteractiveElements(page: Page): Promise<any[]> {
+    console.log('🔍 Extracting comprehensive interactive elements...');
+    
+    // First, ensure all dynamic content is loaded
+    await this.waitForDynamicContent(page);
+    
     return page.evaluate(() => {
       const elements: any[] = [];
+      const processedElements = new Set<string>();
 
-      // Helper function to generate CSS selector for an element
+      // Helper function to generate robust CSS selector for an element
       const generateSelector = (element: Element): string => {
+        // Priority 1: ID
         if (element.id) {
           return `#${element.id}`;
         }
 
-        if (element.className) {
-          const classes = element.className.split(' ').filter((c) => c.trim());
-          if (classes.length > 0) {
-            return `.${classes.join('.')}`;
-          }
-        }
-
+        // Priority 2: Data attributes
         if (element.getAttribute('data-testid')) {
           return `[data-testid="${element.getAttribute('data-testid')}"]`;
         }
 
+        if (element.getAttribute('data-cy')) {
+          return `[data-cy="${element.getAttribute('data-cy')}"]`;
+        }
+
+        if (element.getAttribute('data-qa')) {
+          return `[data-qa="${element.getAttribute('data-qa')}"]`;
+        }
+
+        // Priority 3: Aria attributes
         if (element.getAttribute('aria-label')) {
           return `[aria-label="${element.getAttribute('aria-label')}"]`;
         }
 
-        // Fallback to tag name with nth-child
-        const parent = element.parentElement;
-        if (parent) {
-          const siblings = Array.from(parent.children);
-          const index = siblings.indexOf(element);
-          return `${element.tagName.toLowerCase()}:nth-child(${index + 1})`;
+        // Priority 4: Role attribute
+        if (element.getAttribute('role')) {
+          const role = element.getAttribute('role');
+          const tagName = element.tagName.toLowerCase();
+          return `${tagName}[role="${role}"]`;
         }
 
-        return element.tagName.toLowerCase();
+        // Priority 5: Class names (most specific first)
+        if (element.className) {
+          const classes = element.className.split(' ').filter((c) => c.trim());
+          if (classes.length > 0) {
+            // Use the most specific class
+            const specificClass = classes.find(c => 
+              c.includes('btn') || c.includes('button') || c.includes('link') ||
+              c.includes('nav') || c.includes('menu') || c.includes('tab')
+            ) || classes[0];
+            return `.${specificClass}`;
+          }
+        }
+
+        // Priority 6: Tag with attributes
+        const tagName = element.tagName.toLowerCase();
+        const type = element.getAttribute('type');
+        if (type) {
+          return `${tagName}[type="${type}"]`;
+        }
+
+        // Priority 7: Tag with text content (for buttons/links)
+        const text = element.textContent?.trim();
+        if (text && text.length < 50) {
+          return `${tagName}:has-text("${text}")`;
+        }
+
+        // Fallback: Tag with nth-child
+        const parent = element.parentElement;
+        if (parent) {
+          const siblings = Array.from(parent.children).filter(s => s.tagName === element.tagName);
+          const index = siblings.indexOf(element);
+          return `${tagName}:nth-of-type(${index + 1})`;
+        }
+
+        return tagName;
       };
 
       // Helper function to check if an element is interactive
       const isInteractiveElement = (element: Element): boolean => {
-        const interactiveTags = ['button', 'a', 'input', 'select', 'textarea'];
-        const interactiveRoles = ['button', 'link', 'tab', 'menuitem', 'option'];
+        const interactiveTags = [
+          'button', 'a', 'input', 'select', 'textarea', 'label',
+          'summary', 'details', 'option', 'optgroup'
+        ];
+        const interactiveRoles = [
+          'button', 'link', 'tab', 'menuitem', 'option', 'checkbox',
+          'radio', 'textbox', 'combobox', 'listbox', 'menu', 'menubar',
+          'tablist', 'tree', 'grid', 'row', 'cell'
+        ];
 
+        // Check by tag name
         if (interactiveTags.includes(element.tagName.toLowerCase())) {
           return true;
         }
 
-        if (interactiveRoles.includes(element.getAttribute('role') || '')) {
+        // Check by role
+        const role = element.getAttribute('role');
+        if (role && interactiveRoles.includes(role)) {
           return true;
         }
 
-        if (
-          element.getAttribute('onclick') ||
-          element.getAttribute('onmousedown')
-        ) {
+        // Check for event handlers
+        const hasEventHandlers = [
+          'onclick', 'onmousedown', 'onmouseup', 'onmouseover',
+          'onmouseout', 'onfocus', 'onblur', 'onchange', 'onsubmit'
+        ].some(attr => element.getAttribute(attr));
+
+        if (hasEventHandlers) {
+          return true;
+        }
+
+        // Check for interactive classes
+        const className = element.className.toLowerCase();
+        const interactiveClasses = [
+          'btn', 'button', 'link', 'clickable', 'interactive',
+          'nav', 'menu', 'tab', 'accordion', 'dropdown', 'toggle',
+          'expand', 'collapse', 'show', 'hide'
+        ];
+
+        if (interactiveClasses.some(cls => className.includes(cls))) {
+          return true;
+        }
+
+        // Check for cursor pointer style
+        const computedStyle = window.getComputedStyle(element);
+        if (computedStyle.cursor === 'pointer') {
           return true;
         }
 
         return false;
       };
 
-      // Find all interactive elements
+      // Helper function to get element importance score
+      const getElementImportance = (element: Element): number => {
+        let score = 0;
+        
+        // High importance indicators
+        if (element.getAttribute('data-testid')) score += 10;
+        if (element.getAttribute('data-cy')) score += 10;
+        if (element.getAttribute('data-qa')) score += 10;
+        if (element.id) score += 8;
+        if (element.getAttribute('aria-label')) score += 7;
+        if (element.getAttribute('role')) score += 6;
+        
+        // Text content importance
+        const text = element.textContent?.trim();
+        if (text) {
+          const importantTexts = [
+            'login', 'sign in', 'sign up', 'register', 'dashboard', 'home',
+            'profile', 'settings', 'account', 'billing', 'payment', 'upgrade',
+            'create', 'add', 'new', 'edit', 'delete', 'save', 'cancel',
+            'submit', 'continue', 'next', 'previous', 'back', 'close'
+          ];
+          
+          if (importantTexts.some(important => text.toLowerCase().includes(important))) {
+            score += 5;
+          }
+        }
+        
+        // Class name importance
+        const className = element.className.toLowerCase();
+        if (className.includes('primary')) score += 4;
+        if (className.includes('main')) score += 3;
+        if (className.includes('nav')) score += 3;
+        if (className.includes('menu')) score += 3;
+        
+        return score;
+      };
+
+      // Comprehensive selectors for all possible interactive elements
       const selectors = [
-        'button',
-        'a[href]',
-        'input[type="submit"]',
-        'input[type="button"]',
-        'input[type="checkbox"]',
-        'input[type="radio"]',
-        'select',
-        '[onclick]',
-        '[role="button"]',
-        '[role="link"]',
-        '[role="tab"]',
-        '[role="menuitem"]',
-        '[data-testid]',
-        '[aria-label]',
-        '.btn',
-        '.button',
-        '.link',
-        '.menu-item',
-        '.nav-item',
-        '.tab',
-        '.card',
-        '.tile',
-        '.widget',
+        // Standard interactive elements
+        'button', 'a[href]', 'input', 'select', 'textarea', 'label',
+        'summary', 'details', 'option', 'optgroup',
+        
+        // Role-based selectors
+        '[role="button"]', '[role="link"]', '[role="tab"]', '[role="menuitem"]',
+        '[role="checkbox"]', '[role="radio"]', '[role="textbox"]', '[role="combobox"]',
+        '[role="listbox"]', '[role="menu"]', '[role="menubar"]', '[role="tablist"]',
+        '[role="tree"]', '[role="grid"]', '[role="row"]', '[role="cell"]',
+        
+        // Event handler selectors
+        '[onclick]', '[onmousedown]', '[onmouseup]', '[onmouseover]',
+        '[onmouseout]', '[onfocus]', '[onblur]', '[onchange]', '[onsubmit]',
+        
+        // Data attribute selectors
+        '[data-testid]', '[data-cy]', '[data-qa]', '[data-test]',
+        '[data-hover]', '[data-toggle]', '[data-collapse]', '[data-expand]',
+        '[data-dropdown]', '[data-popover]', '[data-tooltip]',
+        
+        // Aria attribute selectors
+        '[aria-label]', '[aria-labelledby]', '[aria-describedby]',
+        '[aria-expanded]', '[aria-selected]', '[aria-checked]',
+        '[aria-pressed]', '[aria-current]', '[aria-haspopup]',
+        
+        // Common class patterns
+        '.btn', '.button', '.link', '.clickable', '.interactive',
+        '.nav', '.navbar', '.menu', '.menu-item', '.nav-item',
+        '.tab', '.tabs', '.accordion', '.dropdown', '.toggle',
+        '.expand', '.collapse', '.show', '.hide', '.active',
+        '.primary', '.secondary', '.main', '.sidebar', '.header',
+        '.footer', '.content', '.widget', '.card', '.tile',
+        '.form', '.input', '.field', '.control', '.action',
+        
+        // Framework-specific patterns
+        '[class*="btn"]', '[class*="button"]', '[class*="link"]',
+        '[class*="nav"]', '[class*="menu"]', '[class*="tab"]',
+        '[class*="accordion"]', '[class*="dropdown"]', '[class*="toggle"]',
+        '[class*="expand"]', '[class*="collapse"]', '[class*="show"]',
+        '[class*="hide"]', '[class*="active"]', '[class*="click"]',
+        '[class*="hover"]', '[class*="focus"]', '[class*="interact"]',
+        
+        // Component patterns
+        '[class*="component"]', '[class*="element"]', '[class*="item"]',
+        '[class*="option"]', '[class*="choice"]', '[class*="select"]',
+        '[class*="picker"]', '[class*="chooser"]', '[class*="selector"]',
       ];
 
+      // Process all selectors
       selectors.forEach((selector) => {
+        try {
         const foundElements = document.querySelectorAll(selector);
         foundElements.forEach((element) => {
           const rect = element.getBoundingClientRect();
+            const computedStyle = window.getComputedStyle(element);
 
-          // Only include visible elements
-          if (
+            // Check if element is visible and interactive
+            const isVisible = (
             rect.width > 0 &&
             rect.height > 0 &&
             (element as any).offsetParent !== null &&
-            window.getComputedStyle(element).visibility !== 'hidden'
-          ) {
+              computedStyle.visibility !== 'hidden' &&
+              computedStyle.display !== 'none' &&
+              computedStyle.opacity !== '0'
+            );
+
+            if (isVisible) {
+              const selector = generateSelector(element);
+              const elementKey = `${element.tagName}-${selector}`;
+              
+              // Avoid duplicates
+              if (!processedElements.has(elementKey)) {
+                processedElements.add(elementKey);
+                
             const elementData = {
-              selector: generateSelector(element),
+                  selector,
               tagName: element.tagName.toLowerCase(),
               text: element.textContent?.trim() || '',
               href: element.getAttribute('href') || '',
@@ -1406,23 +2609,47 @@ export class DemoAutomationService {
               role: element.getAttribute('role') || '',
               'aria-label': element.getAttribute('aria-label') || '',
               'data-testid': element.getAttribute('data-testid') || '',
+                  'data-cy': element.getAttribute('data-cy') || '',
+                  'data-qa': element.getAttribute('data-qa') || '',
               onclick: element.getAttribute('onclick') || '',
               position: {
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: rect.height,
+                    x: Math.round(rect.x),
+                    y: Math.round(rect.y),
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height),
               },
               isVisible: true,
               isInteractive: isInteractiveElement(element),
+                  importance: getElementImportance(element),
+                  // Additional metadata
+                  hasChildren: element.children.length > 0,
+                  isExpanded: element.getAttribute('aria-expanded') === 'true',
+                  isSelected: element.getAttribute('aria-selected') === 'true',
+                  isChecked: element.getAttribute('aria-checked') === 'true',
+                  isPressed: element.getAttribute('aria-pressed') === 'true',
+                  hasPopup: element.getAttribute('aria-haspopup') === 'true',
+                  current: element.getAttribute('aria-current') === 'true',
             };
 
             elements.push(elementData);
-          }
-        });
+              }
+            }
+          });
+        } catch (error) {
+          // Continue with next selector if one fails
+          console.warn(`Error processing selector ${selector}:`, error);
+        }
       });
 
-      return elements;
+      // Sort by importance and remove duplicates
+      const uniqueElements = elements
+        .filter((element, index, self) => 
+          index === self.findIndex(e => e.selector === element.selector)
+        )
+        .sort((a, b) => b.importance - a.importance);
+
+      console.log(`Found ${uniqueElements.length} interactive elements`);
+      return uniqueElements;
     });
   }
 
@@ -1475,32 +2702,722 @@ export class DemoAutomationService {
   }
 
   /**
-   * Wait for dynamic content to load completely
+   * Intelligently wait for and discover dynamic content through systematic interaction
    */
   private async waitForDynamicContent(page: Page): Promise<void> {
     try {
-      // Wait for network idle
+      console.log('🔍 Starting intelligent dynamic content discovery...');
+      
+      // Step 1: Wait for initial page load
       await page.waitForFunction(() => document.readyState === 'complete');
+      console.log('✅ Initial page load complete');
 
-      // Wait for any loading indicators to disappear
-      await page
-        .waitForFunction(
-          () => {
-            const loadingElements = document.querySelectorAll(
-              '[class*="loading"], [class*="spinner"], [id*="loading"]',
-            );
-            return loadingElements.length === 0;
-          },
-          { timeout: 5000 },
-        )
-        .catch(() => {
-          // Continue if timeout
-        });
-
-      // Additional wait for any remaining dynamic content
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Step 2: Wait for loading indicators to disappear
+      await this.waitForLoadingIndicators(page);
+      
+      // Step 3: Systematic content discovery through interactions
+      await this.discoverDynamicContent(page);
+      
+      // Step 4: Final content stabilization
+      await this.stabilizeContent(page);
+      
+      console.log('✅ Dynamic content discovery complete');
     } catch (error) {
-      console.log('⚠️ Dynamic content wait timeout, continuing...');
+      console.log('⚠️ Dynamic content discovery timeout, continuing...');
+    }
+  }
+
+  /**
+   * Wait for loading indicators to disappear
+   */
+  private async waitForLoadingIndicators(page: Page): Promise<void> {
+    const loadingSelectors = [
+      '[class*="loading"]',
+      '[class*="spinner"]',
+      '[id*="loading"]',
+      '[data-testid*="loading"]',
+      '[aria-label*="loading"]',
+      '.loading',
+      '.spinner',
+      '.loader',
+      '[class*="skeleton"]',
+      '[class*="placeholder"]',
+    ];
+
+    for (const selector of loadingSelectors) {
+      try {
+        await page.waitForFunction(
+          () => {
+            const elements = document.querySelectorAll(selector);
+            return elements.length === 0 || 
+                   Array.from(elements).every(el => 
+                     window.getComputedStyle(el).display === 'none' ||
+                     window.getComputedStyle(el).visibility === 'hidden'
+                   );
+          },
+          { timeout: 3000 }
+        );
+      } catch (error) {
+          // Continue if timeout
+      }
+    }
+  }
+
+  /**
+   * Discover dynamic content through systematic interactions
+   */
+  private async discoverDynamicContent(page: Page): Promise<void> {
+    console.log('🔍 Discovering dynamic content through interactions...');
+    
+    // Get initial content state
+    const initialContent = await this.getContentSnapshot(page);
+    
+    // Strategy 1: Scroll to trigger lazy loading
+    await this.triggerLazyLoading(page);
+    
+    // Strategy 2: Hover over interactive elements to reveal content
+    await this.hoverToRevealContent(page);
+    
+    // Strategy 3: Click on expandable/collapsible elements
+    await this.clickToExpandContent(page);
+    
+    // Strategy 4: Interact with tabs and navigation
+    await this.interactWithNavigation(page);
+    
+    // Strategy 5: Trigger form interactions
+    await this.triggerFormInteractions(page);
+    
+    // Strategy 6: Handle infinite scroll and pagination
+    await this.handleInfiniteScroll(page);
+    
+    // Strategy 7: Comprehensive element interactions
+    await this.performComprehensiveElementInteractions(page);
+    
+    // Check if new content was revealed
+    const finalContent = await this.getContentSnapshot(page);
+    const hasNewContent = this.compareContentSnapshots(initialContent, finalContent);
+    
+    if (hasNewContent) {
+      console.log('✅ New dynamic content discovered');
+      // Recursively discover more content
+      await this.discoverDynamicContent(page);
+    }
+  }
+
+  /**
+   * Trigger lazy loading by scrolling
+   */
+  private async triggerLazyLoading(page: Page): Promise<void> {
+    console.log('📜 Triggering lazy loading through scrolling...');
+    
+    const viewportHeight = await page.evaluate(() => window.innerHeight);
+    const documentHeight = await page.evaluate(() => document.body.scrollHeight);
+    
+    // Scroll in increments to trigger lazy loading
+    for (let scrollPosition = 0; scrollPosition < documentHeight; scrollPosition += viewportHeight) {
+      await page.evaluate((pos) => {
+        window.scrollTo(0, pos);
+      }, scrollPosition);
+      
+      // Wait for potential lazy loading
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    // Scroll back to top
+    await page.evaluate(() => window.scrollTo(0, 0));
+  }
+
+  /**
+   * Hover over elements to reveal hidden content
+   */
+  private async hoverToRevealContent(page: Page): Promise<void> {
+    console.log('🖱️ Hovering to reveal content...');
+    
+    const hoverableElements = await page.evaluate(() => {
+      const elements = document.querySelectorAll(`
+        [data-hover], [data-tooltip], [data-popover], [data-dropdown],
+        .hover, .tooltip, .popover, .dropdown,
+        [class*="hover"], [class*="tooltip"], [class*="popover"],
+        button, a, [role="button"], [role="menuitem"]
+      `);
+      
+      return Array.from(elements)
+        .filter(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && 
+                 window.getComputedStyle(el).visibility !== 'hidden';
+        })
+        .slice(0, 20) // Limit to prevent excessive interactions
+        .map(el => ({
+          selector: this.generateSelector(el),
+          tagName: el.tagName.toLowerCase(),
+          text: el.textContent?.trim().substring(0, 50) || '',
+        }));
+    });
+
+    for (const element of hoverableElements) {
+      try {
+        const elementHandle = await page.$(element.selector);
+        if (elementHandle) {
+          await elementHandle.hover();
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Check if new content appeared
+          const newElements = await page.evaluate(() => 
+            document.querySelectorAll('[class*="show"], [class*="visible"], [class*="active"]').length
+          );
+          
+          if (newElements > 0) {
+            console.log(`✅ Hover revealed content on ${element.tagName}`);
+          }
+        }
+    } catch (error) {
+        // Continue with next element
+      }
+    }
+  }
+
+  /**
+   * Click on expandable elements to reveal content
+   */
+  private async clickToExpandContent(page: Page): Promise<void> {
+    console.log('🖱️ Clicking to expand content...');
+    
+    const expandableElements = await page.evaluate(() => {
+      const elements = document.querySelectorAll(`
+        [data-toggle], [data-collapse], [data-expand],
+        .collapse, .expand, .accordion, .toggle,
+        [class*="collapse"], [class*="expand"], [class*="accordion"],
+        button[aria-expanded], [role="button"][aria-expanded],
+        [data-testid*="expand"], [data-testid*="toggle"]
+      `);
+      
+      return Array.from(elements)
+        .filter(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && 
+                 (el as any).offsetParent !== null &&
+                 window.getComputedStyle(el).visibility !== 'hidden' &&
+                 window.getComputedStyle(el).display !== 'none';
+        })
+        .slice(0, 15) // Limit interactions
+        .map(el => ({
+          selector: this.generateSelector(el),
+          tagName: el.tagName.toLowerCase(),
+          text: el.textContent?.trim().substring(0, 50) || '',
+          ariaExpanded: el.getAttribute('aria-expanded'),
+        }));
+    });
+
+    for (const element of expandableElements) {
+      try {
+        const elementHandle = await page.$(element.selector);
+        if (elementHandle) {
+          // Check if element is already expanded
+          const isExpanded = await elementHandle.evaluate(el => 
+            el.getAttribute('aria-expanded') === 'true' ||
+            el.classList.contains('expanded') ||
+            el.classList.contains('active')
+          );
+          
+          if (!isExpanded) {
+            await elementHandle.click();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log(`✅ Clicked expandable element: ${element.text}`);
+          }
+        }
+      } catch (error) {
+        // Continue with next element
+      }
+    }
+  }
+
+  /**
+   * Interact with navigation elements (tabs, menus, etc.)
+   */
+  private async interactWithNavigation(page: Page): Promise<void> {
+    console.log('🧭 Interacting with navigation elements...');
+    
+    const navElements = await page.evaluate(() => {
+      const elements = document.querySelectorAll(`
+        nav a, .nav a, .navbar a, .menu a,
+        [role="tab"], [role="menuitem"], [role="navigation"] a,
+        .tab, .menu-item, .nav-item,
+        [data-testid*="nav"], [data-testid*="menu"], [data-testid*="tab"]
+      `);
+      
+      return Array.from(elements)
+        .filter(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && 
+                 window.getComputedStyle(el).visibility !== 'hidden';
+        })
+        .slice(0, 10) // Limit to main navigation
+        .map(el => ({
+          selector: this.generateSelector(el),
+          text: el.textContent?.trim().substring(0, 50) || '',
+          href: el.getAttribute('href') || '',
+        }));
+    });
+
+    for (const element of navElements) {
+      try {
+        const elementHandle = await page.$(element.selector);
+        if (elementHandle) {
+          await elementHandle.click();
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Check if we're on a new page or if content changed
+          const currentUrl = page.url();
+          if (currentUrl !== element.href && element.href) {
+            console.log(`✅ Navigated to: ${element.text}`);
+            // Go back to continue discovery
+            await page.goBack();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      } catch (error) {
+        // Continue with next element
+      }
+    }
+  }
+
+  /**
+   * Trigger form interactions to reveal dynamic content
+   */
+  private async triggerFormInteractions(page: Page): Promise<void> {
+    console.log('📝 Triggering form interactions...');
+    
+    const formElements = await page.evaluate(() => {
+      const elements = document.querySelectorAll(`
+        input[type="text"], input[type="email"], input[type="search"],
+        select, textarea, [role="combobox"], [role="textbox"]
+      `);
+      
+      return Array.from(elements)
+        .filter(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && 
+                 window.getComputedStyle(el).visibility !== 'hidden';
+        })
+        .slice(0, 5) // Limit form interactions
+        .map(el => ({
+          selector: this.generateSelector(el),
+          type: el.getAttribute('type') || el.tagName.toLowerCase(),
+          placeholder: el.getAttribute('placeholder') || '',
+        }));
+    });
+
+    for (const element of formElements) {
+      try {
+        const elementHandle = await page.$(element.selector);
+        if (elementHandle) {
+          await elementHandle.click();
+          await elementHandle.type('test', { delay: 100 });
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Clear the input
+          await elementHandle.click({ clickCount: 3 });
+          await elementHandle.press('Backspace');
+          
+          console.log(`✅ Tested form element: ${element.type}`);
+        }
+      } catch (error) {
+        // Continue with next element
+      }
+    }
+  }
+
+  /**
+   * Handle infinite scroll and pagination
+   */
+  private async handleInfiniteScroll(page: Page): Promise<void> {
+    console.log('♾️ Handling infinite scroll and pagination...');
+    
+    let previousHeight = 0;
+    let currentHeight = await page.evaluate(() => document.body.scrollHeight);
+    let scrollAttempts = 0;
+    const maxScrollAttempts = 5;
+
+    while (currentHeight > previousHeight && scrollAttempts < maxScrollAttempts) {
+      previousHeight = currentHeight;
+      
+      // Scroll to bottom
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Check for "Load More" buttons
+      const loadMoreButtons = await page.$$(`
+        button:has-text("Load More"), button:has-text("Show More"),
+        button:has-text("Load More"), [data-testid*="load-more"],
+        [class*="load-more"], [class*="show-more"]
+      `);
+      
+      for (const button of loadMoreButtons) {
+        try {
+          await button.click();
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log('✅ Clicked load more button');
+        } catch (error) {
+          // Continue
+        }
+      }
+      
+      currentHeight = await page.evaluate(() => document.body.scrollHeight);
+      scrollAttempts++;
+    }
+    
+    // Scroll back to top
+    await page.evaluate(() => window.scrollTo(0, 0));
+  }
+
+  /**
+   * Stabilize content after all interactions
+   */
+  private async stabilizeContent(page: Page): Promise<void> {
+    console.log('⏳ Stabilizing content...');
+    
+    // Wait for any remaining animations or transitions
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Wait for network idle
+    try {
+      await page.waitForFunction(() => document.readyState === 'complete', { timeout: 5000 });
+    } catch (error) {
+      // Continue if timeout
+    }
+    
+    // Final scroll to ensure all content is loaded
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight);
+      window.scrollTo(0, 0);
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  /**
+   * Get a snapshot of current page content for comparison
+   */
+  private async getContentSnapshot(page: Page): Promise<any> {
+    return await page.evaluate(() => ({
+      elementCount: document.querySelectorAll('*').length,
+      textContent: document.body.textContent?.length || 0,
+      visibleElements: document.querySelectorAll('*').length,
+      scrollHeight: document.body.scrollHeight,
+    }));
+  }
+
+  /**
+   * Compare content snapshots to detect changes
+   */
+  private compareContentSnapshots(initial: any, final: any): boolean {
+    return (
+      final.elementCount > initial.elementCount ||
+      final.textContent > initial.textContent ||
+      final.scrollHeight > initial.scrollHeight
+    );
+  }
+
+  /**
+   * Generate CSS selector for an element
+   */
+  private generateSelector(element: Element): string {
+    if (element.id) {
+      return `#${element.id}`;
+    }
+    
+    if (element.getAttribute('data-testid')) {
+      return `[data-testid="${element.getAttribute('data-testid')}"]`;
+    }
+    
+    if (element.className) {
+      const classes = element.className.split(' ').filter(c => c.trim());
+      if (classes.length > 0) {
+        return `.${classes.join('.')}`;
+      }
+    }
+    
+    return element.tagName.toLowerCase();
+  }
+
+  /**
+   * Comprehensive element interaction system for different content types
+   */
+  private async performComprehensiveElementInteractions(page: Page): Promise<void> {
+    console.log('🎯 Performing comprehensive element interactions...');
+    
+    // Get all interactive elements
+    const elements = await page.evaluate(() => {
+      const interactiveElements = document.querySelectorAll(`
+        button, a, input, select, textarea, [role="button"], [role="link"],
+        [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"],
+        [data-testid], [data-cy], [data-qa], [onclick], [onmousedown],
+        .btn, .button, .link, .nav, .menu, .tab, .accordion, .dropdown,
+        .toggle, .expand, .collapse, .show, .hide, .active, .clickable,
+        .interactive, .hover, .tooltip, .popover, .modal-trigger
+      `);
+      
+      return Array.from(interactiveElements)
+        .filter(el => {
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          return (
+            rect.width > 0 && rect.height > 0 &&
+            (el as any).offsetParent !== null &&
+            style.visibility !== 'hidden' &&
+            style.display !== 'none' &&
+            style.opacity !== '0'
+          );
+        })
+        .slice(0, 50) // Limit to prevent excessive interactions
+        .map(el => ({
+          selector: this.generateSelector(el),
+          tagName: el.tagName.toLowerCase(),
+          text: el.textContent?.trim().substring(0, 100) || '',
+          type: el.getAttribute('type') || '',
+          role: el.getAttribute('role') || '',
+          className: el.className || '',
+          hasChildren: el.children.length > 0,
+          isExpanded: el.getAttribute('aria-expanded') === 'true',
+          isSelected: el.getAttribute('aria-selected') === 'true',
+          isChecked: el.getAttribute('aria-checked') === 'true',
+          hasPopup: el.getAttribute('aria-haspopup') === 'true',
+        }));
+    });
+
+    console.log(`🎯 Found ${elements.length} interactive elements to test`);
+
+    // Categorize elements by interaction type
+    const elementCategories = this.categorizeElements(elements);
+
+    // Perform different types of interactions
+    await this.performHoverInteractions(page, elementCategories.hoverElements);
+    await this.performClickInteractions(page, elementCategories.clickElements);
+    await this.performFormInteractions(page, elementCategories.formElements);
+    await this.performNavigationInteractions(page, elementCategories.navElements);
+    await this.performExpandableInteractions(page, elementCategories.expandableElements);
+  }
+
+  /**
+   * Categorize elements by interaction type
+   */
+  private categorizeElements(elements: any[]): any {
+    return {
+      hoverElements: elements.filter(el => 
+        el.className.includes('hover') || 
+        el.className.includes('tooltip') || 
+        el.className.includes('popover') ||
+        el.role === 'menuitem' ||
+        el.hasPopup
+      ),
+      clickElements: elements.filter(el => 
+        el.tagName === 'button' || 
+        el.tagName === 'a' || 
+        el.role === 'button' || 
+        el.role === 'link' ||
+        el.className.includes('btn') ||
+        el.className.includes('button') ||
+        el.className.includes('clickable')
+      ),
+      formElements: elements.filter(el => 
+        el.tagName === 'input' || 
+        el.tagName === 'select' || 
+        el.tagName === 'textarea' ||
+        el.role === 'textbox' ||
+        el.role === 'combobox' ||
+        el.role === 'checkbox' ||
+        el.role === 'radio'
+      ),
+      navElements: elements.filter(el => 
+        el.className.includes('nav') || 
+        el.className.includes('menu') || 
+        el.className.includes('tab') ||
+        el.role === 'tab' ||
+        el.role === 'menuitem' ||
+        el.role === 'navigation'
+      ),
+      expandableElements: elements.filter(el => 
+        el.className.includes('accordion') || 
+        el.className.includes('collapse') || 
+        el.className.includes('expand') ||
+        el.className.includes('toggle') ||
+        el.className.includes('dropdown') ||
+        el.isExpanded !== undefined ||
+        el.hasChildren
+      )
+    };
+  }
+
+  /**
+   * Perform hover interactions to reveal tooltips and popovers
+   */
+  private async performHoverInteractions(page: Page, elements: any[]): Promise<void> {
+    console.log(`🖱️ Performing hover interactions on ${elements.length} elements...`);
+    
+    for (const element of elements.slice(0, 20)) { // Limit interactions
+      try {
+        const elementHandle = await page.$(element.selector);
+        if (elementHandle) {
+          await elementHandle.hover();
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Check if new content appeared
+          const newContent = await page.evaluate(() => {
+            const tooltips = document.querySelectorAll('[class*="tooltip"], [class*="popover"], [class*="show"]');
+            return tooltips.length;
+          });
+          
+          if (newContent > 0) {
+            console.log(`✅ Hover revealed content on ${element.tagName}: ${element.text}`);
+          }
+        }
+      } catch (error) {
+        // Continue with next element
+      }
+    }
+  }
+
+  /**
+   * Perform click interactions on buttons and links
+   */
+  private async performClickInteractions(page: Page, elements: any[]): Promise<void> {
+    console.log(`🖱️ Performing click interactions on ${elements.length} elements...`);
+    
+    for (const element of elements.slice(0, 15)) { // Limit interactions
+      try {
+        const elementHandle = await page.$(element.selector);
+        if (elementHandle) {
+          const initialUrl = page.url();
+          
+          await elementHandle.click();
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Check if navigation occurred
+          const currentUrl = page.url();
+          if (currentUrl !== initialUrl) {
+            console.log(`✅ Click navigated: ${element.text}`);
+            // Go back to continue testing
+            await page.goBack();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            console.log(`✅ Clicked element: ${element.text}`);
+          }
+        }
+      } catch (error) {
+        // Continue with next element
+      }
+    }
+  }
+
+  /**
+   * Perform form interactions
+   */
+  private async performFormInteractions(page: Page, elements: any[]): Promise<void> {
+    console.log(`📝 Performing form interactions on ${elements.length} elements...`);
+    
+    for (const element of elements.slice(0, 10)) { // Limit interactions
+      try {
+        const elementHandle = await page.$(element.selector);
+        if (elementHandle) {
+          if (element.tagName === 'input' || element.tagName === 'textarea') {
+            await elementHandle.click();
+            await elementHandle.type('test input', { delay: 100 });
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Clear the input
+            await elementHandle.click({ clickCount: 3 });
+            await elementHandle.press('Backspace');
+            console.log(`✅ Tested input: ${element.text}`);
+          } else if (element.tagName === 'select') {
+            await elementHandle.click();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Try to select an option
+            const options = await page.$$('option');
+            if (options.length > 1) {
+              await options[1].click();
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            console.log(`✅ Tested select: ${element.text}`);
+          }
+        }
+      } catch (error) {
+        // Continue with next element
+      }
+    }
+  }
+
+  /**
+   * Perform navigation interactions
+   */
+  private async performNavigationInteractions(page: Page, elements: any[]): Promise<void> {
+    console.log(`🧭 Performing navigation interactions on ${elements.length} elements...`);
+    
+    for (const element of elements.slice(0, 10)) { // Limit interactions
+      try {
+        const elementHandle = await page.$(element.selector);
+        if (elementHandle) {
+          const initialUrl = page.url();
+          
+          await elementHandle.click();
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Check if navigation occurred
+          const currentUrl = page.url();
+          if (currentUrl !== initialUrl) {
+            console.log(`✅ Navigation: ${element.text}`);
+            // Go back to continue testing
+            await page.goBack();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            console.log(`✅ Clicked nav element: ${element.text}`);
+          }
+        }
+      } catch (error) {
+        // Continue with next element
+      }
+    }
+  }
+
+  /**
+   * Perform expandable element interactions
+   */
+  private async performExpandableInteractions(page: Page, elements: any[]): Promise<void> {
+    console.log(`📂 Performing expandable interactions on ${elements.length} elements...`);
+    
+    for (const element of elements.slice(0, 10)) { // Limit interactions
+      try {
+        const elementHandle = await page.$(element.selector);
+        if (elementHandle) {
+          // Check if already expanded
+          const isExpanded = await elementHandle.evaluate(el => 
+            el.getAttribute('aria-expanded') === 'true' ||
+            el.classList.contains('expanded') ||
+            el.classList.contains('active') ||
+            el.classList.contains('show')
+          );
+          
+          if (!isExpanded) {
+            await elementHandle.click();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log(`✅ Expanded element: ${element.text}`);
+            
+            // Try to interact with expanded content
+            const expandedContent = await page.$$('.show, .expanded, .active, .collapse.show');
+            for (const content of expandedContent.slice(0, 3)) {
+              try {
+                await content.hover();
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } catch (error) {
+                // Continue
+              }
+            }
+          }
+        }
+      } catch (error) {
+        // Continue with next element
+      }
     }
   }
 
@@ -1515,6 +3432,27 @@ export class DemoAutomationService {
       metadata: any;
     },
     websiteUrl: string,
+    processedFiles?: {
+      apiDocs: string[];
+      productDocs: string[];
+      techDocs: string[];
+      otherDocs: string[];
+    },
+    targetFeature?: string,
+    roadmap?: {
+      roadmap: Array<{
+        step: number;
+        action: string;
+        url?: string;
+        selector?: string;
+        description: string;
+        expectedOutcome: string;
+        waitFor?: string;
+        screenshot?: boolean;
+      }>;
+      featureContext: string;
+      keyUrls: string[];
+    },
   ): Promise<Tour> {
     console.log('🤖 Generating tour with LLM analysis...');
 
@@ -1523,7 +3461,7 @@ export class DemoAutomationService {
       const analysisData = this.prepareDataForLLM(scrapedData);
 
       // Create LLM prompt for tour generation
-      this.createTourGenerationPrompt(analysisData, websiteUrl);
+      this.createTourGenerationPrompt(analysisData, websiteUrl, processedFiles, targetFeature, roadmap);
 
       // Call LLM service (this would integrate with your LLM service)
       const llmResponse = await this.callLLMService();
@@ -1661,7 +3599,60 @@ export class DemoAutomationService {
   private createTourGenerationPrompt(
     analysisData: any,
     websiteUrl: string,
+    processedFiles?: {
+      apiDocs: string[];
+      productDocs: string[];
+      techDocs: string[];
+      otherDocs: string[];
+    },
+    targetFeature?: string,
+    roadmap?: {
+      roadmap: Array<{
+        step: number;
+        action: string;
+        url?: string;
+        selector?: string;
+        description: string;
+        expectedOutcome: string;
+        waitFor?: string;
+        screenshot?: boolean;
+      }>;
+      featureContext: string;
+      keyUrls: string[];
+    },
   ): string {
+    // Build feature context section
+    let featureContext = '';
+    if (targetFeature) {
+      featureContext += `\nTARGET FEATURE: ${targetFeature}`;
+    }
+    
+    if (processedFiles) {
+      if (processedFiles.apiDocs.length > 0) {
+        featureContext += `\n\nAPI DOCUMENTATION:\n${processedFiles.apiDocs.join('\n\n')}`;
+      }
+      if (processedFiles.productDocs.length > 0) {
+        featureContext += `\n\nPRODUCT DOCUMENTATION:\n${processedFiles.productDocs.join('\n\n')}`;
+      }
+      if (processedFiles.techDocs.length > 0) {
+        featureContext += `\n\nTECHNICAL DOCUMENTATION:\n${processedFiles.techDocs.join('\n\n')}`;
+      }
+      if (processedFiles.otherDocs.length > 0) {
+        featureContext += `\n\nADDITIONAL DOCUMENTATION:\n${processedFiles.otherDocs.join('\n\n')}`;
+      }
+    }
+
+    // Add roadmap context
+    if (roadmap) {
+      featureContext += `\n\nEXECUTION ROADMAP:\n`;
+      featureContext += `Feature Context: ${roadmap.featureContext}\n`;
+      featureContext += `Key URLs: ${roadmap.keyUrls.join(', ')}\n`;
+      featureContext += `Execution Steps:\n`;
+      roadmap.roadmap.forEach(step => {
+        featureContext += `${step.step}. ${step.description} (${step.action})\n`;
+      });
+    }
+
     return `
 You are an expert UX analyst tasked with creating an interactive product tour for a web application.
 
@@ -1670,7 +3661,7 @@ WEBSITE DATA:
 - Total Pages: ${analysisData.website.totalPages}
 - Total Interactive Elements: ${analysisData.interactiveElements.length}
 - Key Features: ${analysisData.keyFeatures.join(', ')}
-- Identified User Flows: ${analysisData.userFlows.join(', ')}
+- Identified User Flows: ${analysisData.userFlows.join(', ')}${featureContext}
 
 PAGES ANALYZED:
 ${analysisData.website.pages
@@ -1698,14 +3689,16 @@ ${index + 1}. ${el.tagName} - "${el.text}"
   .join('')}
 
 TASK:
-Create a comprehensive product tour that demonstrates the key features and functionality of this web application. The tour should:
+Create a focused product tour that demonstrates the specific features and functionality of this web application. The tour should:
 
-1. Start with the most important/valuable features
-2. Follow logical user flows
-3. Include clear, actionable steps
-4. Be suitable for both new users and existing users wanting to learn more
-5. Cover 5-10 key steps maximum
-6. Include both navigation and feature demonstration steps
+1. Focus on the target feature: ${targetFeature || 'key features identified from the website'}
+2. Use the provided documentation to understand feature context and functionality
+3. Follow logical user flows based on the feature requirements
+4. Include clear, actionable steps that demonstrate the feature
+5. Be suitable for users wanting to learn about this specific feature
+6. Cover 3-8 key steps maximum (focused on the feature)
+7. Include both navigation and feature demonstration steps
+8. Prioritize steps that showcase the feature's value and functionality
 
 REQUIREMENTS:
 - Each step must have a valid CSS selector

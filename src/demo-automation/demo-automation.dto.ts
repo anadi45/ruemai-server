@@ -1,4 +1,34 @@
-import { IsString, IsUrl, IsOptional, IsObject } from 'class-validator';
+import { IsString, IsUrl, IsOptional, IsObject, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class FeatureFileDto {
+  @IsString()
+  filename: string;
+
+  @IsString()
+  content: string;
+
+  @IsString()
+  type: 'api-docs' | 'product-docs' | 'tech-docs' | 'other';
+}
+
+export class CreateDemoRequestDto {
+  @IsUrl()
+  websiteUrl: string;
+
+  @IsObject()
+  credentials: { username: string; password: string };
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FeatureFileDto)
+  @IsOptional()
+  featureFiles?: FeatureFileDto[];
+
+  @IsString()
+  @IsOptional()
+  targetFeature?: string;
+}
 
 export class CreateDemoResponseDto {
   @IsString()
