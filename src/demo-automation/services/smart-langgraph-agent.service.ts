@@ -41,8 +41,7 @@ export interface SmartAgentState {
   startTime: number;
   endTime?: number;
   
-  // Screenshots and evidence
-  screenshots: string[];
+  // Evidence and data
   extractedData: Record<string, any>;
   
   // Retry and adaptation
@@ -200,20 +199,6 @@ export class SmartLangGraphAgentService {
       }
     });
 
-    // Screenshot Tool
-    this.tools.set('screenshot', {
-      name: 'screenshot',
-      description: 'Take a screenshot of the current page',
-      parameters: { fullPage: 'boolean', quality: 'number' },
-      execute: async (params, state) => {
-        try {
-          const screenshot = await this.puppeteerWorker.takeScreenshot();
-          return { success: true, result: { screenshot, timestamp: Date.now() } };
-        } catch (error) {
-          return { success: false, error: error instanceof Error ? error.message : 'Screenshot failed' };
-        }
-      }
-    });
 
     // Extract Tool
     this.tools.set('extract', {
@@ -347,7 +332,6 @@ export class SmartLangGraphAgentService {
         currentActionIndex: 0,
         completedActions: [],
         failedActions: [],
-        screenshots: [],
         extractedData: {},
         retryCount: 0,
         maxRetries: 3,
@@ -445,7 +429,6 @@ export class SmartLangGraphAgentService {
           selector: nextAction.selector || '',
           description: nextAction.description,
           tooltip: nextAction.expectedOutcome,
-          screenshot: await this.puppeteerWorker.takeScreenshot(),
           timestamp: Date.now(),
           success: true
         };
@@ -454,7 +437,6 @@ export class SmartLangGraphAgentService {
           ...state,
           completedActions: [...state.completedActions, state.currentActionIndex],
           tourSteps: [...state.tourSteps, tourStep],
-          screenshots: [...state.screenshots, tourStep.screenshot || ''],
           extractedData: { ...state.extractedData, ...result.result }
         };
       } else {
@@ -604,7 +586,6 @@ export class SmartLangGraphAgentService {
       'navigate': 'navigate',
       'wait': 'wait',
       'scroll': 'wait', // Map scroll to wait for now
-      'screenshot': 'screenshot',
       'select': 'click', // Map select to click
       'hover': 'click', // Map hover to click
       'extract': 'extract',
@@ -648,12 +629,6 @@ export class SmartLangGraphAgentService {
           condition: action.waitCondition || 'time',
           duration: action.estimatedDuration,
           selector: action.selector
-        };
-      
-      case 'screenshot':
-        return {
-          fullPage: false,
-          quality: 80
         };
       
       case 'extract':
@@ -704,7 +679,6 @@ export class SmartLangGraphAgentService {
         isComplete: false,
         success: false,
         startTime: Date.now(),
-        screenshots: [],
         extractedData: {},
         retryCount: 0,
         maxRetries: 3,
@@ -729,7 +703,6 @@ export class SmartLangGraphAgentService {
         processingTime,
         finalUrl: this.puppeteerWorker.getCurrentUrl() || '',
         error: result.error,
-        screenshots: result.screenshots,
         summary: {
           featuresCovered: [actionPlan.featureName],
           actionsPerformed: result.tourSteps.map(step => step.action.type),

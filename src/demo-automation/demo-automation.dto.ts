@@ -21,10 +21,6 @@ export class TourStepDto {
     y: number;
   };
 
-  @IsOptional()
-  @IsString()
-  screenshot?: string;
-
   @IsNumber()
   timestamp: number;
 
@@ -86,13 +82,6 @@ export class ProductDocsDto {
   @IsString({ each: true })
   prerequisites?: string[];
 
-  @IsOptional()
-  @IsArray()
-  screenshots?: Array<{
-    data: string; // base64 encoded image data
-    description: string;
-    stepReference?: string;
-  }>;
 }
 
 export class CreateDemoRequestDto {
@@ -200,7 +189,6 @@ export class CreateDemoResponseDto {
     processingTime: number;
     finalUrl: string;
     error?: string;
-    screenshots?: string[];
     summary: {
       featuresCovered: string[];
       actionsPerformed: string[];

@@ -449,7 +449,6 @@ Only return valid JSON. Do not include any other text or explanations.
           typeActions: parsed.summary?.typeActions || 0,
           navigationActions: parsed.summary?.navigationActions || 0,
           waitActions: parsed.summary?.waitActions || 0,
-          screenshotActions: parsed.summary?.screenshotActions || 0,
           extractActions: parsed.summary?.extractActions || 0,
           evaluateActions: parsed.summary?.evaluateActions || 0,
         }
@@ -485,7 +484,6 @@ PREREQUISITES:
 ${featureDocs.prerequisites?.join('\n') || 'None specified'}
 
 VISUAL CONTEXT (from images):
-${featureDocs.screenshots?.map((screenshot, index) => `Image ${index + 1}: ${screenshot.description}`).join('\n') || 'No visual context available'}
 
 CRITICAL ANALYSIS INSTRUCTIONS:
 1. **Carefully analyze BOTH text and image data together** to understand the complete user interface
@@ -523,7 +521,6 @@ Create a comprehensive Puppeteer automation plan that includes:
 - Verify element existence before interaction
 - Handle network timeouts and retries
 - Validate expected outcomes and states
-- Capture screenshots for debugging
 
 **ADVANCED PUPPETEER TECHNIQUES:**
 - Use page.evaluate() for complex DOM manipulation
@@ -547,7 +544,7 @@ Return the plan in this JSON format:
   "scrapingStrategy": "Brief description of the overall scraping approach",
   "actions": [
     {
-      "type": "click|type|navigate|wait|scroll|screenshot|select|extract|evaluate",
+      "type": "click|type|navigate|wait|scroll|select|extract|evaluate",
       "selector": "Primary CSS selector",
       "fallbackSelector": "Alternative selector if primary fails",
       "inputText": "Text to input (for type actions)",
@@ -566,7 +563,6 @@ Return the plan in this JSON format:
     "typeActions": number,
     "navigationActions": number,
     "waitActions": number,
-    "screenshotActions": number,
     "extractActions": number,
     "evaluateActions": number
   }
@@ -601,14 +597,6 @@ FOCUS ON PROGRAMMATIC SCRAPING:
         estimatedDuration: 2,
         prerequisites: []
       },
-      {
-        type: 'screenshot',
-        description: 'Capture initial state of the feature',
-        expectedOutcome: 'Screenshot saved for documentation',
-        priority: 'medium',
-        estimatedDuration: 1,
-        prerequisites: []
-      }
     ];
 
     return {
@@ -622,7 +610,6 @@ FOCUS ON PROGRAMMATIC SCRAPING:
         typeActions: 0,
         navigationActions: 1,
         waitActions: 1,
-        screenshotActions: 1,
         extractActions: 0,
         evaluateActions: 0
       }

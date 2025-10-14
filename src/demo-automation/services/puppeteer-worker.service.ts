@@ -277,14 +277,6 @@ export class PuppeteerWorkerService {
       });
     });
 
-    let screenshot: string | undefined;
-    if (includeScreenshot) {
-      screenshot = await this.page.screenshot({ 
-        encoding: 'base64',
-        fullPage: false 
-      });
-    }
-
     return {
       domHtml,
       visibleText,
@@ -293,7 +285,6 @@ export class PuppeteerWorkerService {
       selectSelectors,
       currentUrl,
       pageTitle,
-      screenshot,
       timestamp: Date.now()
     };
   }

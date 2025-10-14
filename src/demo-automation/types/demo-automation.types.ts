@@ -1,5 +1,5 @@
 export interface Action {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'screenshot' | 'extract' | 'evaluate';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate';
   selector?: string;
   inputText?: string;
   description: string;
@@ -18,7 +18,6 @@ export interface DOMState {
   selectSelectors: string[];
   currentUrl: string;
   pageTitle: string;
-  screenshot?: string; // base64 encoded
   timestamp: number;
 }
 
@@ -32,7 +31,6 @@ export interface TourStep {
     x: number;
     y: number;
   };
-  screenshot?: string;
   timestamp: number;
   success: boolean;
   errorMessage?: string;
@@ -87,15 +85,10 @@ export interface ProductDocs {
   selectors: Record<string, string>;
   expectedOutcomes: string[];
   prerequisites?: string[];
-  screenshots?: Array<{
-    data: Buffer;
-    description: string;
-    stepReference?: string;
-  }>;
 }
 
 export interface PuppeteerAction {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'screenshot' | 'extract' | 'evaluate';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate';
   selector?: string;
   fallbackSelector?: string;
   inputText?: string;
@@ -120,7 +113,6 @@ export interface ActionPlan {
     typeActions: number;
     navigationActions: number;
     waitActions: number;
-    screenshotActions: number;
     extractActions: number;
     evaluateActions: number;
   };
@@ -133,7 +125,6 @@ export interface DemoAutomationResult {
   processingTime: number;
   finalUrl: string;
   error?: string;
-  screenshots?: string[];
   summary: {
     featuresCovered: string[];
     actionsPerformed: string[];

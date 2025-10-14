@@ -171,7 +171,6 @@ export class LangGraphWorkflowService {
         description: action.description,
         tooltip: action.description, // Will be enhanced by Gemini
         position: position || undefined,
-        screenshot: await this.puppeteerWorker.takeScreenshot(),
         timestamp: Date.now(),
         success: true
       };
@@ -299,7 +298,6 @@ export class LangGraphWorkflowService {
         processingTime,
         finalUrl: this.puppeteerWorker.getCurrentUrl() || '',
         error: result.error,
-        screenshots: result.tourSteps.map(step => step.screenshot).filter(Boolean) as string[],
         summary: {
           featuresCovered: [config.featureName],
           actionsPerformed: result.tourSteps.map(step => step.action.type),

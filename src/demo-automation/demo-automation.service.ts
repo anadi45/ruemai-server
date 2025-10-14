@@ -235,7 +235,6 @@ export class DemoAutomationService {
         selectors: extractedData.selectors,
         expectedOutcomes: extractedData.expectedOutcomes,
         prerequisites: extractedData.prerequisites,
-        screenshots: [] // No screenshots from direct file processing
       };
 
       // Generate and log action plan
@@ -338,7 +337,6 @@ export class DemoAutomationService {
         selectors: extractedData.selectors,
         expectedOutcomes: extractedData.expectedOutcomes,
         prerequisites: extractedData.prerequisites,
-        screenshots: [] // No screenshots from direct file processing
       };
 
       // Generate and log action plan
@@ -431,7 +429,6 @@ export class DemoAutomationService {
       console.log(`   ⌨️  Type Actions: ${actionPlan.summary.typeActions}`);
       console.log(`   🧭 Navigation Actions: ${actionPlan.summary.navigationActions}`);
       console.log(`   ⏳ Wait Actions: ${actionPlan.summary.waitActions}`);
-      console.log(`   📸 Screenshot Actions: ${actionPlan.summary.screenshotActions}`);
       console.log(`   📊 Extract Actions: ${actionPlan.summary.extractActions}`);
       console.log(`   🔧 Evaluate Actions: ${actionPlan.summary.evaluateActions}`);
       
@@ -495,7 +492,6 @@ export class DemoAutomationService {
       'navigate': '🧭',
       'wait': '⏳',
       'scroll': '📜',
-      'screenshot': '📸',
       'select': '📋',
       'hover': '👆',
       'extract': '📊',
