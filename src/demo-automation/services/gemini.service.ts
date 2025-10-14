@@ -2,19 +2,142 @@ import { Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Action, DOMState, GeminiResponse, ProductDocs, ActionPlan, PuppeteerAction } from '../types/demo-automation.types';
 
+/**
+ * GeminiService with API key rotation support
+ * 
+ * Environment Variables:
+ * - GEMINI_API_KEY: Single API key (legacy support)
+ * - GEMINI_API_KEYS: Multiple API keys as JSON array or comma-separated string
+ * 
+ * Examples:
+ * GEMINI_API_KEYS='["key1", "key2", "key3"]'
+ * GEMINI_API_KEYS='key1,key2,key3'
+ * 
+ * Features:
+ * - Automatic key rotation on 429 errors
+ * - Usage tracking per key
+ * - Cooldown periods between key switches
+ * - Fallback to least recently used key
+ */
 @Injectable()
 export class GeminiService {
-  private genAI: GoogleGenerativeAI;
-  private model: any;
+  private genAIs: GoogleGenerativeAI[];
+  private models: any[];
+  private currentKeyIndex: number = 0;
+  private keyUsageCount: Map<number, number> = new Map();
+  private keyLastUsed: Map<number, number> = new Map();
+  private readonly maxRequestsPerKey = 100; // Adjust based on your rate limits
+  private readonly keyCooldownMs = 60000; // 1 minute cooldown between key switches
 
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is required');
+    const apiKeys = this.getApiKeys();
+    if (apiKeys.length === 0) {
+      throw new Error('At least one GEMINI_API_KEY is required');
     }
     
-    this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    this.genAIs = apiKeys.map(key => new GoogleGenerativeAI(key));
+    this.models = this.genAIs.map(genAI => genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }));
+    
+    // Initialize usage tracking
+    apiKeys.forEach((_, index) => {
+      this.keyUsageCount.set(index, 0);
+      this.keyLastUsed.set(index, 0);
+    });
+  }
+
+  private getApiKeys(): string[] {
+    // Support both single key and multiple keys
+    const singleKey = process.env.GEMINI_API_KEY;
+    const multipleKeys = process.env.GEMINI_API_KEYS;
+    
+    if (multipleKeys) {
+      try {
+        const keys = JSON.parse(multipleKeys);
+        return Array.isArray(keys) ? keys.filter(key => key && key.trim()) : [];
+      } catch (error) {
+        console.warn('Failed to parse GEMINI_API_KEYS as JSON, trying comma-separated format');
+        return multipleKeys.split(',').map(key => key.trim()).filter(key => key);
+      }
+    }
+    
+    if (singleKey) {
+      return [singleKey];
+    }
+    
+    return [];
+  }
+
+  private getNextAvailableKey(): { keyIndex: number; model: any } {
+    const now = Date.now();
+    
+    // First, try to find a key that hasn't been used recently and is under the limit
+    for (let i = 0; i < this.genAIs.length; i++) {
+      const keyIndex = (this.currentKeyIndex + i) % this.genAIs.length;
+      const usageCount = this.keyUsageCount.get(keyIndex) || 0;
+      const lastUsed = this.keyLastUsed.get(keyIndex) || 0;
+      
+      if (usageCount < this.maxRequestsPerKey && (now - lastUsed) > this.keyCooldownMs) {
+        this.currentKeyIndex = keyIndex;
+        return { keyIndex, model: this.models[keyIndex] };
+      }
+    }
+    
+    // If all keys are at limit, find the least recently used one
+    let leastRecentlyUsedIndex = 0;
+    let oldestLastUsed = this.keyLastUsed.get(0) || 0;
+    
+    for (let i = 1; i < this.genAIs.length; i++) {
+      const lastUsed = this.keyLastUsed.get(i) || 0;
+      if (lastUsed < oldestLastUsed) {
+        oldestLastUsed = lastUsed;
+        leastRecentlyUsedIndex = i;
+      }
+    }
+    
+    this.currentKeyIndex = leastRecentlyUsedIndex;
+    return { keyIndex: leastRecentlyUsedIndex, model: this.models[leastRecentlyUsedIndex] };
+  }
+
+  private updateKeyUsage(keyIndex: number): void {
+    const currentCount = this.keyUsageCount.get(keyIndex) || 0;
+    this.keyUsageCount.set(keyIndex, currentCount + 1);
+    this.keyLastUsed.set(keyIndex, Date.now());
+  }
+
+  private async makeRequestWithRetry<T>(
+    requestFn: (model: any) => Promise<T>,
+    maxRetries: number = 3
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const { keyIndex, model } = this.getNextAvailableKey();
+      
+      try {
+        console.log(`🔄 Using Gemini API key ${keyIndex + 1}/${this.genAIs.length} (attempt ${attempt + 1})`);
+        const result = await requestFn(model);
+        this.updateKeyUsage(keyIndex);
+        return result;
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`❌ API key ${keyIndex + 1} failed:`, error.message);
+        
+        // Check if it's a rate limit error
+        if (error.message?.includes('429') || error.message?.includes('rate limit') || error.message?.includes('quota')) {
+          console.log(`⏳ Rate limit hit for key ${keyIndex + 1}, switching to next key`);
+          this.keyLastUsed.set(keyIndex, Date.now() + 300000); // 5 minute penalty
+          continue;
+        }
+        
+        // For other errors, try next key immediately
+        if (attempt < maxRetries - 1) {
+          console.log(`🔄 Retrying with different API key...`);
+          continue;
+        }
+      }
+    }
+    
+    throw lastError;
   }
 
   async decideNextAction(
@@ -35,11 +158,13 @@ export class GeminiService {
     );
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
       
-      return this.parseGeminiResponse(text);
+      return this.parseGeminiResponse(result);
     } catch (error) {
       console.error('Error calling Gemini API:', error);
       return {
@@ -172,9 +297,13 @@ Generate a concise, helpful tooltip (max 100 characters) that explains what the 
 `;
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().trim();
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text().trim();
+      });
+      
+      return result;
     } catch (error) {
       console.error('Error generating tooltip:', error);
       return action.description;
@@ -212,11 +341,13 @@ RESPONSE FORMAT (JSON):
 `;
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
       
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         return {
@@ -234,9 +365,13 @@ RESPONSE FORMAT (JSON):
 
   async extractStructuredData(prompt: string): Promise<string> {
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
+      
+      return result;
     } catch (error) {
       console.error('Error extracting structured data:', error);
       
@@ -244,10 +379,13 @@ RESPONSE FORMAT (JSON):
       if (error.message && error.message.includes('not found')) {
         console.log('Trying with gemini-1.5-flash-latest model...');
         try {
-          const fallbackModel = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
-          const result = await fallbackModel.generateContent(prompt);
-          const response = await result.response;
-          return response.text();
+          const result = await this.makeRequestWithRetry(async (model) => {
+            const fallbackModel = this.genAIs[0].getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+            const result = await fallbackModel.generateContent(prompt);
+            const response = await result.response;
+            return response.text();
+          });
+          return result;
         } catch (fallbackError) {
           console.error('Fallback model also failed:', fallbackError);
           throw new Error('Failed to extract structured data from document - no available models');
@@ -260,27 +398,31 @@ RESPONSE FORMAT (JSON):
 
   async analyzeImage(base64Image: string, prompt: string): Promise<string> {
     try {
-      // Use Gemini's vision capabilities for image analysis
-      const visionModel = this.genAI.getGenerativeModel({ 
-        model: 'gemini-1.5-flash-latest',
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 1000,
-        }
-      });
-
-      const result = await visionModel.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data: base64Image,
-            mimeType: 'image/jpeg' // Default mime type, could be enhanced to detect actual type
+      const result = await this.makeRequestWithRetry(async (model) => {
+        // Use Gemini's vision capabilities for image analysis
+        const visionModel = this.genAIs[0].getGenerativeModel({ 
+          model: 'gemini-1.5-flash-latest',
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 1000,
           }
-        }
-      ]);
+        });
 
-      const response = await result.response;
-      return response.text();
+        const result = await visionModel.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: base64Image,
+              mimeType: 'image/jpeg' // Default mime type, could be enhanced to detect actual type
+            }
+          }
+        ]);
+
+        const response = await result.response;
+        return response.text();
+      });
+      
+      return result;
     } catch (error) {
       console.error('Error analyzing image with Gemini:', error);
       
@@ -315,13 +457,15 @@ RESPONSE FORMAT (JSON):
       });
 
       // Use Gemini's file upload capabilities
-      const result = await this.model.generateContent([
-        prompt,
-        ...fileParts
-      ]);
+      const text = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent([
+          prompt,
+          ...fileParts
+        ]);
 
-      const response = await result.response;
-      const text = response.text();
+        const response = await result.response;
+        return response.text();
+      });
       
       // Log the raw Gemini response for debugging
       console.log('\n🤖 GEMINI FILE PROCESSING RESPONSE:');
@@ -425,9 +569,11 @@ Only return valid JSON. Do not include any other text or explanations.
   async generateActionPlan(featureDocs: ProductDocs, websiteUrl: string): Promise<ActionPlan> {
     try {
       const prompt = this.buildActionPlanningPrompt(featureDocs, websiteUrl);
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const text = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
       
       // Parse the JSON response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -632,9 +778,11 @@ FOCUS ON PROGRAMMATIC SCRAPING:
     );
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const text = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
       
       return this.parseAnalysisResponse(text);
     } catch (error) {
@@ -727,5 +875,30 @@ RESPONSE FORMAT (JSON):
         shouldProceed: false
       };
     }
+  }
+
+  // Utility method to get API key status for monitoring
+  getApiKeyStatus(): { keyIndex: number; usageCount: number; lastUsed: number; totalKeys: number }[] {
+    const status = [];
+    for (let i = 0; i < this.genAIs.length; i++) {
+      status.push({
+        keyIndex: i,
+        usageCount: this.keyUsageCount.get(i) || 0,
+        lastUsed: this.keyLastUsed.get(i) || 0,
+        totalKeys: this.genAIs.length
+      });
+    }
+    return status;
+  }
+
+  // Method to reset key usage (useful for testing or manual reset)
+  resetKeyUsage(): void {
+    this.keyUsageCount.clear();
+    this.keyLastUsed.clear();
+    this.genAIs.forEach((_, index) => {
+      this.keyUsageCount.set(index, 0);
+      this.keyLastUsed.set(index, 0);
+    });
+    console.log('🔄 API key usage counters reset');
   }
 }
