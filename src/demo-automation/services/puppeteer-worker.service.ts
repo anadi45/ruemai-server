@@ -105,7 +105,7 @@ export class PuppeteerWorkerService {
       }
 
       await usernameField.click();
-      await usernameField.type(credentials.username);
+      await usernameField.type(String(credentials.username));
 
       // Find and fill password field
       let passwordField: ElementHandle | null = null;
@@ -123,7 +123,7 @@ export class PuppeteerWorkerService {
       }
 
       await passwordField.click();
-      await passwordField.type(credentials.password);
+      await passwordField.type(String(credentials.password));
 
       // Find and click submit button
       let submitButton: ElementHandle | null = null;
@@ -165,7 +165,7 @@ export class PuppeteerWorkerService {
         
         case 'type':
           await this.page.click(action.selector!);
-          await this.page.type(action.selector!, action.inputText || '');
+          await this.page.type(action.selector!, String(action.inputText || ''));
           break;
         
         case 'hover':

@@ -98,8 +98,9 @@ export class DocumentParserService {
       // Use Gemini to extract structured feature documentation
       const result = await this.geminiService.extractStructuredData(prompt);
       
-      // Parse the JSON response
-      const extractedData = JSON.parse(result);
+      // Parse the JSON response - clean markdown code blocks if present
+      const cleanedResult = this.cleanJsonResponse(result);
+      const extractedData = JSON.parse(cleanedResult);
       
       return {
         featureName: extractedData.featureName || featureName || 'Unknown Feature',
@@ -135,8 +136,9 @@ export class DocumentParserService {
       // Use Gemini to extract structured feature documentation from combined content
       const result = await this.geminiService.extractStructuredData(prompt);
       
-      // Parse the JSON response
-      const extractedData = JSON.parse(result);
+      // Parse the JSON response - clean markdown code blocks if present
+      const cleanedResult = this.cleanJsonResponse(result);
+      const extractedData = JSON.parse(cleanedResult);
       
       return {
         featureName: extractedData.featureName || featureName || 'Combined Feature',
@@ -298,6 +300,23 @@ Keep the description concise but informative.
       expectedOutcomes: ['Feature completed successfully'],
       prerequisites: []
     };
+  }
+
+  private cleanJsonResponse(response: string): string {
+    // Remove markdown code blocks if present
+    const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch && jsonMatch[1]) {
+      return jsonMatch[1].trim();
+    }
+    
+    // Try to extract JSON from the response
+    const jsonExtract = response.match(/\{[\s\S]*\}/);
+    if (jsonExtract) {
+      return jsonExtract[0];
+    }
+    
+    // Return the original response if no cleaning needed
+    return response.trim();
   }
 
   async validateExtractedDocs(docs: ExtractedFeatureDocs): Promise<{
