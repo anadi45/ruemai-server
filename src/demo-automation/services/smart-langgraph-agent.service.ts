@@ -462,6 +462,42 @@ export class SmartLangGraphAgentService {
       } else {
         console.log('❌ Tool execution failed:', result.error);
         
+        // Check if this is a critical action that should stop the agent
+        const isCriticalAction = this.isCriticalAction(nextAction, state);
+        
+        if (isCriticalAction) {
+          console.log(`🚨 CRITICAL ACTION DETECTED: ${nextAction.type} - ${nextAction.description}`);
+          console.error('🚨 CRITICAL ACTION FAILED - STOPPING AGENT');
+          console.error(`Critical action: ${nextAction.type} - ${nextAction.description}`);
+          console.error(`Error: ${result.error}`);
+          
+          const tourStep: TourStep = {
+            order: state.currentActionIndex + 1,
+            action: {
+              type: nextAction.type,
+              selector: nextAction.selector,
+              inputText: nextAction.inputText,
+              description: nextAction.description
+            },
+            selector: nextAction.selector || '',
+            description: nextAction.description,
+            tooltip: 'Critical action failed - agent stopped',
+            timestamp: Date.now(),
+            success: false,
+            errorMessage: `CRITICAL FAILURE: ${result.error}`
+          };
+          
+          return {
+            ...state,
+            failedActions: [...state.failedActions, state.currentActionIndex],
+            tourSteps: [...state.tourSteps, tourStep],
+            isComplete: true,
+            success: false,
+            error: `Critical action failed: ${nextAction.type} - ${result.error}`
+          };
+        }
+        
+        // For non-critical actions, continue but mark as failed
         const tourStep: TourStep = {
           order: state.currentActionIndex + 1,
           action: {
@@ -472,7 +508,7 @@ export class SmartLangGraphAgentService {
           },
           selector: nextAction.selector || '',
           description: nextAction.description,
-          tooltip: 'Action failed',
+          tooltip: 'Action failed - continuing',
           timestamp: Date.now(),
           success: false,
           errorMessage: result.error
@@ -487,6 +523,21 @@ export class SmartLangGraphAgentService {
       }
     } catch (error) {
       console.error('Tool execution failed:', error);
+      
+      // Check if this is a critical action
+      const nextAction = state.actionPlan.actions[state.currentActionIndex];
+      const isCriticalAction = this.isCriticalAction(nextAction, state);
+      
+      if (isCriticalAction) {
+        console.error('🚨 CRITICAL ACTION EXCEPTION - STOPPING AGENT');
+        return {
+          ...state,
+          error: error instanceof Error ? error.message : 'Critical tool execution failed',
+          isComplete: true,
+          success: false
+        };
+      }
+      
       return {
         ...state,
         error: error instanceof Error ? error.message : 'Tool execution failed',
@@ -515,13 +566,37 @@ export class SmartLangGraphAgentService {
         nextAction.expectedOutcome
       );
       
-      if (!validation.success && state.retryCount < state.maxRetries) {
-        console.log('🔄 Action validation failed, will retry...');
-        return {
-          ...state,
-          retryCount: state.retryCount + 1,
-          currentActionIndex: state.currentActionIndex - 1 // Retry the same action
-        };
+      if (!validation.success) {
+        console.log('❌ Action validation failed');
+        
+        // Check if this is a critical action
+        const isCriticalAction = this.isCriticalAction(nextAction, state);
+        
+        if (isCriticalAction) {
+          console.log(`🚨 CRITICAL ACTION VALIDATION DETECTED: ${nextAction.type} - ${nextAction.description}`);
+          console.error('🚨 CRITICAL ACTION VALIDATION FAILED - STOPPING AGENT');
+          console.error(`Critical action validation failed: ${nextAction.type} - ${nextAction.description}`);
+          console.error(`Validation reason: ${validation.reasoning}`);
+          
+          return {
+            ...state,
+            isComplete: true,
+            success: false,
+            error: `Critical action validation failed: ${nextAction.type} - ${validation.reasoning}`
+          };
+        }
+        
+        // For non-critical actions, check retry count
+        if (state.retryCount < state.maxRetries) {
+          console.log('🔄 Action validation failed, will retry...');
+          return {
+            ...state,
+            retryCount: state.retryCount + 1,
+            currentActionIndex: state.currentActionIndex - 1 // Retry the same action
+          };
+        } else {
+          console.log('⚠️  Non-critical action validation failed, continuing...');
+        }
       }
       
       return {
@@ -531,7 +606,22 @@ export class SmartLangGraphAgentService {
       };
     } catch (error) {
       console.error('Validation failed:', error);
-      return state; // Continue with the next action
+      
+      // Check if this is a critical action
+      const nextAction = state.actionPlan.actions[state.currentActionIndex];
+      const isCriticalAction = this.isCriticalAction(nextAction, state);
+      
+      if (isCriticalAction) {
+        console.error('🚨 CRITICAL ACTION VALIDATION EXCEPTION - STOPPING AGENT');
+        return {
+          ...state,
+          isComplete: true,
+          success: false,
+          error: `Critical action validation exception: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+        };
+      }
+      
+      return state; // Continue with the next action for non-critical failures
     }
   }
 
@@ -613,6 +703,57 @@ export class SmartLangGraphAgentService {
     };
     
     return mapping[actionType] || 'click';
+  }
+
+  private isCriticalAction(action: PuppeteerAction, state: SmartAgentState): boolean {
+    // Navigation actions are always critical - if we can't navigate, we can't proceed
+    if (action.type === 'navigate') {
+      return true;
+    }
+    
+    // First action in the plan is usually critical (often navigation)
+    if (state.currentActionIndex === 0) {
+      return true;
+    }
+    
+    // High priority actions are critical
+    if (action.priority === 'high') {
+      return true;
+    }
+    
+    // Actions that are prerequisites for subsequent actions
+    if (action.prerequisites && action.prerequisites.length > 0) {
+      return true;
+    }
+    
+    // Actions with specific critical keywords in description
+    const criticalKeywords = [
+      'login', 'authenticate', 'navigate', 'go to', 'access', 'enter',
+      'submit', 'confirm', 'proceed', 'continue', 'next step'
+    ];
+    
+    const description = action.description.toLowerCase();
+    const hasCriticalKeyword = criticalKeywords.some(keyword => 
+      description.includes(keyword)
+    );
+    
+    if (hasCriticalKeyword) {
+      return true;
+    }
+    
+    // If we've had too many failures already, subsequent actions become critical
+    const failureRate = state.failedActions.length / (state.currentActionIndex + 1);
+    if (failureRate > 0.5) {
+      return true;
+    }
+    
+    // Actions that are essential for the feature being demonstrated
+    const featureKeywords = state.featureDocs.featureName.toLowerCase();
+    if (description.includes(featureKeywords)) {
+      return true;
+    }
+    
+    return false;
   }
 
   private prepareToolParameters(action: PuppeteerAction, state: SmartAgentState): any {
