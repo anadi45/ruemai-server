@@ -59,7 +59,7 @@ export class DocumentParserService {
       // Use PDFParse class constructor with buffer
       const parser = new PDFParse({ data: file.buffer });
       const pdfData = await parser.getText();
-      console.log('PDF parsing completed', pdfData);
+      console.log('PDF parsing completed');
       
       return {
         text: pdfData.text,

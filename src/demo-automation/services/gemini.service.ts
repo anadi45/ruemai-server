@@ -14,7 +14,7 @@ export class GeminiService {
     }
     
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
   }
 
   async decideNextAction(
@@ -239,6 +239,21 @@ RESPONSE FORMAT (JSON):
       return response.text();
     } catch (error) {
       console.error('Error extracting structured data:', error);
+      
+      // If it's a model not found error, try with a different model
+      if (error.message && error.message.includes('not found')) {
+        console.log('Trying with gemini-1.5-flash-latest model...');
+        try {
+          const fallbackModel = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+          const result = await fallbackModel.generateContent(prompt);
+          const response = await result.response;
+          return response.text();
+        } catch (fallbackError) {
+          console.error('Fallback model also failed:', fallbackError);
+          throw new Error('Failed to extract structured data from document - no available models');
+        }
+      }
+      
       throw new Error('Failed to extract structured data from document');
     }
   }
