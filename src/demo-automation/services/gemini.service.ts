@@ -581,9 +581,10 @@ CRITICAL ANALYSIS INSTRUCTIONS:
 Create a comprehensive Puppeteer automation plan that includes:
 
 **NAVIGATION & SETUP:**
+- **DO NOT ASSUME LOGIN STATE**: Never assume user is logged in or logged out. Handle both scenarios
+- **DETECT AUTHENTICATION STATE**: Check if redirected to login page and handle accordingly
 - **PREFER DOM SELECTOR INTERACTIONS**: Use click actions on navigation elements (buttons, links, menu items) rather than direct URL navigation
 - **URL NAVIGATION AS FALLBACK**: Only use direct URL navigation when DOM selectors are not available or when navigating to external pages
-- Handle authentication and login flows through form interactions, not direct URL access
 - Set up proper viewport and user agent
 
 **ELEMENT INTERACTION (PRIORITY APPROACH):**
@@ -636,6 +637,7 @@ For each action, provide:
 Return the plan in this JSON format:
 {
   "featureName": "string",
+  "totalActions": number,
   "estimatedDuration": number,
   "scrapingStrategy": "Brief description of the overall scraping approach",
   "actions": [
@@ -674,6 +676,12 @@ FOCUS ON PROGRAMMATIC SCRAPING:
 - Plan for data extraction and storage
 - Account for dynamic content and user interactions
 - **NAVIGATION STRATEGY**: Use click actions on navigation elements (buttons, links, menus) as the primary method, with URL navigation only as a last resort
+
+**AUTHENTICATION HANDLING:**
+- **NO ASSUMPTIONS**: Do not assume user is logged in or out
+- **DETECT REDIRECTS**: If redirected to login page, handle authentication flow
+- **FLEXIBLE APPROACH**: Plan should work whether user starts logged in or not
+- **HANDLE BOTH SCENARIOS**: Include logic to detect and handle authentication state
 
 **DRY RUN EXECUTION REQUIREMENTS:**
 - **COMPLETE FEATURE COVERAGE**: Include all steps of the feature flow from start to finish
