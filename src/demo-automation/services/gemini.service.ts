@@ -532,6 +532,9 @@ Only return valid JSON. Do not include any other text or explanations.
         }
       };
 
+      // Validate plan completeness
+      this.validatePlanCompleteness(actionPlan, featureDocs);
+
       return actionPlan;
     } catch (error) {
       console.error('Error generating action plan:', error);
@@ -570,6 +573,13 @@ CRITICAL ANALYSIS INSTRUCTIONS:
 4. **Consider the actual user flow** as shown in images vs. documented steps
 5. **Identify potential scraping challenges** like dynamic content, modals, or complex interactions
 
+**MANDATORY STEP-BY-STEP ANALYSIS:**
+- **GO THROUGH EACH DOCUMENTED STEP**: For every step in the feature documentation, create a corresponding action in the plan
+- **IDENTIFY MISSING STEPS**: Look for navigation, validation, or intermediate steps that might not be explicitly documented
+- **SEQUENCE VALIDATION**: Ensure the action sequence follows the logical user flow
+- **COMPLETE COVERAGE**: Every documented step must have at least one corresponding action in the plan
+- **NO STEP LEFT BEHIND**: Double-check that all feature steps are represented in the action plan
+
 **DRY RUN EXECUTION STRATEGY:**
 - **GO THROUGH THE ENTIRE FEATURE FLOW**: Create a plan that covers all steps of the feature from start to finish
 - **AVOID FINAL SAVE/SUBMIT ACTIONS**: Do NOT include actions that would trigger save, submit, create, update, or delete API calls
@@ -577,6 +587,15 @@ CRITICAL ANALYSIS INSTRUCTIONS:
 - **IDENTIFY SAVE TRIGGERS**: Look for buttons/elements with text like "Save", "Submit", "Create", "Update", "Delete", "Confirm", "Finish", "Complete"
 - **FOCUS ON DEMONSTRATION**: The goal is to demonstrate the feature flow without actually persisting changes
 - **INCLUDE VALIDATION STEPS**: Include form validation and data entry steps, but stop before final submission
+
+**COMPREHENSIVE STEP MAPPING REQUIREMENTS:**
+- **MANDATORY COMPLETENESS**: Every single step from the feature documentation MUST have a corresponding action in the plan
+- **DETAILED BREAKDOWN**: If a documented step is complex, break it down into multiple actions
+- **NAVIGATION COVERAGE**: Include all necessary navigation steps between different pages/sections
+- **FORM INTERACTION COVERAGE**: Include all form fields, dropdowns, checkboxes, and input interactions
+- **VALIDATION COVERAGE**: Include all validation steps, error checking, and confirmation steps
+- **SEQUENCE VERIFICATION**: Ensure the action sequence matches the logical user flow exactly
+- **NO ASSUMPTIONS**: Do not assume any steps are implicit - make everything explicit in the plan
 
 Create a comprehensive Puppeteer automation plan that includes:
 
@@ -689,7 +708,54 @@ FOCUS ON PROGRAMMATIC SCRAPING:
 - **DEMONSTRATION FOCUS**: The plan should demonstrate the complete user journey without making permanent changes
 - **STOP BEFORE SAVE**: End the plan just before any button or action that would trigger API calls to save data
 - **INCLUDE VALIDATION**: Include form filling, validation, and navigation steps, but stop before final submission
+
+**FINAL VALIDATION CHECKLIST (MANDATORY):**
+Before generating the final plan, you MUST verify:
+1. **STEP COUNT MATCH**: The number of actions should be sufficient to cover all documented steps
+2. **SEQUENCE LOGIC**: Each action logically follows from the previous one
+3. **COMPLETENESS AUDIT**: Every documented step has at least one corresponding action
+4. **NAVIGATION FLOW**: All necessary page transitions and navigation steps are included
+5. **FORM COVERAGE**: All form fields, inputs, and interactions are covered
+6. **VALIDATION STEPS**: All validation, confirmation, and error handling steps are included
+7. **NO GAPS**: No logical gaps exist between actions
+8. **REALISTIC FLOW**: The plan represents a realistic user journey through the feature
+
+**CRITICAL REMINDER**: This plan will be executed by an automation system. Missing steps or incorrect sequences will cause the automation to fail. Be extremely thorough and methodical in your analysis.
 `;
+  }
+
+  private validatePlanCompleteness(actionPlan: ActionPlan, featureDocs: ProductDocs): void {
+    console.log('🔍 Validating plan completeness...');
+    
+    // Check if we have enough actions for the documented steps
+    const documentedSteps = featureDocs.steps.length;
+    const plannedActions = actionPlan.actions.length;
+    
+    console.log(`📊 Documented steps: ${documentedSteps}, Planned actions: ${plannedActions}`);
+    
+    // Warn if there are significantly fewer actions than documented steps
+    if (plannedActions < documentedSteps * 0.5) {
+      console.warn(`⚠️  WARNING: Plan has ${plannedActions} actions but ${documentedSteps} documented steps. This may indicate missing steps.`);
+    }
+    
+    // Check for critical action types that should be present
+    const hasNavigation = actionPlan.actions.some(action => action.type === 'navigate');
+    const hasClicks = actionPlan.actions.some(action => action.type === 'click');
+    const hasTyping = actionPlan.actions.some(action => action.type === 'type');
+    
+    if (!hasNavigation && !hasClicks) {
+      console.warn('⚠️  WARNING: Plan lacks navigation or click actions. This may indicate incomplete coverage.');
+    }
+    
+    // Log plan summary for review
+    console.log('📋 Plan Summary:');
+    console.log(`   - Total actions: ${plannedActions}`);
+    console.log(`   - Click actions: ${actionPlan.summary.clickActions}`);
+    console.log(`   - Type actions: ${actionPlan.summary.typeActions}`);
+    console.log(`   - Navigation actions: ${actionPlan.summary.navigationActions}`);
+    console.log(`   - Wait actions: ${actionPlan.summary.waitActions}`);
+    
+    console.log('✅ Plan validation completed');
   }
 
   private createFallbackActionPlan(featureDocs: ProductDocs, websiteUrl?: string): ActionPlan {
