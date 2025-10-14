@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Action, DOMState, GeminiResponse, ProductDocs } from '../types/demo-automation.types';
+import { Action, DOMState, GeminiResponse, ProductDocs, ActionPlan, PuppeteerAction } from '../types/demo-automation.types';
 
 @Injectable()
 export class GeminiService {
@@ -256,5 +256,192 @@ RESPONSE FORMAT (JSON):
       
       throw new Error('Failed to extract structured data from document');
     }
+  }
+
+  async analyzeImage(base64Image: string, prompt: string): Promise<string> {
+    try {
+      // Use Gemini's vision capabilities for image analysis
+      const visionModel = this.genAI.getGenerativeModel({ 
+        model: 'gemini-1.5-flash-latest',
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 1000,
+        }
+      });
+
+      const result = await visionModel.generateContent([
+        prompt,
+        {
+          inlineData: {
+            data: base64Image,
+            mimeType: 'image/jpeg' // Default mime type, could be enhanced to detect actual type
+          }
+        }
+      ]);
+
+      const response = await result.response;
+      return response.text();
+    } catch (error) {
+      console.error('Error analyzing image with Gemini:', error);
+      
+      // Fallback to a generic description
+      return 'Screenshot showing UI elements and interface components';
+    }
+  }
+
+  async generateActionPlan(featureDocs: ProductDocs, websiteUrl: string): Promise<ActionPlan> {
+    try {
+      const prompt = this.buildActionPlanningPrompt(featureDocs, websiteUrl);
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      // Parse the JSON response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in action plan response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      // Validate and structure the response
+      const actionPlan: ActionPlan = {
+        featureName: parsed.featureName || featureDocs.featureName,
+        totalActions: parsed.actions?.length || 0,
+        estimatedDuration: parsed.estimatedDuration || 0,
+        actions: parsed.actions || [],
+        summary: {
+          clickActions: parsed.summary?.clickActions || 0,
+          typeActions: parsed.summary?.typeActions || 0,
+          navigationActions: parsed.summary?.navigationActions || 0,
+          waitActions: parsed.summary?.waitActions || 0,
+          screenshotActions: parsed.summary?.screenshotActions || 0,
+        }
+      };
+
+      return actionPlan;
+    } catch (error) {
+      console.error('Error generating action plan:', error);
+      
+      // Fallback to basic action plan
+      return this.createFallbackActionPlan(featureDocs);
+    }
+  }
+
+  private buildActionPlanningPrompt(featureDocs: ProductDocs, websiteUrl: string): string {
+    return `
+You are an expert automation engineer. Create a detailed action plan for automating the following feature using Puppeteer.
+
+FEATURE: ${featureDocs.featureName}
+DESCRIPTION: ${featureDocs.description}
+WEBSITE: ${websiteUrl}
+
+FEATURE STEPS:
+${featureDocs.steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}
+
+SELECTORS AVAILABLE:
+${Object.entries(featureDocs.selectors).map(([key, value]) => `${key}: ${value}`).join('\n')}
+
+EXPECTED OUTCOMES:
+${featureDocs.expectedOutcomes.join('\n')}
+
+PREREQUISITES:
+${featureDocs.prerequisites?.join('\n') || 'None specified'}
+
+Create a comprehensive action plan that includes:
+
+1. **Navigation actions** - Navigate to the feature
+2. **Click actions** - Click buttons, links, menu items
+3. **Type actions** - Fill forms, input fields
+4. **Wait actions** - Wait for elements to load, animations to complete
+5. **Screenshot actions** - Capture key moments for documentation
+6. **Scroll actions** - Scroll to reveal elements
+7. **Select actions** - Select options from dropdowns
+
+For each action, specify:
+- Action type (click, type, navigate, wait, scroll, screenshot, select)
+- CSS selector (use the provided selectors or suggest new ones)
+- Description of what the action does
+- Expected outcome after the action
+- Priority level (high, medium, low)
+- Estimated duration in seconds
+- Any prerequisites
+
+Return the plan in this JSON format:
+{
+  "featureName": "string",
+  "estimatedDuration": number,
+  "actions": [
+    {
+      "type": "click|type|navigate|wait|scroll|screenshot|select",
+      "selector": "CSS selector",
+      "inputText": "text to type (for type actions)",
+      "description": "What this action does",
+      "expectedOutcome": "What should happen after this action",
+      "priority": "high|medium|low",
+      "estimatedDuration": number,
+      "prerequisites": ["prerequisite1", "prerequisite2"]
+    }
+  ],
+  "summary": {
+    "clickActions": number,
+    "typeActions": number,
+    "navigationActions": number,
+    "waitActions": number,
+    "screenshotActions": number
+  }
+}
+
+Focus on:
+- Logical sequence of actions
+- Realistic selectors and interactions
+- Proper waiting for page loads and animations
+- Capturing key moments with screenshots
+- Handling form inputs and selections
+- Error handling and validation steps
+`;
+  }
+
+  private createFallbackActionPlan(featureDocs: ProductDocs): ActionPlan {
+    const basicActions: PuppeteerAction[] = [
+      {
+        type: 'navigate',
+        description: `Navigate to the ${featureDocs.featureName} feature`,
+        expectedOutcome: 'Feature page loads successfully',
+        priority: 'high',
+        estimatedDuration: 3,
+        prerequisites: []
+      },
+      {
+        type: 'wait',
+        description: 'Wait for page to load completely',
+        expectedOutcome: 'Page is fully loaded and interactive',
+        priority: 'high',
+        estimatedDuration: 2,
+        prerequisites: []
+      },
+      {
+        type: 'screenshot',
+        description: 'Capture initial state of the feature',
+        expectedOutcome: 'Screenshot saved for documentation',
+        priority: 'medium',
+        estimatedDuration: 1,
+        prerequisites: []
+      }
+    ];
+
+    return {
+      featureName: featureDocs.featureName,
+      totalActions: basicActions.length,
+      estimatedDuration: basicActions.reduce((sum, action) => sum + action.estimatedDuration, 0),
+      actions: basicActions,
+      summary: {
+        clickActions: 0,
+        typeActions: 0,
+        navigationActions: 1,
+        waitActions: 1,
+        screenshotActions: 1
+      }
+    };
   }
 }

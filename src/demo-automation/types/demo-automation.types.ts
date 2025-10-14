@@ -87,6 +87,36 @@ export interface ProductDocs {
   selectors: Record<string, string>;
   expectedOutcomes: string[];
   prerequisites?: string[];
+  screenshots?: Array<{
+    data: Buffer;
+    description: string;
+    stepReference?: string;
+  }>;
+}
+
+export interface PuppeteerAction {
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'screenshot';
+  selector?: string;
+  inputText?: string;
+  description: string;
+  expectedOutcome: string;
+  priority: 'high' | 'medium' | 'low';
+  estimatedDuration: number; // in seconds
+  prerequisites?: string[];
+}
+
+export interface ActionPlan {
+  featureName: string;
+  totalActions: number;
+  estimatedDuration: number; // total in seconds
+  actions: PuppeteerAction[];
+  summary: {
+    clickActions: number;
+    typeActions: number;
+    navigationActions: number;
+    waitActions: number;
+    screenshotActions: number;
+  };
 }
 
 export interface DemoAutomationResult {

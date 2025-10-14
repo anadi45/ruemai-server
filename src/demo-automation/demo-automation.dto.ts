@@ -85,6 +85,14 @@ export class ProductDocsDto {
   @IsArray()
   @IsString({ each: true })
   prerequisites?: string[];
+
+  @IsOptional()
+  @IsArray()
+  screenshots?: Array<{
+    data: string; // base64 encoded image data
+    description: string;
+    stepReference?: string;
+  }>;
 }
 
 export class CreateDemoRequestDto {

@@ -8,7 +8,8 @@ import {
   TourConfig, 
   ProductDocs, 
   DemoAutomationResult,
-  TourStep 
+  TourStep,
+  ActionPlan
 } from './types/demo-automation.types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -239,8 +240,12 @@ export class DemoAutomationService {
         steps: extractedDocs.steps,
         selectors: extractedDocs.selectors,
         expectedOutcomes: extractedDocs.expectedOutcomes,
-        prerequisites: extractedDocs.prerequisites
+        prerequisites: extractedDocs.prerequisites,
+        screenshots: extractedDocs.screenshots
       };
+
+      // Generate and log action plan
+      const actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
 
       // Generate tour configuration
       const tourConfig: TourConfig = {
@@ -353,8 +358,12 @@ export class DemoAutomationService {
         steps: extractedDocs.steps,
         selectors: extractedDocs.selectors,
         expectedOutcomes: extractedDocs.expectedOutcomes,
-        prerequisites: extractedDocs.prerequisites
+        prerequisites: extractedDocs.prerequisites,
+        screenshots: extractedDocs.screenshots
       };
+
+      // Generate and log action plan
+      const actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
 
       // Generate tour configuration
       const tourConfig: TourConfig = {
@@ -423,8 +432,9 @@ export class DemoAutomationService {
 
   async parseDocumentFile(
     file: Express.Multer.File,
-    featureName?: string
-  ): Promise<{ success: boolean; featureDocs: any; validation: any }> {
+    featureName?: string,
+    websiteUrl?: string
+  ): Promise<{ success: boolean; featureDocs: any; validation: any; actionPlan?: ActionPlan }> {
     try {
       // Parse the document
       const parsedDoc = await this.documentParser.parseDocument(file);
@@ -436,15 +446,105 @@ export class DemoAutomationService {
       // Validate the extracted documentation
       const validation = await this.documentParser.validateExtractedDocs(extractedDocs);
 
+      let actionPlan: ActionPlan | undefined;
+      if (validation.isValid && websiteUrl) {
+        // Convert to ProductDocs format for action planning
+        const featureDocs: ProductDocs = {
+          featureName: extractedDocs.featureName,
+          description: extractedDocs.description,
+          steps: extractedDocs.steps,
+          selectors: extractedDocs.selectors,
+          expectedOutcomes: extractedDocs.expectedOutcomes,
+          prerequisites: extractedDocs.prerequisites,
+          screenshots: extractedDocs.screenshots
+        };
+
+        // Generate and log action plan
+        actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
+      }
+
       return {
         success: validation.isValid,
         featureDocs: extractedDocs,
-        validation
+        validation,
+        actionPlan
       };
     } catch (error) {
       console.error('Document parsing failed:', error);
       throw error;
     }
+  }
+
+  async generateAndLogActionPlan(featureDocs: ProductDocs, websiteUrl: string): Promise<ActionPlan> {
+    try {
+      console.log('\n🤖 Generating Puppeteer Action Plan...');
+      console.log('=' .repeat(60));
+      
+      const actionPlan = await this.geminiService.generateActionPlan(featureDocs, websiteUrl);
+      
+      // Log the action plan in a structured format
+      console.log(`\n📋 ACTION PLAN FOR: ${actionPlan.featureName}`);
+      console.log(`⏱️  Total Estimated Duration: ${actionPlan.estimatedDuration} seconds`);
+      console.log(`📊 Total Actions: ${actionPlan.totalActions}`);
+      console.log('=' .repeat(60));
+      
+      // Log action summary
+      console.log('\n📈 ACTION SUMMARY:');
+      console.log(`   🖱️  Click Actions: ${actionPlan.summary.clickActions}`);
+      console.log(`   ⌨️  Type Actions: ${actionPlan.summary.typeActions}`);
+      console.log(`   🧭 Navigation Actions: ${actionPlan.summary.navigationActions}`);
+      console.log(`   ⏳ Wait Actions: ${actionPlan.summary.waitActions}`);
+      console.log(`   📸 Screenshot Actions: ${actionPlan.summary.screenshotActions}`);
+      
+      // Log detailed action list
+      console.log('\n📝 DETAILED ACTION LIST:');
+      console.log('=' .repeat(60));
+      
+      actionPlan.actions.forEach((action, index) => {
+        const priorityEmoji = action.priority === 'high' ? '🔴' : action.priority === 'medium' ? '🟡' : '🟢';
+        const typeEmoji = this.getActionTypeEmoji(action.type);
+        
+        console.log(`\n${index + 1}. ${typeEmoji} ${action.type.toUpperCase()} - ${priorityEmoji} ${action.priority.toUpperCase()}`);
+        console.log(`   📝 Description: ${action.description}`);
+        console.log(`   🎯 Expected Outcome: ${action.expectedOutcome}`);
+        console.log(`   ⏱️  Duration: ${action.estimatedDuration}s`);
+        
+        if (action.selector) {
+          console.log(`   🎯 Selector: ${action.selector}`);
+        }
+        
+        if (action.inputText) {
+          console.log(`   ⌨️  Input Text: "${action.inputText}"`);
+        }
+        
+        if (action.prerequisites && action.prerequisites.length > 0) {
+          console.log(`   📋 Prerequisites: ${action.prerequisites.join(', ')}`);
+        }
+      });
+      
+      console.log('\n' + '=' .repeat(60));
+      console.log('✅ Action plan generated successfully!');
+      console.log('=' .repeat(60) + '\n');
+      
+      return actionPlan;
+    } catch (error) {
+      console.error('❌ Error generating action plan:', error);
+      throw error;
+    }
+  }
+
+  private getActionTypeEmoji(actionType: string): string {
+    const emojiMap: Record<string, string> = {
+      'click': '🖱️',
+      'type': '⌨️',
+      'navigate': '🧭',
+      'wait': '⏳',
+      'scroll': '📜',
+      'screenshot': '📸',
+      'select': '📋',
+      'hover': '👆'
+    };
+    return emojiMap[actionType] || '🔧';
   }
 
   async stopAllAutomation(): Promise<void> {

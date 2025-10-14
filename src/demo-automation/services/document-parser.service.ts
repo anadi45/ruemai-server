@@ -4,10 +4,17 @@ import * as mammoth from 'mammoth';
 import * as sharp from 'sharp';
 import { ProductDocs } from '../types/demo-automation.types';
 import { PDFParse } from 'pdf-parse';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface ParsedDocument {
   text: string;
- 
+  images?: Array<{
+    data: Buffer;
+    description: string;
+    stepReference?: string;
+    mimeType: string;
+  }>;
 }
 
 export interface ExtractedFeatureDocs {
@@ -61,8 +68,12 @@ export class DocumentParserService {
       const pdfData = await parser.getText();
       console.log('PDF parsing completed');
       
+      // Extract images from PDF
+      const images = await this.extractImagesFromPDF(file.buffer);
+      
       return {
         text: pdfData.text,
+        images: images
       };
     } catch (error) {
       console.error('PDF parsing error:', error);
@@ -74,8 +85,12 @@ export class DocumentParserService {
     try {
       const result = await mammoth.extractRawText({ buffer: file.buffer });
       
+      // Extract images from Word document
+      const images = await this.extractImagesFromWord(file.buffer);
+      
       return {
         text: result.value,
+        images: images
       };
     } catch (error) {
       throw new Error(`Failed to parse Word document: ${error.message}`);
@@ -92,7 +107,25 @@ export class DocumentParserService {
     parsedDoc: ParsedDocument,
     featureName?: string
   ): Promise<ExtractedFeatureDocs> {
-    const prompt = this.buildExtractionPrompt(parsedDoc, featureName);
+    // Process images if they exist
+    let imageDescriptions: string[] = [];
+    if (parsedDoc.images && parsedDoc.images.length > 0) {
+      console.log(`Processing ${parsedDoc.images.length} images from document...`);
+      
+      for (const image of parsedDoc.images) {
+        try {
+          const description = await this.analyzeImage(image.data);
+          imageDescriptions.push(description);
+        } catch (error) {
+          console.error('Failed to analyze image:', error);
+          imageDescriptions.push('Image from documentation');
+        }
+      }
+    }
+
+    // Combine text and image descriptions
+    const combinedContent = this.combineTextAndImages(parsedDoc.text, imageDescriptions);
+    const prompt = this.buildExtractionPromptWithImages(combinedContent, featureName);
     
     try {
       // Use Gemini to extract structured feature documentation
@@ -109,6 +142,11 @@ export class DocumentParserService {
         selectors: extractedData.selectors || {},
         expectedOutcomes: extractedData.expectedOutcomes || [],
         prerequisites: extractedData.prerequisites || [],
+        screenshots: parsedDoc.images?.map(img => ({
+          data: img.data,
+          description: img.description,
+          stepReference: img.stepReference
+        })) || []
       };
     } catch (error) {
       console.error('Failed to extract feature docs:', error);
@@ -125,12 +163,44 @@ export class DocumentParserService {
     // Combine all document texts
     const combinedText = parsedDocs.map(doc => doc.text).join('\n\n---\n\n');
     
-    // Create a combined document for processing
-    const combinedDoc: ParsedDocument = {
-      text: combinedText,
-    };
+    // Process images from all documents
+    let allImageDescriptions: string[] = [];
+    let allImages: Array<{
+      data: Buffer;
+      description: string;
+      stepReference?: string;
+      mimeType: string;
+    }> = [];
 
-    const prompt = this.buildMultiDocumentExtractionPrompt(combinedDoc, featureName);
+    for (const doc of parsedDocs) {
+      if (doc.images && doc.images.length > 0) {
+        for (const image of doc.images) {
+          try {
+            const description = await this.analyzeImage(image.data);
+            allImageDescriptions.push(description);
+            allImages.push({
+              data: image.data,
+              description: description,
+              stepReference: image.stepReference,
+              mimeType: image.mimeType
+            });
+          } catch (error) {
+            console.error('Failed to analyze image:', error);
+            allImageDescriptions.push('Image from documentation');
+            allImages.push({
+              data: image.data,
+              description: 'Image from documentation',
+              stepReference: image.stepReference,
+              mimeType: image.mimeType
+            });
+          }
+        }
+      }
+    }
+
+    // Combine text and image descriptions
+    const combinedContent = this.combineTextAndImages(combinedText, allImageDescriptions);
+    const prompt = this.buildMultiDocumentExtractionPromptWithImages(combinedContent, featureName);
     
     try {
       // Use Gemini to extract structured feature documentation from combined content
@@ -147,6 +217,11 @@ export class DocumentParserService {
         selectors: extractedData.selectors || {},
         expectedOutcomes: extractedData.expectedOutcomes || [],
         prerequisites: extractedData.prerequisites || [],
+        screenshots: allImages.map(img => ({
+          data: img.data,
+          description: img.description,
+          stepReference: img.stepReference
+        }))
       };
     } catch (error) {
       console.error('Failed to extract feature docs from multiple documents:', error);
@@ -154,6 +229,58 @@ export class DocumentParserService {
       // Fallback to basic extraction
       return this.fallbackExtraction(combinedText, featureName);
     }
+  }
+
+  private combineTextAndImages(text: string, imageDescriptions: string[]): string {
+    let combined = text;
+    
+    if (imageDescriptions.length > 0) {
+      combined += '\n\n--- IMAGE DESCRIPTIONS ---\n';
+      imageDescriptions.forEach((description, index) => {
+        combined += `\nImage ${index + 1}: ${description}\n`;
+      });
+    }
+    
+    return combined;
+  }
+
+  private buildExtractionPromptWithImages(combinedContent: string, featureName?: string): string {
+    return `
+Extract structured feature documentation from the following document content, which includes both text and image descriptions.
+
+${featureName ? `Target Feature: ${featureName}` : ''}
+
+Document Content (including image descriptions):
+${combinedContent}
+
+Please extract and structure the following information, considering both the text content and the image descriptions:
+
+1. **Feature Name**: The main feature or functionality being described
+2. **Description**: A clear description of what the feature does (incorporate insights from images)
+3. **Steps**: A numbered list of user actions/steps to complete the feature (use image descriptions to enhance step details)
+4. **Selectors**: CSS selectors or element identifiers for UI elements (if mentioned in text or visible in images)
+5. **Expected Outcomes**: What should happen after each step or at the end (consider what images show)
+6. **Prerequisites**: Any requirements or setup needed before using this feature
+
+Return the data in this JSON format:
+{
+  "featureName": "string",
+  "description": "string", 
+  "steps": ["step1", "step2", "step3"],
+  "selectors": {
+    "elementName": "css-selector-or-identifier"
+  },
+  "expectedOutcomes": ["outcome1", "outcome2"],
+  "prerequisites": ["prerequisite1", "prerequisite2"]
+}
+
+Focus on:
+- User actions and workflows (enhanced by image context)
+- UI elements and interactions (use image descriptions to identify elements)
+- Expected results and validations (consider what images demonstrate)
+- Any technical details about selectors or identifiers
+- Combine textual instructions with visual context from images
+`;
   }
 
   private buildExtractionPrompt(parsedDoc: ParsedDocument, featureName?: string): string {
@@ -191,6 +318,46 @@ Focus on:
 - UI elements and interactions
 - Expected results and validations
 - Any technical details about selectors or identifiers
+`;
+  }
+
+  private buildMultiDocumentExtractionPromptWithImages(combinedContent: string, featureName?: string): string {
+    return `
+Extract structured feature documentation from the following combined document content from multiple files, which includes both text and image descriptions.
+
+${featureName ? `Target Feature: ${featureName}` : ''}
+
+Combined Document Content (including image descriptions):
+${combinedContent}
+
+Please extract and structure the following information by analyzing all the provided documents together, considering both text content and image descriptions:
+
+1. **Feature Name**: The main feature or functionality being described across all documents
+2. **Description**: A comprehensive description combining information from all documents and images
+3. **Steps**: A consolidated numbered list of user actions/steps from all documents (enhanced by image context)
+4. **Selectors**: CSS selectors or element identifiers found across all documents and visible in images
+5. **Expected Outcomes**: Combined expected outcomes from all documents (consider what images demonstrate)
+6. **Prerequisites**: All prerequisites mentioned across the documents
+
+Return the data in this JSON format:
+{
+  "featureName": "string",
+  "description": "string", 
+  "steps": ["step1", "step2", "step3"],
+  "selectors": {
+    "elementName": "css-selector-or-identifier"
+  },
+  "expectedOutcomes": ["outcome1", "outcome2"],
+  "prerequisites": ["prerequisite1", "prerequisite2"]
+}
+
+Focus on:
+- Consolidating information from multiple documents and images
+- Removing duplicates and conflicts
+- Creating a comprehensive workflow enhanced by visual context
+- Combining all relevant selectors and outcomes
+- Using image descriptions to identify UI elements and enhance step details
+- Ensuring the final result is coherent and complete
 `;
   }
 
@@ -233,6 +400,66 @@ Focus on:
 `;
   }
 
+  private async extractImagesFromPDF(pdfBuffer: Buffer): Promise<Array<{
+    data: Buffer;
+    description: string;
+    stepReference?: string;
+    mimeType: string;
+  }>> {
+    try {
+      // For now, we'll use a simple approach to extract images
+      // In a production environment, you might want to use pdf2pic or similar libraries
+      console.log('Extracting images from PDF...');
+      
+      // This is a placeholder implementation
+      // In practice, you'd use a library like pdf2pic or pdf-poppler
+      const images: Array<{
+        data: Buffer;
+        description: string;
+        stepReference?: string;
+        mimeType: string;
+      }> = [];
+      
+      // For now, return empty array - this would need proper PDF image extraction
+      console.log('PDF image extraction not yet implemented');
+      return images;
+    } catch (error) {
+      console.error('Failed to extract images from PDF:', error);
+      return [];
+    }
+  }
+
+  private async extractImagesFromWord(docxBuffer: Buffer): Promise<Array<{
+    data: Buffer;
+    description: string;
+    stepReference?: string;
+    mimeType: string;
+  }>> {
+    try {
+      console.log('Extracting images from Word document...');
+      
+      // Use mammoth to extract images
+      const result = await mammoth.extractRawText({ buffer: docxBuffer });
+      
+      // For now, we'll use mammoth's image extraction capabilities
+      // This is a simplified approach - in practice, you might need more sophisticated extraction
+      const images: Array<{
+        data: Buffer;
+        description: string;
+        stepReference?: string;
+        mimeType: string;
+      }> = [];
+      
+      // Note: mammoth doesn't directly extract images, so this is a placeholder
+      // You might need to use a different library or approach for Word document image extraction
+      console.log('Word document image extraction not yet fully implemented');
+      return images;
+    } catch (error) {
+      console.error('Failed to extract images from Word document:', error);
+      return [];
+    }
+  }
+
   private async analyzeImage(imageBuffer: Buffer): Promise<string> {
     try {
       // Convert image to base64 for Gemini
@@ -248,9 +475,9 @@ Analyze this image and provide a description of what it shows, focusing on:
 Keep the description concise but informative.
 `;
 
-      // Note: This would require Gemini's vision capabilities
-      // For now, return a generic description
-      return `Screenshot showing UI elements and interface components`;
+      // Use Gemini service to analyze the image
+      const description = await this.geminiService.analyzeImage(base64Image, prompt);
+      return description;
     } catch (error) {
       console.error('Failed to analyze image:', error);
       return 'Image from documentation';

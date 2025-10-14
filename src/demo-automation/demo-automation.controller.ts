@@ -50,6 +50,37 @@ export class DemoAutomationController {
   }
 
 
+  @Post('parse-document')
+  @UseInterceptors(AnyFilesInterceptor())
+  async parseDocument(
+    @Body() body: { websiteUrl?: string; featureName?: string },
+    @UploadedFiles() files: Express.Multer.File[],
+  ): Promise<any> {
+    try {
+      console.log("🚀 ~ DemoAutomationController ~ parseDocument ~ body:", body);
+      
+      if (!files || files.length === 0) {
+        throw new Error('No files received. Please ensure you are sending files with multipart/form-data content type.');
+      }
+      
+      // Parse the first file and generate action plan
+      const result = await this.demoAutomationService.parseDocumentFile(
+        files[0],
+        body.featureName,
+        body.websiteUrl
+      );
+      
+      return {
+        success: result.success,
+        featureDocs: result.featureDocs,
+        validation: result.validation,
+        actionPlan: result.actionPlan
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
   @Post('stop-automation')
   async stopAutomation(): Promise<{ message: string }> {
     try {
