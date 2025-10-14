@@ -329,7 +329,17 @@ BEFORE ACTION:
 AFTER ACTION:
 - URL: ${currentState.currentUrl}
 - Title: ${currentState.pageTitle}
-- New visible text: ${currentState.visibleText.slice(0, 5).join(' | ')}
+- New visible text: ${currentState.visibleText.slice(0, 10).join(' | ')}
+
+VALIDATION GUIDELINES:
+- For navigation actions: Check if the URL changed or if the expected page content is now visible
+- For click actions: Check if the element was clicked successfully (element may still be present but action completed)
+- For wait actions: Check if the expected element or content is now visible - focus on the functional presence rather than exact selector matching
+- For dynamic web applications: Elements may be implemented as buttons, divs, or other components - not just anchor tags
+- Focus on the functional outcome rather than strict selector matching
+- Consider that modern web apps use JavaScript frameworks that may render elements differently
+- For wait actions with href selectors: If the text content is visible and the element appears to be a navigation link, consider it successful even if the exact href attribute structure differs
+- Priority should be given to functional visibility over exact attribute matching
 
 Determine if the action was successful and provide reasoning.
 
