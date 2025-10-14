@@ -19,10 +19,16 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:demo-automation": "jest --config ./test/jest-demo-automation.json",
+    "test:demo-automation:watch": "jest --config ./test/jest-demo-automation.json --watch",
+    "test:demo-automation:cov": "jest --config ./test/jest-demo-automation.json --coverage"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/community": "^0.3.57",
     "@langchain/core": "^0.3.78",
+    "@langchain/langgraph": "^0.4.9",
     "@langchain/openai": "^0.3.15",
     "@mozilla/readability": "^0.6.0",
     "@nestjs/common": "^10.0.0",
@@ -40,9 +46,7 @@
     "gpt-3-encoder": "^1.1.4",
     "jsdom": "^27.0.0",
     "langchain": "^0.3.35",
-    "mammoth": "^1.11.0",
     "multer": "^2.0.2",
-    "pdf-parse": "^2.1.7",
     "puppeteer": "^24.23.0",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
