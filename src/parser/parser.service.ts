@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { readFile } from 'fs/promises';
-import { pdf as pdfParse } from 'pdf-parse';
+const pdfParse = require('pdf-parse');
 import * as mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
 import { JSDOM } from 'jsdom';

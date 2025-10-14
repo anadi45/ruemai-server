@@ -4,6 +4,7 @@ import { DemoAutomationService } from './demo-automation.service';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
+import { DocumentParserService } from './services/document-parser.service';
 
 @Module({
   controllers: [DemoAutomationController],
@@ -11,7 +12,8 @@ import { LangGraphWorkflowService } from './services/langgraph-workflow.service'
     DemoAutomationService,
     GeminiService,
     PuppeteerWorkerService,
-    LangGraphWorkflowService
+    LangGraphWorkflowService,
+    DocumentParserService
   ],
   exports: [DemoAutomationService],
 })

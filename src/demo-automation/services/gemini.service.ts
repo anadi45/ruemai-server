@@ -231,4 +231,15 @@ RESPONSE FORMAT (JSON):
       return { success: false, reason: 'Error during validation' };
     }
   }
+
+  async extractStructuredData(prompt: string): Promise<string> {
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
+    } catch (error) {
+      console.error('Error extracting structured data:', error);
+      throw new Error('Failed to extract structured data from document');
+    }
+  }
 }

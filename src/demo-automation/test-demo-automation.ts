@@ -2,6 +2,7 @@ import { DemoAutomationService } from './demo-automation.service';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
+import { DocumentParserService } from './services/document-parser.service';
 import { TourConfig, ProductDocs } from './types/demo-automation.types';
 
 /**
@@ -18,10 +19,12 @@ async function testDemoAutomation() {
     geminiService,
     puppeteerWorker
   );
+  const documentParser = new DocumentParserService(geminiService);
   const demoAutomationService = new DemoAutomationService(
     geminiService,
     puppeteerWorker,
-    langGraphWorkflow
+    langGraphWorkflow,
+    documentParser
   );
 
   try {

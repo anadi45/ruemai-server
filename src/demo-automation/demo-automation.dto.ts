@@ -97,15 +97,24 @@ export class CreateDemoRequestDto {
     password: string;
   };
 
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => TourConfigDto)
-  tourConfig?: TourConfigDto;
-
-  @IsOptional()
   @ValidateNested()
   @Type(() => ProductDocsDto)
-  featureDocs?: ProductDocsDto;
+  featureDocs: ProductDocsDto;
+}
+
+export class CreateDemoWithFileRequestDto {
+  @IsUrl()
+  websiteUrl: string;
+
+  @IsObject()
+  credentials: {
+    username: string;
+    password: string;
+  };
+
+  @IsOptional()
+  @IsString()
+  featureName?: string;
 }
 
 export class CreateDemoResponseDto {

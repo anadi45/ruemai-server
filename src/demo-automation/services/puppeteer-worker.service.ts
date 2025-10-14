@@ -143,7 +143,7 @@ export class PuppeteerWorkerService {
       await submitButton.click();
 
       // Wait for navigation or error message
-      await this.page.waitForTimeout(2000);
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       return true;
     } catch (error) {
@@ -183,7 +183,7 @@ export class PuppeteerWorkerService {
           break;
         
         case 'wait':
-          await this.page.waitForTimeout(parseInt(action.inputText || '1000'));
+          await new Promise(resolve => setTimeout(resolve, parseInt(action.inputText || '1000')));
           break;
         
         default:
@@ -191,7 +191,7 @@ export class PuppeteerWorkerService {
       }
 
       // Wait for page to settle
-      await this.page.waitForTimeout(500);
+      await new Promise(resolve => setTimeout(resolve, 500));
       return { success: true };
     } catch (error) {
       console.error(`Action failed: ${action.type} on ${action.selector}`, error);
@@ -242,7 +242,7 @@ export class PuppeteerWorkerService {
       const elements = document.querySelectorAll('input[type="text"], input[type="email"], input[type="password"], input:not([type])');
       return Array.from(elements).map(el => {
         if (el.id) return `#${el.id}`;
-        if (el.name) return `[name="${el.name}"]`;
+        if ((el as any).name) return `[name="${(el as any).name}"]`;
         if (el.className) return `.${el.className.split(' ')[0]}`;
         return el.tagName.toLowerCase();
       });
@@ -253,7 +253,7 @@ export class PuppeteerWorkerService {
       const elements = document.querySelectorAll('select');
       return Array.from(elements).map(el => {
         if (el.id) return `#${el.id}`;
-        if (el.name) return `[name="${el.name}"]`;
+        if ((el as any).name) return `[name="${(el as any).name}"]`;
         if (el.className) return `.${el.className.split(' ')[0]}`;
         return el.tagName.toLowerCase();
       });
@@ -359,7 +359,7 @@ export class PuppeteerWorkerService {
     return this.page?.url() || null;
   }
 
-  getPageTitle(): string | null {
+  async getPageTitle(): Promise<string | null> {
     return this.page?.title() || null;
   }
 }

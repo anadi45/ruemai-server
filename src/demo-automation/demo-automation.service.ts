@@ -3,6 +3,7 @@ import { CreateDemoResponseDto } from './demo-automation.dto';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
+import { DocumentParserService } from './services/document-parser.service';
 import { 
   TourConfig, 
   ProductDocs, 
@@ -16,7 +17,8 @@ export class DemoAutomationService {
   constructor(
     private geminiService: GeminiService,
     private puppeteerWorker: PuppeteerWorkerService,
-    private langGraphWorkflow: LangGraphWorkflowService
+    private langGraphWorkflow: LangGraphWorkflowService,
+    private documentParser: DocumentParserService
   ) {}
 
   async loginToWebsite(
@@ -107,7 +109,7 @@ export class DemoAutomationService {
           crawlTime: processingTime,
           pages: [{
             url: result.finalUrl,
-            title: this.puppeteerWorker.getPageTitle() || 'Tour Page',
+            title: await this.puppeteerWorker.getPageTitle() || 'Tour Page',
             html: '', // Not storing full HTML for demo
             scrapedData: result.tourSteps,
             timestamp: new Date().toISOString(),
@@ -201,6 +203,127 @@ export class DemoAutomationService {
         links: 0,
         inputs: 0
       };
+    }
+  }
+
+  async generateProductTourFromFile(
+    websiteUrl: string,
+    credentials: { username: string; password: string },
+    file: Express.Multer.File,
+    featureName?: string
+  ): Promise<CreateDemoResponseDto> {
+    const demoId = uuidv4();
+    const startTime = Date.now();
+
+    try {
+      // Parse the document
+      const parsedDoc = await this.documentParser.parseDocument(file);
+      const extractedDocs = await this.documentParser.extractFeatureDocsFromDocument(
+        parsedDoc,
+        featureName
+      );
+
+      // Validate the extracted documentation
+      const validation = await this.documentParser.validateExtractedDocs(extractedDocs);
+      
+      if (!validation.isValid) {
+        throw new Error(`Invalid feature documentation: ${validation.issues.join(', ')}`);
+      }
+
+      // Convert to ProductDocs format
+      const featureDocs: ProductDocs = {
+        featureName: extractedDocs.featureName,
+        description: extractedDocs.description,
+        steps: extractedDocs.steps,
+        selectors: extractedDocs.selectors,
+        expectedOutcomes: extractedDocs.expectedOutcomes,
+        prerequisites: extractedDocs.prerequisites
+      };
+
+      // Generate tour configuration
+      const tourConfig: TourConfig = {
+        goal: featureDocs.description,
+        featureName: featureDocs.featureName,
+        maxSteps: 10,
+        timeout: 30000,
+        includeScreenshots: true
+      };
+
+      // Initialize and login
+      await this.puppeteerWorker.initialize();
+      await this.puppeteerWorker.navigateToUrl(websiteUrl);
+      const loginSuccess = await this.puppeteerWorker.login(credentials);
+
+      if (!loginSuccess) {
+        throw new Error('Login failed - cannot generate tour');
+      }
+
+      // Run the LangGraph workflow
+      const result = await this.langGraphWorkflow.runDemoAutomation(
+        tourConfig,
+        featureDocs,
+        credentials
+      );
+
+      // Build response
+      const processingTime = Date.now() - startTime;
+
+      return {
+        demoId,
+        demoName: `Tour-${featureDocs.featureName}-${demoId.slice(0, 8)}`,
+        websiteUrl,
+        loginStatus: 'success',
+        pageInfo: await this.getPageInfo(),
+        summary: {
+          processingTime,
+          loginAttempted: true,
+          finalUrl: result.finalUrl
+        },
+        scrapedData: {
+          success: result.success,
+          totalPages: 1,
+          crawlTime: processingTime,
+          pages: [{
+            url: result.finalUrl,
+            title: await this.puppeteerWorker.getPageTitle() || 'Tour Page',
+            html: '', // Not storing full HTML for demo
+            scrapedData: result.tourSteps,
+            timestamp: new Date().toISOString(),
+            pageInfo: await this.getPageInfo()
+          }]
+        }
+      };
+    } catch (error) {
+      console.error('Tour generation from file failed:', error);
+      throw error;
+    } finally {
+      await this.puppeteerWorker.cleanup();
+    }
+  }
+
+  async parseDocumentFile(
+    file: Express.Multer.File,
+    featureName?: string
+  ): Promise<{ success: boolean; featureDocs: any; validation: any }> {
+    try {
+      // Parse the document
+      const parsedDoc = await this.documentParser.parseDocument(file);
+      const extractedDocs = await this.documentParser.extractFeatureDocsFromDocument(
+        parsedDoc,
+        featureName
+      );
+
+      // Validate the extracted documentation
+      const validation = await this.documentParser.validateExtractedDocs(extractedDocs);
+
+      return {
+        success: validation.isValid,
+        featureDocs: extractedDocs,
+        validation
+      };
+    } catch (error) {
+      console.error('Document parsing failed:', error);
+      throw error;
     }
   }
 
