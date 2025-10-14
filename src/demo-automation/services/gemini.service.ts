@@ -34,10 +34,10 @@ export class GeminiService {
     if (apiKeys.length === 0) {
       throw new Error('At least one GEMINI_API_KEY is required');
     }
-    
+
     this.genAIs = apiKeys.map(key => new GoogleGenerativeAI(key));
     this.models = this.genAIs.map(genAI => genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }));
-    
+
     // Initialize usage tracking
     apiKeys.forEach((_, index) => {
       this.keyUsageCount.set(index, 0);
@@ -49,7 +49,7 @@ export class GeminiService {
     // Support both single key and multiple keys
     const singleKey = process.env.GEMINI_API_KEY;
     const multipleKeys = process.env.GEMINI_API_KEYS;
-    
+
     if (multipleKeys) {
       try {
         const keys = JSON.parse(multipleKeys);
@@ -59,33 +59,33 @@ export class GeminiService {
         return multipleKeys.split(',').map(key => key.trim()).filter(key => key);
       }
     }
-    
+
     if (singleKey) {
       return [singleKey];
     }
-    
+
     return [];
   }
 
   private getNextAvailableKey(): { keyIndex: number; model: any } {
     const now = Date.now();
-    
+
     // First, try to find a key that hasn't been used recently and is under the limit
     for (let i = 0; i < this.genAIs.length; i++) {
       const keyIndex = (this.currentKeyIndex + i) % this.genAIs.length;
       const usageCount = this.keyUsageCount.get(keyIndex) || 0;
       const lastUsed = this.keyLastUsed.get(keyIndex) || 0;
-      
+
       if (usageCount < this.maxRequestsPerKey && (now - lastUsed) > this.keyCooldownMs) {
         this.currentKeyIndex = keyIndex;
         return { keyIndex, model: this.models[keyIndex] };
       }
     }
-    
+
     // If all keys are at limit, find the least recently used one
     let leastRecentlyUsedIndex = 0;
     let oldestLastUsed = this.keyLastUsed.get(0) || 0;
-    
+
     for (let i = 1; i < this.genAIs.length; i++) {
       const lastUsed = this.keyLastUsed.get(i) || 0;
       if (lastUsed < oldestLastUsed) {
@@ -93,7 +93,7 @@ export class GeminiService {
         leastRecentlyUsedIndex = i;
       }
     }
-    
+
     this.currentKeyIndex = leastRecentlyUsedIndex;
     return { keyIndex: leastRecentlyUsedIndex, model: this.models[leastRecentlyUsedIndex] };
   }
@@ -109,10 +109,10 @@ export class GeminiService {
     maxRetries: number = 3
   ): Promise<T> {
     let lastError: any;
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       const { keyIndex, model } = this.getNextAvailableKey();
-      
+
       try {
         console.log(`🔄 Using Gemini API key ${keyIndex + 1}/${this.genAIs.length} (attempt ${attempt + 1})`);
         const result = await requestFn(model);
@@ -121,14 +121,14 @@ export class GeminiService {
       } catch (error: any) {
         lastError = error;
         console.warn(`❌ API key ${keyIndex + 1} failed:`, error.message);
-        
+
         // Check if it's a rate limit error
         if (error.message?.includes('429') || error.message?.includes('rate limit') || error.message?.includes('quota')) {
           console.log(`⏳ Rate limit hit for key ${keyIndex + 1}, switching to next key`);
           this.keyLastUsed.set(keyIndex, Date.now() + 300000); // 5 minute penalty
           continue;
         }
-        
+
         // For other errors, try next key immediately
         if (attempt < maxRetries - 1) {
           console.log(`🔄 Retrying with different API key...`);
@@ -136,7 +136,7 @@ export class GeminiService {
         }
       }
     }
-    
+
     throw lastError;
   }
 
@@ -163,7 +163,7 @@ export class GeminiService {
         const response = await result.response;
         return response.text();
       });
-      
+
       return this.parseGeminiResponse(result);
     } catch (error) {
       console.error('Error calling Gemini API:', error);
@@ -184,10 +184,10 @@ export class GeminiService {
     maxSteps: number,
     currentStep: number
   ): string {
-    const historyText = history.length > 0 
-      ? history.map((action, index) => 
-          `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
-        ).join('\n')
+    const historyText = history.length > 0
+      ? history.map((action, index) =>
+        `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
+      ).join('\n')
       : 'No previous actions';
 
     const availableSelectors = [
@@ -257,7 +257,7 @@ If no action should be taken (goal achieved, error, or no progress possible), se
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       return {
         action: parsed.action,
         reasoning: parsed.reasoning || 'No reasoning provided',
@@ -267,7 +267,7 @@ If no action should be taken (goal achieved, error, or no progress possible), se
     } catch (error) {
       console.error('Error parsing Gemini response:', error);
       console.error('Raw response:', text);
-      
+
       return {
         action: null,
         reasoning: 'Failed to parse response',
@@ -302,7 +302,7 @@ Generate a concise, helpful tooltip (max 100 characters) that explains what the 
         const response = await result.response;
         return response.text().trim();
       });
-      
+
       return result;
     } catch (error) {
       console.error('Error generating tooltip:', error);
@@ -346,7 +346,7 @@ RESPONSE FORMAT (JSON):
         const response = await result.response;
         return response.text();
       });
-      
+
       const jsonMatch = result.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
@@ -355,79 +355,11 @@ RESPONSE FORMAT (JSON):
           reasoning: parsed.reason || 'No reason provided'
         };
       }
-      
+
       return { success: false, reasoning: 'Failed to parse validation response' };
     } catch (error) {
       console.error('Error validating action:', error);
       return { success: false, reasoning: 'Error during validation' };
-    }
-  }
-
-  async extractStructuredData(prompt: string): Promise<string> {
-    try {
-      const result = await this.makeRequestWithRetry(async (model) => {
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text();
-      });
-      
-      return result;
-    } catch (error) {
-      console.error('Error extracting structured data:', error);
-      
-      // If it's a model not found error, try with a different model
-      if (error.message && error.message.includes('not found')) {
-        console.log('Trying with gemini-1.5-flash-latest model...');
-        try {
-          const result = await this.makeRequestWithRetry(async (model) => {
-            const fallbackModel = this.genAIs[0].getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
-            const result = await fallbackModel.generateContent(prompt);
-            const response = await result.response;
-            return response.text();
-          });
-          return result;
-        } catch (fallbackError) {
-          console.error('Fallback model also failed:', fallbackError);
-          throw new Error('Failed to extract structured data from document - no available models');
-        }
-      }
-      
-      throw new Error('Failed to extract structured data from document');
-    }
-  }
-
-  async analyzeImage(base64Image: string, prompt: string): Promise<string> {
-    try {
-      const result = await this.makeRequestWithRetry(async (model) => {
-        // Use Gemini's vision capabilities for image analysis
-        const visionModel = this.genAIs[0].getGenerativeModel({ 
-          model: 'gemini-1.5-flash-latest',
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 1000,
-          }
-        });
-
-        const result = await visionModel.generateContent([
-          prompt,
-          {
-            inlineData: {
-              data: base64Image,
-              mimeType: 'image/jpeg' // Default mime type, could be enhanced to detect actual type
-            }
-          }
-        ]);
-
-        const response = await result.response;
-        return response.text();
-      });
-      
-      return result;
-    } catch (error) {
-      console.error('Error analyzing image with Gemini:', error);
-      
-      // Fallback to a generic description
-      return 'Screenshot showing UI elements and interface components';
     }
   }
 
@@ -444,7 +376,7 @@ RESPONSE FORMAT (JSON):
   }> {
     try {
       const prompt = this.buildFileProcessingPrompt(featureName);
-      
+
       // Prepare file data for Gemini
       const fileParts = files.map(file => {
         const mimeType = this.getMimeType(file.originalname);
@@ -466,13 +398,13 @@ RESPONSE FORMAT (JSON):
         const response = await result.response;
         return response.text();
       });
-      
+
       // Log the raw Gemini response for debugging
       console.log('\n🤖 GEMINI FILE PROCESSING RESPONSE:');
-      console.log('=' .repeat(60));
+      console.log('='.repeat(60));
       console.log('Raw Response:', text);
-      console.log('=' .repeat(60));
-      
+      console.log('='.repeat(60));
+
       // Parse the JSON response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -480,18 +412,18 @@ RESPONSE FORMAT (JSON):
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       // Log the parsed structured data
       console.log('\n📊 PARSED FEATURE DOCUMENTATION:');
-      console.log('=' .repeat(60));
+      console.log('='.repeat(60));
       console.log('Feature Name:', parsed.featureName);
       console.log('Description:', parsed.description);
       console.log('Steps:', parsed.steps);
       console.log('Selectors:', parsed.selectors);
       console.log('Expected Outcomes:', parsed.expectedOutcomes);
       console.log('Prerequisites:', parsed.prerequisites);
-      console.log('=' .repeat(60));
-      
+      console.log('='.repeat(60));
+
       return {
         featureName: parsed.featureName || featureName || 'Extracted Feature',
         description: parsed.description || '',
@@ -574,7 +506,7 @@ Only return valid JSON. Do not include any other text or explanations.
         const response = await result.response;
         return response.text();
       });
-      
+
       // Parse the JSON response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -582,7 +514,7 @@ Only return valid JSON. Do not include any other text or explanations.
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       // Validate and structure the response
       const actionPlan: ActionPlan = {
         featureName: parsed.featureName || featureDocs.featureName,
@@ -603,7 +535,7 @@ Only return valid JSON. Do not include any other text or explanations.
       return actionPlan;
     } catch (error) {
       console.error('Error generating action plan:', error);
-      
+
       // Fallback to basic action plan
       return this.createFallbackActionPlan(featureDocs, websiteUrl);
     }
@@ -812,7 +744,7 @@ FOCUS ON PROGRAMMATIC SCRAPING:
         const response = await result.response;
         return response.text();
       });
-      
+
       return this.parseAnalysisResponse(text);
     } catch (error) {
       console.error('Error analyzing current state:', error);
@@ -831,10 +763,10 @@ FOCUS ON PROGRAMMATIC SCRAPING:
     history: Action[],
     currentContext: string
   ): string {
-    const historyText = history.length > 0 
-      ? history.map((action, index) => 
-          `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
-        ).join('\n')
+    const historyText = history.length > 0
+      ? history.map((action, index) =>
+        `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
+      ).join('\n')
       : 'No previous actions';
 
     return `
@@ -888,7 +820,7 @@ RESPONSE FORMAT (JSON):
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       return {
         context: parsed.context || 'No context provided',
         reasoning: parsed.reasoning || 'No reasoning provided',
@@ -897,7 +829,7 @@ RESPONSE FORMAT (JSON):
     } catch (error) {
       console.error('Error parsing analysis response:', error);
       console.error('Raw response:', text);
-      
+
       return {
         context: 'Error parsing response',
         reasoning: 'Failed to parse analysis response',
