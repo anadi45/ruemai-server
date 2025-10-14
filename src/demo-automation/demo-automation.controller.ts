@@ -14,8 +14,6 @@ export class DemoAutomationController {
     @UploadedFiles() files: Express.Multer.File[],
   ): Promise<any> {
     try {
-      console.log("🚀 ~ DemoAutomationController ~ createDemo ~ body:", body)
-      
       // Validate credentials
       if (!body.username || !body.password) {
         throw new Error('Invalid credentials: username and password are required');
