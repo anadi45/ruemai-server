@@ -106,11 +106,15 @@ export class CreateDemoWithFileRequestDto {
   @IsUrl()
   websiteUrl: string;
 
-  @IsObject()
-  credentials: {
-    username: string;
-    password: string;
-  };
+  @IsString()
+  username: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsString()
+  password: string;
 
   @IsOptional()
   @IsString()

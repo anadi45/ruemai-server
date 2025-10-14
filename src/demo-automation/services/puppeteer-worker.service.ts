@@ -63,6 +63,24 @@ export class PuppeteerWorkerService {
       throw new Error('Page not initialized. Call initialize() first.');
     }
 
+    // Debug: Log credentials to help identify undefined values
+    console.log('PuppeteerWorkerService.login - Received credentials:', {
+      username: credentials?.username,
+      password: credentials?.password ? '[REDACTED]' : 'undefined',
+      credentialsType: typeof credentials,
+      usernameType: typeof credentials?.username,
+      passwordType: typeof credentials?.password
+    });
+
+    // Validate credentials before attempting login
+    if (!credentials || !credentials.username || !credentials.password) {
+      throw new Error('Invalid credentials: username and password are required');
+    }
+
+    if (credentials.username === 'undefined' || credentials.password === 'undefined') {
+      throw new Error('Invalid credentials: username and password cannot be undefined');
+    }
+
     try {
       // Look for common login form selectors
       const usernameSelectors = [
@@ -105,7 +123,7 @@ export class PuppeteerWorkerService {
       }
 
       await usernameField.click();
-      await usernameField.type(String(credentials.username));
+      await usernameField.type(credentials.username);
 
       // Find and fill password field
       let passwordField: ElementHandle | null = null;
@@ -123,7 +141,7 @@ export class PuppeteerWorkerService {
       }
 
       await passwordField.click();
-      await passwordField.type(String(credentials.password));
+      await passwordField.type(credentials.password);
 
       // Find and click submit button
       let submitButton: ElementHandle | null = null;

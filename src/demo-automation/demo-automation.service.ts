@@ -316,6 +316,15 @@ export class DemoAutomationService {
     const demoId = uuidv4();
     const startTime = Date.now();
 
+    // Debug: Log credentials to help identify undefined values
+    console.log('DemoAutomationService.generateProductTourFromFiles - Received credentials:', {
+      username: credentials?.username,
+      password: credentials?.password ? '[REDACTED]' : 'undefined',
+      credentialsType: typeof credentials,
+      usernameType: typeof credentials?.username,
+      passwordType: typeof credentials?.password
+    });
+
     try {
       // Parse all documents and combine their content
       const allParsedDocs = [];
