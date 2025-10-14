@@ -10,7 +10,7 @@ export class PuppeteerWorkerService {
 
   constructor() {
     this.config = {
-      headless: true,
+      headless: false,
       viewport: { width: 1280, height: 720 },
       timeout: 30000,
       waitForSelectorTimeout: 5000
