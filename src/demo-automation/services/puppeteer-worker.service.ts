@@ -11,9 +11,10 @@ export class PuppeteerWorkerService {
   constructor() {
     this.config = {
       headless: false,
-      viewport: { width: 1280, height: 720 },
+      viewport: { width: 1366, height: 768 },
       timeout: 30000,
-      waitForSelectorTimeout: 5000
+      waitForSelectorTimeout: 10000,
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     };
   }
 
@@ -31,16 +32,49 @@ export class PuppeteerWorkerService {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--no-pings',
+        '--no-zygote',
+        '--single-process'
       ]
     });
 
     this.page = await this.browser.newPage();
+    
+    // Enable JavaScript explicitly
+    await this.page.setJavaScriptEnabled(true);
+    
+    // Set realistic user agent
+    await this.page.setUserAgent(this.config.userAgent);
+    
+    // Set viewport
     await this.page.setViewport(this.config.viewport);
     
-    if (this.config.userAgent) {
-      await this.page.setUserAgent(this.config.userAgent);
-    }
+    // Disable web security for better compatibility
+    await this.page.setBypassCSP(true);
+    
+    // Set extra headers to look more like a real browser
+    await this.page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Upgrade-Insecure-Requests': '1',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache'
+    });
 
     // Set timeouts
     this.page.setDefaultTimeout(this.config.timeout);
@@ -52,10 +86,36 @@ export class PuppeteerWorkerService {
       throw new Error('Page not initialized. Call initialize() first.');
     }
 
-    await this.page.goto(url, { 
-      waitUntil: 'networkidle2',
-      timeout: this.config.timeout 
-    });
+    try {
+      // Navigate with multiple wait strategies
+      await this.page.goto(url, { 
+        waitUntil: 'domcontentloaded',
+        timeout: this.config.timeout 
+      });
+
+      // Wait for JavaScript to load
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Check if JavaScript is working by looking for common indicators
+      const jsWorking = await this.page.evaluate(() => {
+        // Check if we can execute JavaScript
+        return typeof window !== 'undefined' && typeof document !== 'undefined';
+      });
+
+      if (!jsWorking) {
+        throw new Error('JavaScript execution failed - page may not be fully loaded');
+      }
+
+      // Wait for network to be idle
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Additional wait for dynamic content
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+    } catch (error) {
+      console.error('Navigation failed:', error);
+      throw error;
+    }
   }
 
   async login(credentials: { username: string; password: string }): Promise<boolean> {
@@ -176,40 +236,70 @@ export class PuppeteerWorkerService {
     }
 
     try {
+      // Check for JavaScript errors before executing action
+      const hasJsErrors = await this.checkForJavaScriptErrors();
+      if (hasJsErrors) {
+        console.warn('JavaScript errors detected on page, but continuing with action');
+      }
+
       switch (action.type) {
         case 'click':
+          // Wait for element to be visible and clickable
+          await this.page.waitForSelector(action.selector!, { 
+            visible: true, 
+            timeout: this.config.waitForSelectorTimeout 
+          });
           await this.page.click(action.selector!);
           break;
         
         case 'type':
+          // Wait for input field to be visible
+          await this.page.waitForSelector(action.selector!, { 
+            visible: true, 
+            timeout: this.config.waitForSelectorTimeout 
+          });
           await this.page.click(action.selector!);
-          await this.page.type(action.selector!, String(action.inputText || ''));
+          await this.page.type(action.selector!, String(action.inputText || ''), { delay: 100 });
           break;
         
         case 'hover':
+          await this.page.waitForSelector(action.selector!, { 
+            visible: true, 
+            timeout: this.config.waitForSelectorTimeout 
+          });
           await this.page.hover(action.selector!);
           break;
         
         case 'select':
+          await this.page.waitForSelector(action.selector!, { 
+            visible: true, 
+            timeout: this.config.waitForSelectorTimeout 
+          });
           await this.page.select(action.selector!, action.inputText || '');
           break;
         
         case 'navigate':
-          await this.page.goto(action.inputText || '', { 
-            waitUntil: 'networkidle2' 
-          });
+          await this.navigateToUrl(action.inputText || '');
           break;
         
         case 'wait':
-          await new Promise(resolve => setTimeout(resolve, parseInt(action.inputText || '1000')));
+          const waitTime = parseInt(action.inputText || '1000');
+          await new Promise(resolve => setTimeout(resolve, waitTime));
           break;
         
         default:
           throw new Error(`Unknown action type: ${action.type}`);
       }
 
-      // Wait for page to settle
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for page to settle and check for errors
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Check for JavaScript errors after action
+      const hasJsErrorsAfter = await this.checkForJavaScriptErrors();
+      if (hasJsErrorsAfter) {
+        console.warn('JavaScript errors detected after action execution');
+      }
+
       return { success: true };
     } catch (error) {
       console.error(`Action failed: ${action.type} on ${action.selector}`, error);
@@ -220,9 +310,53 @@ export class PuppeteerWorkerService {
     }
   }
 
+  async checkForJavaScriptErrors(): Promise<boolean> {
+    if (!this.page) {
+      return false;
+    }
+
+    try {
+      const errors = await this.page.evaluate(() => {
+        // Check for common JavaScript error indicators
+        const errorSelectors = [
+          'text=You need to enable JavaScript to run this app',
+          'text=JavaScript is disabled',
+          'text=Please enable JavaScript',
+          '[data-testid*="error"]',
+          '.error-message',
+          '.js-error'
+        ];
+        
+        for (const selector of errorSelectors) {
+          if (document.querySelector(selector)) {
+            return true;
+          }
+        }
+        
+        // Check if we can execute basic JavaScript
+        try {
+          return typeof window === 'undefined' || typeof document === 'undefined';
+        } catch (e) {
+          return true;
+        }
+      });
+      
+      return errors;
+    } catch (error) {
+      console.error('Error checking for JavaScript errors:', error);
+      return false;
+    }
+  }
+
   async getDOMState(includeScreenshot: boolean = false): Promise<DOMState> {
     if (!this.page) {
       throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    // Check for JavaScript errors first
+    const hasJsErrors = await this.checkForJavaScriptErrors();
+    if (hasJsErrors) {
+      console.warn('JavaScript errors detected when getting DOM state');
     }
 
     const domHtml = await this.page.content();
@@ -377,5 +511,76 @@ export class PuppeteerWorkerService {
       throw new Error('Page not initialized. Call initialize() first.');
     }
     return await this.page.$(selector);
+  }
+
+  async waitForAppToLoad(maxWaitTime: number = 10000): Promise<boolean> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    try {
+      // Wait for common app loading indicators
+      const appLoaded = await this.page.waitForFunction(() => {
+        // Check for common app loading indicators
+        const indicators = [
+          // React/Vue/Angular apps
+          document.querySelector('[data-reactroot]'),
+          document.querySelector('[data-vue]'),
+          document.querySelector('[ng-app]'),
+          // Common app containers
+          document.querySelector('#app'),
+          document.querySelector('.app'),
+          document.querySelector('[class*="app"]'),
+          // Check if body has content beyond just error messages
+          document.body.children.length > 1,
+          // Check for interactive elements
+          document.querySelector('button, input, a, [role="button"]')
+        ];
+        
+        return indicators.some(indicator => indicator !== null);
+      }, { timeout: maxWaitTime });
+
+      return !!appLoaded;
+    } catch (error) {
+      console.warn('App loading timeout or error:', error);
+      return false;
+    }
+  }
+
+  async retryNavigation(url: string, maxRetries: number = 3): Promise<boolean> {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        console.log(`Navigation attempt ${i + 1}/${maxRetries} to ${url}`);
+        
+        await this.navigateToUrl(url);
+        
+        // Check if JavaScript is working
+        const jsWorking = await this.page!.evaluate(() => {
+          return typeof window !== 'undefined' && typeof document !== 'undefined';
+        });
+
+        if (jsWorking) {
+          // Wait for app to load
+          const appLoaded = await this.waitForAppToLoad(5000);
+          if (appLoaded) {
+            console.log('Navigation successful and app loaded');
+            return true;
+          }
+        }
+
+        if (i < maxRetries - 1) {
+          console.log(`Navigation attempt ${i + 1} failed, retrying in 3 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      } catch (error) {
+        console.error(`Navigation attempt ${i + 1} failed:`, error);
+        if (i < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+    }
+
+    console.error('All navigation attempts failed');
+    return false;
   }
 }

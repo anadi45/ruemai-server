@@ -53,8 +53,8 @@ describe('GeminiService', () => {
               reasoning: 'Button is visible and clickable',
               confidence: 0.9,
               nextSteps: ['Verify button click worked']
-            })
-          }
+            })),
+          },
         })
       });
 
@@ -103,8 +103,8 @@ describe('GeminiService', () => {
               reasoning: 'Goal has been achieved',
               confidence: 1.0,
               nextSteps: ['Tour complete']
-            })
-          }
+            })),
+          },
         })
       });
 
@@ -286,7 +286,7 @@ describe('GeminiService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.reason).toBe('Navigation successful, page changed as expected');
+      expect(result.reasoning).toBe('Navigation successful, page changed as expected');
     });
 
     it('should validate failed action', async () => {
@@ -337,7 +337,7 @@ describe('GeminiService', () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.reason).toBe('No navigation occurred, button click may have failed');
+      expect(result.reasoning).toBe('No navigation occurred, button click may have failed');
     });
   });
 });

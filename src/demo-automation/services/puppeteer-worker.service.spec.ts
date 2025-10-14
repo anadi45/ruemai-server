@@ -217,14 +217,14 @@ describe('PuppeteerWorkerService', () => {
       expect(domState).toHaveProperty('currentUrl');
       expect(domState).toHaveProperty('pageTitle');
       expect(domState).toHaveProperty('timestamp');
-      expect(domState.screenshot).toBeUndefined();
+      expect((domState as any).screenshot).toBeUndefined();
     });
 
     it('should return DOM state with screenshot', async () => {
       const domState = await service.getDOMState(true);
       
       expect(domState).toHaveProperty('screenshot');
-      expect(domState.screenshot).toBe('base64screenshot');
+      expect((domState as any).screenshot).toBe('base64screenshot');
     });
 
     it('should throw error if not initialized', async () => {
