@@ -289,6 +289,122 @@ RESPONSE FORMAT (JSON):
     }
   }
 
+  async processFilesDirectly(
+    files: Express.Multer.File[],
+    featureName?: string
+  ): Promise<{
+    featureName: string;
+    description: string;
+    steps: string[];
+    selectors: Record<string, string>;
+    expectedOutcomes: string[];
+    prerequisites: string[];
+  }> {
+    try {
+      const prompt = this.buildFileProcessingPrompt(featureName);
+      
+      // Prepare file data for Gemini
+      const fileParts = files.map(file => {
+        const mimeType = this.getMimeType(file.originalname);
+        return {
+          inlineData: {
+            data: file.buffer.toString('base64'),
+            mimeType: mimeType
+          }
+        };
+      });
+
+      // Use Gemini's file upload capabilities
+      const result = await this.model.generateContent([
+        prompt,
+        ...fileParts
+      ]);
+
+      const response = await result.response;
+      const text = response.text();
+      
+      // Parse the JSON response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in file processing response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      return {
+        featureName: parsed.featureName || featureName || 'Extracted Feature',
+        description: parsed.description || '',
+        steps: parsed.steps || [],
+        selectors: parsed.selectors || {},
+        expectedOutcomes: parsed.expectedOutcomes || [],
+        prerequisites: parsed.prerequisites || []
+      };
+    } catch (error) {
+      console.error('Error processing files with Gemini:', error);
+      throw new Error('Failed to process files with Gemini');
+    }
+  }
+
+  private buildFileProcessingPrompt(featureName?: string): string {
+    return `
+You are an expert at analyzing product documentation and extracting structured information for automation purposes.
+
+${featureName ? `Target Feature: ${featureName}` : ''}
+
+Please analyze the provided files and extract structured feature documentation. The files may contain:
+- Product documentation (PDF, Word, text files)
+- Screenshots or images showing UI elements
+- Step-by-step instructions
+- Technical specifications
+
+Extract the following information:
+
+1. **Feature Name**: The main feature or functionality being described
+2. **Description**: A clear description of what the feature does
+3. **Steps**: A numbered list of user actions/steps to complete the feature
+4. **Selectors**: CSS selectors or element identifiers for UI elements (if mentioned or visible in images)
+5. **Expected Outcomes**: What should happen after each step or at the end
+6. **Prerequisites**: Any requirements or setup needed before using this feature
+
+Focus on:
+- User actions and workflows
+- UI elements and interactions visible in images
+- Expected results and validations
+- Any technical details about selectors or identifiers
+- Combining textual instructions with visual context from images
+
+Return the data in this JSON format:
+{
+  "featureName": "string",
+  "description": "string", 
+  "steps": ["step1", "step2", "step3"],
+  "selectors": {
+    "elementName": "css-selector-or-identifier"
+  },
+  "expectedOutcomes": ["outcome1", "outcome2"],
+  "prerequisites": ["prerequisite1", "prerequisite2"]
+}
+
+Only return valid JSON. Do not include any other text or explanations.
+`;
+  }
+
+  private getMimeType(filename: string): string {
+    const extension = filename.split('.').pop()?.toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      'pdf': 'application/pdf',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'doc': 'application/msword',
+      'txt': 'text/plain',
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'gif': 'image/gif',
+      'webp': 'image/webp'
+    };
+    return mimeTypes[extension] || 'application/octet-stream';
+  }
+
   async generateActionPlan(featureDocs: ProductDocs, websiteUrl: string): Promise<ActionPlan> {
     try {
       const prompt = this.buildActionPlanningPrompt(featureDocs, websiteUrl);

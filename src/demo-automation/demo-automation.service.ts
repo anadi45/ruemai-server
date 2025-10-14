@@ -3,7 +3,6 @@ import { CreateDemoResponseDto } from './demo-automation.dto';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
-import { DocumentParserService } from './services/document-parser.service';
 import { 
   TourConfig, 
   ProductDocs, 
@@ -18,8 +17,7 @@ export class DemoAutomationService {
   constructor(
     private geminiService: GeminiService,
     private puppeteerWorker: PuppeteerWorkerService,
-    private langGraphWorkflow: LangGraphWorkflowService,
-    private documentParser: DocumentParserService
+    private langGraphWorkflow: LangGraphWorkflowService
   ) {}
 
   async loginToWebsite(
@@ -219,29 +217,19 @@ export class DemoAutomationService {
     const startTime = Date.now();
 
     try {
-      // Parse the document
-      const parsedDoc = await this.documentParser.parseDocument(file);
-      const extractedDocs = await this.documentParser.extractFeatureDocsFromDocument(
-        parsedDoc,
-        featureName
-      );
-
-      // Validate the extracted documentation
-      const validation = await this.documentParser.validateExtractedDocs(extractedDocs);
-      
-      if (!validation.isValid) {
-        throw new Error(`Invalid feature documentation: ${validation.issues.join(', ')}`);
-      }
+      // Process file directly with Gemini
+      console.log(`Processing file directly with Gemini: ${file.originalname}`);
+      const extractedData = await this.geminiService.processFilesDirectly([file], featureName);
 
       // Convert to ProductDocs format
       const featureDocs: ProductDocs = {
-        featureName: extractedDocs.featureName,
-        description: extractedDocs.description,
-        steps: extractedDocs.steps,
-        selectors: extractedDocs.selectors,
-        expectedOutcomes: extractedDocs.expectedOutcomes,
-        prerequisites: extractedDocs.prerequisites,
-        screenshots: extractedDocs.screenshots
+        featureName: extractedData.featureName,
+        description: extractedData.description,
+        steps: extractedData.steps,
+        selectors: extractedData.selectors,
+        expectedOutcomes: extractedData.expectedOutcomes,
+        prerequisites: extractedData.prerequisites,
+        screenshots: [] // No screenshots from direct file processing
       };
 
       // Generate and log action plan
@@ -331,35 +319,19 @@ export class DemoAutomationService {
     });
 
     try {
-      // Parse all documents and combine their content
-      const allParsedDocs = [];
-      for (const file of files) {
-        const parsedDoc = await this.documentParser.parseDocument(file);
-        allParsedDocs.push(parsedDoc);
-      }
-
-      // Extract feature docs from all documents
-      const extractedDocs = await this.documentParser.extractFeatureDocsFromDocuments(
-        allParsedDocs,
-        featureName
-      );
-
-      // Validate the extracted documentation
-      const validation = await this.documentParser.validateExtractedDocs(extractedDocs);
-      
-      if (!validation.isValid) {
-        throw new Error(`Invalid feature documentation: ${validation.issues.join(', ')}`);
-      }
+      // Process files directly with Gemini
+      console.log(`Processing ${files.length} files directly with Gemini...`);
+      const extractedData = await this.geminiService.processFilesDirectly(files, featureName);
 
       // Convert to ProductDocs format
       const featureDocs: ProductDocs = {
-        featureName: extractedDocs.featureName,
-        description: extractedDocs.description,
-        steps: extractedDocs.steps,
-        selectors: extractedDocs.selectors,
-        expectedOutcomes: extractedDocs.expectedOutcomes,
-        prerequisites: extractedDocs.prerequisites,
-        screenshots: extractedDocs.screenshots
+        featureName: extractedData.featureName,
+        description: extractedData.description,
+        steps: extractedData.steps,
+        selectors: extractedData.selectors,
+        expectedOutcomes: extractedData.expectedOutcomes,
+        prerequisites: extractedData.prerequisites,
+        screenshots: [] // No screenshots from direct file processing
       };
 
       // Generate and log action plan
