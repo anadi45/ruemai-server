@@ -1,23 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { GeminiService } from './gemini.service';
 import * as mammoth from 'mammoth';
-const pdfParse = require('pdf-parse');
 import * as sharp from 'sharp';
 import { ProductDocs } from '../types/demo-automation.types';
+import { PDFParse } from 'pdf-parse';
 
 export interface ParsedDocument {
   text: string;
-  images: Array<{
-    data: Buffer;
-    format: string;
-    description?: string;
-  }>;
-  metadata: {
-    title?: string;
-    author?: string;
-    pages?: number;
-    wordCount?: number;
-  };
+ 
 }
 
 export interface ExtractedFeatureDocs {
@@ -40,14 +30,18 @@ export class DocumentParserService {
 
   async parseDocument(file: Express.Multer.File): Promise<ParsedDocument> {
     const fileExtension = this.getFileExtension(file.originalname);
+    console.log(`Parsing file: ${file.originalname}, extension: ${fileExtension}`);
     
     switch (fileExtension) {
       case 'pdf':
+        console.log('Using PDF parser');
         return await this.parsePDF(file);
       case 'docx':
       case 'doc':
+        console.log('Using Word parser');
         return await this.parseWord(file);
       case 'txt':
+        console.log('Using text parser');
         return await this.parseText(file);
       default:
         throw new Error(`Unsupported file format: ${fileExtension}`);
@@ -60,19 +54,18 @@ export class DocumentParserService {
 
   private async parsePDF(file: Express.Multer.File): Promise<ParsedDocument> {
     try {
-      const pdfData = await pdfParse(file.buffer);
+      console.log('Starting PDF parsing...');
+      
+      // Use PDFParse class constructor with buffer
+      const parser = new PDFParse({ data: file.buffer });
+      const pdfData = await parser.getText();
+      console.log('PDF parsing completed', pdfData);
       
       return {
         text: pdfData.text,
-        images: [], // PDF images would need additional extraction
-        metadata: {
-          title: pdfData.info?.Title,
-          author: pdfData.info?.Author,
-          pages: pdfData.numpages,
-          wordCount: pdfData.text.split(/\s+/).length
-        }
       };
     } catch (error) {
+      console.error('PDF parsing error:', error);
       throw new Error(`Failed to parse PDF: ${error.message}`);
     }
   }
@@ -81,16 +74,8 @@ export class DocumentParserService {
     try {
       const result = await mammoth.extractRawText({ buffer: file.buffer });
       
-      // For now, we'll skip image extraction from Word docs
-      // as it requires more complex handling
-      const extractedImages: Array<{ data: Buffer; format: string; description?: string }> = [];
-
       return {
         text: result.value,
-        images: extractedImages,
-        metadata: {
-          wordCount: result.value.split(/\s+/).length
-        }
       };
     } catch (error) {
       throw new Error(`Failed to parse Word document: ${error.message}`);
@@ -100,10 +85,6 @@ export class DocumentParserService {
   private async parseText(file: Express.Multer.File): Promise<ParsedDocument> {
     return {
       text: file.buffer.toString('utf-8'),
-      images: [],
-      metadata: {
-        wordCount: file.buffer.toString('utf-8').split(/\s+/).length
-      }
     };
   }
 
@@ -120,12 +101,6 @@ export class DocumentParserService {
       // Parse the JSON response
       const extractedData = JSON.parse(result);
       
-      // Process images if any
-      const processedImages = await this.processDocumentImages(
-        parsedDoc.images,
-        extractedData
-      );
-
       return {
         featureName: extractedData.featureName || featureName || 'Unknown Feature',
         description: extractedData.description || '',
@@ -133,7 +108,6 @@ export class DocumentParserService {
         selectors: extractedData.selectors || {},
         expectedOutcomes: extractedData.expectedOutcomes || [],
         prerequisites: extractedData.prerequisites || [],
-        screenshots: processedImages
       };
     } catch (error) {
       console.error('Failed to extract feature docs:', error);
@@ -150,17 +124,9 @@ export class DocumentParserService {
     // Combine all document texts
     const combinedText = parsedDocs.map(doc => doc.text).join('\n\n---\n\n');
     
-    // Combine all images from all documents
-    const allImages = parsedDocs.flatMap(doc => doc.images);
-    
     // Create a combined document for processing
     const combinedDoc: ParsedDocument = {
       text: combinedText,
-      images: allImages,
-      metadata: {
-        title: `Combined from ${parsedDocs.length} documents`,
-        wordCount: combinedText.split(/\s+/).length
-      }
     };
 
     const prompt = this.buildMultiDocumentExtractionPrompt(combinedDoc, featureName);
@@ -172,12 +138,6 @@ export class DocumentParserService {
       // Parse the JSON response
       const extractedData = JSON.parse(result);
       
-      // Process images if any
-      const processedImages = await this.processDocumentImages(
-        combinedDoc.images,
-        extractedData
-      );
-
       return {
         featureName: extractedData.featureName || featureName || 'Combined Feature',
         description: extractedData.description || '',
@@ -185,7 +145,6 @@ export class DocumentParserService {
         selectors: extractedData.selectors || {},
         expectedOutcomes: extractedData.expectedOutcomes || [],
         prerequisites: extractedData.prerequisites || [],
-        screenshots: processedImages
       };
     } catch (error) {
       console.error('Failed to extract feature docs from multiple documents:', error);
@@ -196,10 +155,6 @@ export class DocumentParserService {
   }
 
   private buildExtractionPrompt(parsedDoc: ParsedDocument, featureName?: string): string {
-    const imageContext = parsedDoc.images.length > 0 
-      ? `\n\nImages found: ${parsedDoc.images.length} images (descriptions will be provided separately)`
-      : '';
-
     return `
 Extract structured feature documentation from the following document content.
 
@@ -207,8 +162,6 @@ ${featureName ? `Target Feature: ${featureName}` : ''}
 
 Document Content:
 ${parsedDoc.text}
-
-${imageContext}
 
 Please extract and structure the following information:
 
@@ -240,10 +193,6 @@ Focus on:
   }
 
   private buildMultiDocumentExtractionPrompt(combinedDoc: ParsedDocument, featureName?: string): string {
-    const imageContext = combinedDoc.images.length > 0 
-      ? `\n\nImages found: ${combinedDoc.images.length} images (descriptions will be provided separately)`
-      : '';
-
     return `
 Extract structured feature documentation from the following combined document content from multiple files.
 
@@ -251,8 +200,6 @@ ${featureName ? `Target Feature: ${featureName}` : ''}
 
 Combined Document Content:
 ${combinedDoc.text}
-
-${imageContext}
 
 Please extract and structure the following information by analyzing all the provided documents together:
 
@@ -282,33 +229,6 @@ Focus on:
 - Combining all relevant selectors and outcomes
 - Ensuring the final result is coherent and complete
 `;
-  }
-
-  private async processDocumentImages(
-    images: Array<{ data: Buffer; format: string; description?: string }>,
-    extractedData: any
-  ): Promise<Array<{ data: Buffer; description: string; stepReference?: string }>> {
-    if (images.length === 0) return [];
-
-    const processedImages = [];
-    
-    for (let i = 0; i < images.length; i++) {
-      const image = images[i];
-      
-      // Use Gemini to analyze the image and provide description
-      const imageDescription = await this.analyzeImage(image.data);
-      
-      // Try to match image to a step
-      const stepReference = this.matchImageToStep(imageDescription, extractedData.steps);
-      
-      processedImages.push({
-        data: image.data,
-        description: imageDescription,
-        stepReference
-      });
-    }
-    
-    return processedImages;
   }
 
   private async analyzeImage(imageBuffer: Buffer): Promise<string> {
