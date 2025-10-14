@@ -82,12 +82,23 @@ export class SmartLangGraphAgentService {
       parameters: { url: 'string', waitFor: 'string' },
       execute: async (params, state) => {
         try {
+          console.log(`🧭 Navigating to: ${params.url}`);
+          
+          if (!params.url) {
+            throw new Error('Navigation URL is required but not provided');
+          }
+          
           await this.puppeteerWorker.navigateToUrl(params.url);
+          
           if (params.waitFor) {
+            console.log(`⏳ Waiting for element: ${params.waitFor}`);
             await this.puppeteerWorker.waitForElement(params.waitFor);
           }
+          
+          console.log(`✅ Navigation successful to: ${params.url}`);
           return { success: true, result: { url: params.url } };
         } catch (error) {
+          console.error(`❌ Navigation failed:`, error);
           return { success: false, error: error instanceof Error ? error.message : 'Navigation failed' };
         }
       }
@@ -182,18 +193,25 @@ export class SmartLangGraphAgentService {
       parameters: { condition: 'string', duration: 'number', selector: 'string' },
       execute: async (params, state) => {
         try {
+          console.log(`⏳ Wait tool params:`, JSON.stringify(params, null, 2));
+          
           if (params.condition === 'element' && params.selector) {
+            console.log(`⏳ Waiting for element: ${params.selector}`);
             const found = await this.puppeteerWorker.waitForElement(params.selector, params.duration * 1000);
             return { success: found, result: { condition: params.condition, selector: params.selector } };
           } else if (params.condition === 'navigation') {
+            console.log(`⏳ Waiting for navigation`);
             const navigated = await this.puppeteerWorker.waitForNavigation(params.duration * 1000);
             return { success: navigated, result: { condition: params.condition } };
           } else {
             // Simple time-based wait
-            await new Promise(resolve => setTimeout(resolve, params.duration * 1000));
-            return { success: true, result: { duration: params.duration } };
+            const duration = params.duration || 1; // Default to 1 second if not specified
+            console.log(`⏳ Waiting for ${duration} seconds`);
+            await new Promise(resolve => setTimeout(resolve, duration * 1000));
+            return { success: true, result: { duration: duration } };
           }
         } catch (error) {
+          console.error(`❌ Wait tool failed:`, error);
           return { success: false, error: error instanceof Error ? error.message : 'Wait failed' };
         }
       }
@@ -409,7 +427,9 @@ export class SmartLangGraphAgentService {
       // Prepare tool parameters
       const toolParams = this.prepareToolParameters(nextAction, state);
       
-      console.log(`🛠️  Executing tool: ${toolName} with params:`, toolParams);
+      console.log(`🛠️  Executing tool: ${toolName}`);
+      console.log(`📋 Action: ${nextAction.type} - ${nextAction.description}`);
+      console.log(`🔧 Tool params:`, JSON.stringify(toolParams, null, 2));
       
       // Execute the tool
       const result = await tool.execute(toolParams, state);
@@ -605,8 +625,16 @@ export class SmartLangGraphAgentService {
     
     switch (action.type) {
       case 'navigate':
+        // For navigation, use the goal URL from state or action inputText
+        const url = action.inputText || state.goal;
+        console.log(`🧭 Navigation URL resolution: inputText="${action.inputText}", goal="${state.goal}", resolved="${url}"`);
+        
+        if (!url) {
+          throw new Error('No URL available for navigation action');
+        }
+        
         return {
-          url: action.inputText,
+          url: url,
           waitFor: action.waitCondition
         };
       
