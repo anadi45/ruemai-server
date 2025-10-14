@@ -317,14 +317,30 @@ export class PuppeteerWorkerService {
 
     try {
       const errors = await this.page.evaluate(() => {
-        // Check for common JavaScript error indicators
+        // Check for common JavaScript error indicators by text content
+        const errorTexts = [
+          'You need to enable JavaScript to run this app',
+          'JavaScript is disabled',
+          'Please enable JavaScript',
+          'Enable JavaScript',
+          'JavaScript required'
+        ];
+        
+        // Check for error text in the document
+        const bodyText = document.body.textContent || '';
+        for (const errorText of errorTexts) {
+          if (bodyText.includes(errorText)) {
+            return true;
+          }
+        }
+        
+        // Check for error elements by class or data attributes
         const errorSelectors = [
-          'text=You need to enable JavaScript to run this app',
-          'text=JavaScript is disabled',
-          'text=Please enable JavaScript',
           '[data-testid*="error"]',
           '.error-message',
-          '.js-error'
+          '.js-error',
+          '.javascript-error',
+          '[class*="error"]'
         ];
         
         for (const selector of errorSelectors) {
