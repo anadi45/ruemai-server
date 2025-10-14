@@ -638,18 +638,30 @@ CRITICAL ANALYSIS INSTRUCTIONS:
 4. **Consider the actual user flow** as shown in images vs. documented steps
 5. **Identify potential scraping challenges** like dynamic content, modals, or complex interactions
 
+**DRY RUN EXECUTION STRATEGY:**
+- **GO THROUGH THE ENTIRE FEATURE FLOW**: Create a plan that covers all steps of the feature from start to finish
+- **AVOID FINAL SAVE/SUBMIT ACTIONS**: Do NOT include actions that would trigger save, submit, create, update, or delete API calls
+- **STOP BEFORE PERSISTENT CHANGES**: End the plan just before any action that would permanently save data or make irreversible changes
+- **IDENTIFY SAVE TRIGGERS**: Look for buttons/elements with text like "Save", "Submit", "Create", "Update", "Delete", "Confirm", "Finish", "Complete"
+- **FOCUS ON DEMONSTRATION**: The goal is to demonstrate the feature flow without actually persisting changes
+- **INCLUDE VALIDATION STEPS**: Include form validation and data entry steps, but stop before final submission
+
 Create a comprehensive Puppeteer automation plan that includes:
 
 **NAVIGATION & SETUP:**
-- Navigate to specific URLs or routes
-- Handle authentication and login flows
+- **PREFER DOM SELECTOR INTERACTIONS**: Use click actions on navigation elements (buttons, links, menu items) rather than direct URL navigation
+- **URL NAVIGATION AS FALLBACK**: Only use direct URL navigation when DOM selectors are not available or when navigating to external pages
+- Handle authentication and login flows through form interactions, not direct URL access
 - Set up proper viewport and user agent
 
-**ELEMENT INTERACTION:**
-- Click buttons, links, menu items with robust selectors
+**ELEMENT INTERACTION (PRIORITY APPROACH):**
+- **PRIMARY**: Click buttons, links, menu items with robust selectors to navigate
+- **SECONDARY**: Use direct URL navigation only when DOM selectors fail or are unavailable
 - Fill forms and input fields with realistic data
 - Handle dropdowns, checkboxes, radio buttons
 - Manage file uploads if applicable
+- **AVOID SAVE/SUBMIT ACTIONS**: Do NOT include clicks on save, submit, create, update, delete buttons
+- **STOP BEFORE PERSISTENCE**: End the plan before any action that would save data to the server
 
 **DYNAMIC CONTENT HANDLING:**
 - Wait for AJAX requests and dynamic content loading
@@ -683,6 +695,12 @@ For each action, provide:
 - **Screenshot capture** at critical points
 - **Data extraction** where applicable
 
+**SELECTOR INTERACTION PRIORITY:**
+1. **FIRST CHOICE**: Use DOM selectors to click navigation elements (buttons, links, menu items)
+2. **SECOND CHOICE**: Use DOM selectors to interact with forms and inputs
+3. **FALLBACK ONLY**: Use direct URL navigation when DOM selectors are unavailable or fail
+4. **AVOID**: Direct URL navigation for internal page transitions - always prefer clicking UI elements
+
 Return the plan in this JSON format:
 {
   "featureName": "string",
@@ -715,13 +733,22 @@ Return the plan in this JSON format:
 }
 
 FOCUS ON PROGRAMMATIC SCRAPING:
-- Create executable Puppeteer code patterns
-- Use robust, maintainable selectors
-- Handle real-world web application challenges
+- **PRIORITIZE DOM INTERACTIONS**: Always prefer clicking UI elements over direct URL navigation
+- Create executable Puppeteer code patterns that mimic real user behavior
+- Use robust, maintainable selectors for all interactions
+- Handle real-world web application challenges through DOM manipulation
 - Implement proper error handling and retries
 - Consider performance and reliability
 - Plan for data extraction and storage
 - Account for dynamic content and user interactions
+- **NAVIGATION STRATEGY**: Use click actions on navigation elements (buttons, links, menus) as the primary method, with URL navigation only as a last resort
+
+**DRY RUN EXECUTION REQUIREMENTS:**
+- **COMPLETE FEATURE COVERAGE**: Include all steps of the feature flow from start to finish
+- **AVOID DATA PERSISTENCE**: Do NOT include actions that would save, submit, create, update, or delete data
+- **DEMONSTRATION FOCUS**: The plan should demonstrate the complete user journey without making permanent changes
+- **STOP BEFORE SAVE**: End the plan just before any button or action that would trigger API calls to save data
+- **INCLUDE VALIDATION**: Include form filling, validation, and navigation steps, but stop before final submission
 `;
   }
 
