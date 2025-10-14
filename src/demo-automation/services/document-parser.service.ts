@@ -143,6 +143,58 @@ export class DocumentParserService {
     }
   }
 
+  async extractFeatureDocsFromDocuments(
+    parsedDocs: ParsedDocument[],
+    featureName?: string
+  ): Promise<ExtractedFeatureDocs> {
+    // Combine all document texts
+    const combinedText = parsedDocs.map(doc => doc.text).join('\n\n---\n\n');
+    
+    // Combine all images from all documents
+    const allImages = parsedDocs.flatMap(doc => doc.images);
+    
+    // Create a combined document for processing
+    const combinedDoc: ParsedDocument = {
+      text: combinedText,
+      images: allImages,
+      metadata: {
+        title: `Combined from ${parsedDocs.length} documents`,
+        wordCount: combinedText.split(/\s+/).length
+      }
+    };
+
+    const prompt = this.buildMultiDocumentExtractionPrompt(combinedDoc, featureName);
+    
+    try {
+      // Use Gemini to extract structured feature documentation from combined content
+      const result = await this.geminiService.extractStructuredData(prompt);
+      
+      // Parse the JSON response
+      const extractedData = JSON.parse(result);
+      
+      // Process images if any
+      const processedImages = await this.processDocumentImages(
+        combinedDoc.images,
+        extractedData
+      );
+
+      return {
+        featureName: extractedData.featureName || featureName || 'Combined Feature',
+        description: extractedData.description || '',
+        steps: extractedData.steps || [],
+        selectors: extractedData.selectors || {},
+        expectedOutcomes: extractedData.expectedOutcomes || [],
+        prerequisites: extractedData.prerequisites || [],
+        screenshots: processedImages
+      };
+    } catch (error) {
+      console.error('Failed to extract feature docs from multiple documents:', error);
+      
+      // Fallback to basic extraction
+      return this.fallbackExtraction(combinedText, featureName);
+    }
+  }
+
   private buildExtractionPrompt(parsedDoc: ParsedDocument, featureName?: string): string {
     const imageContext = parsedDoc.images.length > 0 
       ? `\n\nImages found: ${parsedDoc.images.length} images (descriptions will be provided separately)`
@@ -184,6 +236,51 @@ Focus on:
 - UI elements and interactions
 - Expected results and validations
 - Any technical details about selectors or identifiers
+`;
+  }
+
+  private buildMultiDocumentExtractionPrompt(combinedDoc: ParsedDocument, featureName?: string): string {
+    const imageContext = combinedDoc.images.length > 0 
+      ? `\n\nImages found: ${combinedDoc.images.length} images (descriptions will be provided separately)`
+      : '';
+
+    return `
+Extract structured feature documentation from the following combined document content from multiple files.
+
+${featureName ? `Target Feature: ${featureName}` : ''}
+
+Combined Document Content:
+${combinedDoc.text}
+
+${imageContext}
+
+Please extract and structure the following information by analyzing all the provided documents together:
+
+1. **Feature Name**: The main feature or functionality being described across all documents
+2. **Description**: A comprehensive description combining information from all documents
+3. **Steps**: A consolidated numbered list of user actions/steps from all documents
+4. **Selectors**: CSS selectors or element identifiers found across all documents
+5. **Expected Outcomes**: Combined expected outcomes from all documents
+6. **Prerequisites**: All prerequisites mentioned across the documents
+
+Return the data in this JSON format:
+{
+  "featureName": "string",
+  "description": "string", 
+  "steps": ["step1", "step2", "step3"],
+  "selectors": {
+    "elementName": "css-selector-or-identifier"
+  },
+  "expectedOutcomes": ["outcome1", "outcome2"],
+  "prerequisites": ["prerequisite1", "prerequisite2"]
+}
+
+Focus on:
+- Consolidating information from multiple documents
+- Removing duplicates and conflicts
+- Creating a comprehensive workflow
+- Combining all relevant selectors and outcomes
+- Ensuring the final result is coherent and complete
 `;
   }
 

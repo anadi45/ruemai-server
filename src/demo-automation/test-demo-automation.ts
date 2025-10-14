@@ -75,9 +75,7 @@ async function testDemoAutomation() {
     const tourResult = await demoAutomationService.generateTourForFeature(
       'https://example.com',
       { username: 'test@example.com', password: 'password123' },
-      'UserDashboard',
-      'Navigate to user dashboard and view profile settings',
-      5
+      'UserDashboard'
     );
 
     console.log('Tour Result:', {

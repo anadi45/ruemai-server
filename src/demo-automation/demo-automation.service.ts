@@ -128,14 +128,12 @@ export class DemoAutomationService {
   async generateTourForFeature(
     websiteUrl: string,
     credentials: { username: string; password: string },
-    featureName: string,
-    goal: string,
-    maxSteps: number = 10
+    featureName: string
   ): Promise<DemoAutomationResult> {
     const tourConfig: TourConfig = {
-      goal,
+      goal: `Automated tour for ${featureName}`,
       featureName,
-      maxSteps,
+      maxSteps: 10,
       timeout: 30000,
       includeScreenshots: true
     };
@@ -295,6 +293,107 @@ export class DemoAutomationService {
       };
     } catch (error) {
       console.error('Tour generation from file failed:', error);
+      throw error;
+    } finally {
+      await this.puppeteerWorker.cleanup();
+    }
+  }
+
+  async generateProductTourFromFiles(
+    websiteUrl: string,
+    credentials: { username: string; password: string },
+    files: Express.Multer.File[],
+    featureName?: string
+  ): Promise<CreateDemoResponseDto> {
+    const demoId = uuidv4();
+    const startTime = Date.now();
+
+    try {
+      // Parse all documents and combine their content
+      const allParsedDocs = [];
+      for (const file of files) {
+        const parsedDoc = await this.documentParser.parseDocument(file);
+        allParsedDocs.push(parsedDoc);
+      }
+
+      // Extract feature docs from all documents
+      const extractedDocs = await this.documentParser.extractFeatureDocsFromDocuments(
+        allParsedDocs,
+        featureName
+      );
+
+      // Validate the extracted documentation
+      const validation = await this.documentParser.validateExtractedDocs(extractedDocs);
+      
+      if (!validation.isValid) {
+        throw new Error(`Invalid feature documentation: ${validation.issues.join(', ')}`);
+      }
+
+      // Convert to ProductDocs format
+      const featureDocs: ProductDocs = {
+        featureName: extractedDocs.featureName,
+        description: extractedDocs.description,
+        steps: extractedDocs.steps,
+        selectors: extractedDocs.selectors,
+        expectedOutcomes: extractedDocs.expectedOutcomes,
+        prerequisites: extractedDocs.prerequisites
+      };
+
+      // Generate tour configuration
+      const tourConfig: TourConfig = {
+        goal: featureDocs.description,
+        featureName: featureDocs.featureName,
+        maxSteps: 10,
+        timeout: 30000,
+        includeScreenshots: true
+      };
+
+      // Initialize and login
+      await this.puppeteerWorker.initialize();
+      await this.puppeteerWorker.navigateToUrl(websiteUrl);
+      const loginSuccess = await this.puppeteerWorker.login(credentials);
+
+      if (!loginSuccess) {
+        throw new Error('Login failed - cannot generate tour');
+      }
+
+      // Run the LangGraph workflow
+      const result = await this.langGraphWorkflow.runDemoAutomation(
+        tourConfig,
+        featureDocs,
+        credentials
+      );
+
+      // Build response
+      const processingTime = Date.now() - startTime;
+
+      return {
+        demoId,
+        demoName: `Tour-${featureDocs.featureName}-${demoId.slice(0, 8)}`,
+        websiteUrl,
+        loginStatus: 'success',
+        pageInfo: await this.getPageInfo(),
+        summary: {
+          processingTime,
+          loginAttempted: true,
+          finalUrl: result.finalUrl
+        },
+        scrapedData: {
+          success: result.success,
+          totalPages: 1,
+          crawlTime: processingTime,
+          pages: [{
+            url: result.finalUrl,
+            title: await this.puppeteerWorker.getPageTitle() || 'Tour Page',
+            html: '', // Not storing full HTML for demo
+            scrapedData: result.tourSteps,
+            timestamp: new Date().toISOString(),
+            pageInfo: await this.getPageInfo()
+          }]
+        }
+      };
+    } catch (error) {
+      console.error('Tour generation from files failed:', error);
       throw error;
     } finally {
       await this.puppeteerWorker.cleanup();
