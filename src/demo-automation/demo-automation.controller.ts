@@ -18,10 +18,6 @@ export class DemoAutomationController {
     @UploadedFiles() files: Express.Multer.File[],
   ): Promise<any> {
     try {
-      // Debug: Log the received files
-      console.log('Received files:', files);
-      console.log('Files length:', files?.length || 0);
-      console.log('Body:', body);
       
       if (!files || files.length === 0) {
         throw new Error('No files received. Please ensure you are sending files with the field name "featureDocs" and using multipart/form-data content type.');
