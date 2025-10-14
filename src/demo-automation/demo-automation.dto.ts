@@ -1,6 +1,33 @@
 import { IsString, IsUrl, IsOptional, IsObject, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
+export interface ScrapedData {
+  url: string;
+  title: string;
+  content: string;
+  screenshots?: string[];
+  elements?: {
+    buttons: Array<{ selector: string; text: string; type: string }>;
+    links: Array<{ selector: string; text: string; href: string }>;
+    inputs: Array<{ selector: string; type: string; placeholder?: string }>;
+  };
+  productTours?: ProductTour[];
+}
+
+export interface ProductTourStep {
+  stepNumber: number;
+  description: string;
+  targetElement: string;
+  action: string;
+  screenshot?: string;
+}
+
+export interface ProductTour {
+  featureName: string;
+  description: string;
+  steps: ProductTourStep[];
+}
+
 export class FeatureFileDto {
   @IsString()
   filename: string;
@@ -20,6 +47,10 @@ export class CreateDemoRequestDto {
   credentials: { username: string; password: string };
 
   @IsArray()
+  @IsString({ each: true })
+  urlsToScrape: string[];
+
+  @IsArray()
   @ValidateNested({ each: true })
   @Type(() => FeatureFileDto)
   @IsOptional()
@@ -31,59 +62,6 @@ export class CreateDemoRequestDto {
 }
 
 export class CreateDemoResponseDto {
-  @IsString()
-  demoId: string;
-
-  @IsString()
-  demoName: string;
-
-  @IsUrl()
-  websiteUrl: string;
-
-  @IsString()
-  loginStatus: string;
-
-  @IsOptional()
-  @IsObject()
-  pageInfo?: {
-    title: string;
-    url: string;
-    bodyText: string;
-    totalElements: number;
-    buttons: number;
-    links: number;
-    inputs: number;
-  };
-
-  @IsOptional()
-  @IsObject()
-  summary?: {
-    processingTime: number;
-    loginAttempted: boolean;
-    finalUrl: string;
-  };
-
-  @IsOptional()
-  @IsObject()
-  scrapedData?: {
-    success: boolean;
-    totalPages: number;
-    crawlTime: number;
-    pages: Array<{
-      url: string;
-      title: string;
-      html: string;
-      scrapedData: any;
-      timestamp: string;
-      pageInfo: {
-        title: string;
-        url: string;
-        bodyText: string;
-        totalElements: number;
-        buttons: number;
-        links: number;
-        inputs: number;
-      };
-    }>;
-  };
+  @IsArray()
+  productTours: ProductTour[];
 }

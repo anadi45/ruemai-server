@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { CreateDemoResponseDto, FeatureFileDto } from './demo-automation.dto';
+import { CreateDemoResponseDto, FeatureFileDto, ScrapedData, ProductTour } from './demo-automation.dto';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-// import TurndownService from 'turndown';
+import { OpenAI } from 'openai';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 // Tour step schema for structured output
 const TourStepSchema = z.object({
@@ -797,6 +800,7 @@ Focus on creating actionable steps that will effectively demonstrate the target 
   async generateProductTour(
     websiteUrl: string,
     credentials: { username: string; password: string },
+    urlsToScrape: string[],
     featureFiles?: FeatureFileDto[],
     targetFeature?: string,
   ): Promise<CreateDemoResponseDto> {
@@ -805,74 +809,32 @@ Focus on creating actionable steps that will effectively demonstrate the target 
     let browser: Browser | null = null;
 
     try {
-      console.log(`🚀 Starting product tour generation for: ${websiteUrl}`);
+      console.log(`🚀 Starting AI-powered product tour generation for: ${websiteUrl}`);
+      console.log(`📋 URLs to scrape: ${urlsToScrape.join(', ')}`);
 
       // Step 1: Validate inputs
       this.validateInputs(websiteUrl, credentials);
 
-      // Step 2: Launch browser with stealth mode
-      browser = await this.launchStealthBrowser();
+      // Step 2: Launch Puppeteer browser
+      browser = await puppeteer.launch({ 
+        headless: false,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
       const page = await browser.newPage();
 
       // Step 3: Navigate and login
-      await this.navigateAndLogin(page, websiteUrl, credentials);
+      await this.navigateAndLoginWithPuppeteer(page, websiteUrl, credentials);
 
-      // Step 4: Process feature files and extract relevant information
-      const processedFiles = await this.processFeatureFiles(featureFiles);
+      // Step 4: Scrape the specified URLs and generate tours per URL
+      const scrapedData = await this.scrapeUrlsWithPuppeteer(page, urlsToScrape, targetFeature);
 
-      // Step 5: Create roadmap from documentation
-      const roadmap = await this.createPuppeteerRoadmap(
-        processedFiles,
-        targetFeature
-      );
-
-      // Step 6: Execute roadmap and crawl data
-      const scrapedData = await this.executeRoadmap(
-        page,
-        websiteUrl,
-        roadmap,
-        credentials
-      );
-
-      // Step 7: Generate tour using LLM with roadmap context
-      const tour = await this.generateTourWithLLM(
-        scrapedData, 
-        websiteUrl, 
-        processedFiles, 
-        targetFeature,
-        roadmap
-      );
-
-      // Step 6: Validate and structure response
-      const validatedTour = TourSchema.parse(tour);
-
-      const processingTime = Date.now() - startTime;
-
+      // Return only the product tours from all URLs
+      const allTours = scrapedData.flatMap(data => data.productTours || []);
+      
+      console.log(`✅ Generated ${allTours.length} product tours across ${scrapedData.length} URLs`);
+      
       return {
-        demoId,
-        demoName: validatedTour.title,
-        websiteUrl,
-        loginStatus: 'success',
-        pageInfo: {
-          title: validatedTour.title,
-          url: websiteUrl,
-          bodyText: validatedTour.description,
-          totalElements: validatedTour.steps.length,
-          buttons: 0,
-          links: 0,
-          inputs: 0,
-        },
-        summary: {
-          processingTime,
-          loginAttempted: true,
-          finalUrl: websiteUrl,
-        },
-        scrapedData: {
-          success: true,
-          totalPages: scrapedData.pages.length,
-          crawlTime: processingTime,
-          pages: scrapedData.pages,
-        },
+        productTours: allTours,
       };
     } catch (error) {
       console.error('❌ Product tour generation failed:', error);
@@ -881,6 +843,341 @@ Focus on creating actionable steps that will effectively demonstrate the target 
       if (browser) {
         await browser.close();
       }
+    }
+  }
+
+  /**
+   * Navigate and login using Puppeteer
+   */
+  private async navigateAndLoginWithPuppeteer(
+    page: Page,
+    websiteUrl: string,
+    credentials: { username: string; password: string },
+  ): Promise<void> {
+    try {
+      console.log('🔐 Navigating to login page...');
+      await page.goto(websiteUrl, { waitUntil: 'networkidle2' });
+      
+      // Wait for login form to be visible
+      await page.waitForSelector('input[type="email"], input[name="username"], input[name="email"], input[type="text"]', { timeout: 10000 });
+      
+      // Try different common username field selectors
+      const usernameSelectors = [
+        'input[name="username"]',
+        'input[name="email"]',
+        'input[type="email"]',
+        'input[placeholder*="email" i]',
+        'input[placeholder*="username" i]',
+        'input[placeholder*="user" i]'
+      ];
+      
+      let usernameField = null;
+      for (const selector of usernameSelectors) {
+        try {
+          usernameField = await page.$(selector);
+          if (usernameField) break;
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!usernameField) {
+        throw new Error('Could not find username/email input field');
+      }
+      
+      await usernameField.type(credentials.username);
+      
+      // Find and fill password field
+      const passwordSelectors = [
+        'input[name="password"]',
+        'input[type="password"]',
+        'input[placeholder*="password" i]'
+      ];
+      
+      let passwordField = null;
+      for (const selector of passwordSelectors) {
+        try {
+          passwordField = await page.$(selector);
+          if (passwordField) break;
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!passwordField) {
+        throw new Error('Could not find password input field');
+      }
+      
+      await passwordField.type(credentials.password);
+      
+      // Find and click login button
+      const loginButtonSelectors = [
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'button',
+        'input[value*="Login" i]',
+        'input[value*="Sign In" i]'
+      ];
+      
+      let loginButton = null;
+      for (const selector of loginButtonSelectors) {
+        try {
+          const buttons = await page.$$(selector);
+          for (const button of buttons) {
+            const text = await page.evaluate(el => el.textContent, button);
+            if (text && (text.toLowerCase().includes('login') || text.toLowerCase().includes('sign in'))) {
+              loginButton = button;
+              break;
+            }
+          }
+          if (loginButton) break;
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!loginButton) {
+        throw new Error('Could not find login button');
+      }
+      
+      await loginButton.click();
+      
+      // Wait for navigation after login
+      await page.waitForNavigation({ waitUntil: 'networkidle2' });
+      
+      console.log('✅ Login successful');
+    } catch (error) {
+      console.error('❌ Login failed:', error);
+      throw new Error(`Login failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Scrape URLs using Puppeteer and generate tours per URL
+   */
+  private async scrapeUrlsWithPuppeteer(
+    page: Page,
+    urlsToScrape: string[],
+    targetFeature?: string,
+  ): Promise<ScrapedData[]> {
+    const scrapedData: ScrapedData[] = [];
+    
+    for (const url of urlsToScrape) {
+      try {
+        console.log(`📄 Scraping: ${url}`);
+        await page.goto(url, { waitUntil: 'networkidle2' });
+        
+        // Wait for page to load
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Extract page data
+        const title = await page.title();
+        const content = await page.$eval('body', el => el.textContent || '');
+        
+        // Extract interactive elements
+        const buttons = await page.$$eval('button, input[type="button"], input[type="submit"]', elements => 
+          elements.map(el => ({
+            selector: el.tagName.toLowerCase() + (el.id ? `#${el.id}` : '') + (el.className ? `.${el.className.split(' ').join('.')}` : ''),
+            text: el.textContent?.trim() || '',
+            type: el.getAttribute('type') || 'button'
+          }))
+        );
+        
+        const links = await page.$$eval('a[href]', elements => 
+          elements.map(el => ({
+            selector: el.tagName.toLowerCase() + (el.id ? `#${el.id}` : '') + (el.className ? `.${el.className.split(' ').join('.')}` : ''),
+            text: el.textContent?.trim() || '',
+            href: el.getAttribute('href') || ''
+          }))
+        );
+        
+        const inputs = await page.$$eval('input, textarea, select', elements => 
+          elements.map(el => ({
+            selector: el.tagName.toLowerCase() + (el.id ? `#${el.id}` : '') + (el.className ? `.${el.className.split(' ').join('.')}` : ''),
+            type: el.getAttribute('type') || el.tagName.toLowerCase(),
+            placeholder: el.getAttribute('placeholder') || undefined
+          }))
+        );
+        
+        // Take screenshot
+        const screenshotPath = `screenshots/${url.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.png` as `${string}.png`;
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        
+        // Create scraped data object
+        const pageData: ScrapedData = {
+          url,
+          title,
+          content,
+          screenshots: [screenshotPath],
+          elements: {
+            buttons,
+            links,
+            inputs
+          }
+        };
+        
+        // Generate product tours for this specific URL
+        console.log(`🤖 Generating tours for: ${url}`);
+        const productTours = await this.generateProductToursForUrl(pageData, targetFeature);
+        pageData.productTours = productTours;
+        
+        scrapedData.push(pageData);
+        
+        console.log(`✅ Successfully scraped and generated ${productTours.length} tours for: ${url}`);
+      } catch (error) {
+        console.error(`❌ Failed to scrape ${url}:`, error);
+        // Continue with other URLs even if one fails
+      }
+    }
+    
+    return scrapedData;
+  }
+
+  /**
+   * Generate product tours for a single URL using AI
+   */
+  private async generateProductToursForUrl(
+    pageData: ScrapedData,
+    targetFeature?: string,
+  ): Promise<ProductTour[]> {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY environment variable is required');
+      }
+      
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      
+      const prompt = `
+Based on this single page data from "${pageData.url}", generate focused product tours for this specific page.
+Each tour should cover key features or workflows available on this page, with 3-5 steps including descriptions, target elements (CSS selectors), and actions.
+
+Page Data: ${JSON.stringify(pageData, null, 2)}
+
+${targetFeature ? `Focus on the target feature: ${targetFeature}` : ''}
+
+Generate product tours that would help new users understand how to use this specific page.
+Each tour should be practical and actionable for this page only.
+
+Output as JSON array of tours with this structure:
+[
+  {
+    "featureName": "Feature name for this page",
+    "description": "What this tour demonstrates on this page",
+    "steps": [
+      {
+        "stepNumber": 1,
+        "description": "Step description",
+        "targetElement": "CSS selector or element description",
+        "action": "What the user should do",
+        "screenshot": "Optional screenshot path"
+      }
+    ]
+  }
+]
+
+Generate 1-3 focused tours covering the main features available on this specific page.
+`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.7,
+      });
+      
+      const result = JSON.parse(response.choices[0].message.content!);
+      const tours = result.tours || result;
+      
+      console.log(`🤖 Generated ${tours.length} product tours for ${pageData.url}`);
+      return tours;
+    } catch (error) {
+      console.error('❌ AI tour generation failed for URL:', pageData.url, error);
+      // Return a fallback tour if AI fails
+      return [{
+        featureName: `Basic Navigation - ${pageData.title}`,
+        description: `A basic tour of the ${pageData.title} page`,
+        steps: [{
+          stepNumber: 1,
+          description: `Navigate through the ${pageData.title} page`,
+          targetElement: 'body',
+          action: 'Explore the page elements',
+          screenshot: pageData.screenshots?.[0]
+        }]
+      }];
+    }
+  }
+
+  /**
+   * Generate product tours using AI (legacy method for combined data)
+   */
+  private async generateProductToursWithAI(
+    scrapedData: ScrapedData[],
+    targetFeature?: string,
+  ): Promise<ProductTour[]> {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY environment variable is required');
+      }
+      
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      
+      const prompt = `
+Based on this scraped web application data, automatically generate comprehensive product tours.
+Each tour should cover a key feature or workflow, with 3-5 steps including descriptions, target elements (CSS selectors), and actions.
+
+Scraped Data: ${JSON.stringify(scrapedData, null, 2)}
+
+${targetFeature ? `Focus on the target feature: ${targetFeature}` : ''}
+
+Generate product tours that would help new users understand how to use this web application.
+Each tour should be practical and actionable.
+
+Output as JSON array of tours with this structure:
+[
+  {
+    "featureName": "Feature name",
+    "description": "What this tour demonstrates",
+    "steps": [
+      {
+        "stepNumber": 1,
+        "description": "Step description",
+        "targetElement": "CSS selector or element description",
+        "action": "What the user should do",
+        "screenshot": "Optional screenshot path"
+      }
+    ]
+  }
+]
+
+Generate 2-4 different tours covering different aspects of the application.
+`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.7,
+      });
+      
+      const result = JSON.parse(response.choices[0].message.content!);
+      const tours = result.tours || result;
+      
+      console.log(`🤖 Generated ${tours.length} product tours using AI`);
+      return tours;
+    } catch (error) {
+      console.error('❌ AI tour generation failed:', error);
+      // Return a fallback tour if AI fails
+      return [{
+        featureName: 'Basic Navigation',
+        description: 'A basic tour of the application navigation',
+        steps: scrapedData.map((data, index) => ({
+          stepNumber: index + 1,
+          description: `Navigate to ${data.title}`,
+          targetElement: 'body',
+          action: 'Click to navigate',
+          screenshot: data.screenshots?.[0]
+        }))
+      }];
     }
   }
 

@@ -14,6 +14,7 @@ export class DemoAutomationController {
       const result = await this.demoAutomationService.generateProductTour(
         body.websiteUrl,
         body.credentials,
+        body.urlsToScrape,
         body.featureFiles,
         body.targetFeature,
       );
