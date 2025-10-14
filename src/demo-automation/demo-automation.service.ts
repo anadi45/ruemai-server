@@ -4,6 +4,7 @@ import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
 import { SmartLangGraphAgentService } from './services/smart-langgraph-agent.service';
+import { writePlanToFile } from './utils/plan-writer';
 import { 
   TourConfig, 
   ProductDocs, 
@@ -64,126 +65,6 @@ export class DemoAutomationService {
     }
   }
 
-  async generateProductTour(
-    websiteUrl: string,
-    credentials: { username: string; password: string },
-    tourConfig: TourConfig,
-    featureDocs: ProductDocs
-  ): Promise<CreateDemoResponseDto> {
-    const demoId = uuidv4();
-    const startTime = Date.now();
-
-    try {
-      // Initialize and login
-      await this.puppeteerWorker.initialize();
-      await this.puppeteerWorker.navigateToUrl(websiteUrl);
-      const loginSuccess = await this.puppeteerWorker.login(credentials);
-
-      if (!loginSuccess) {
-        throw new Error('Login failed - cannot generate tour');
-      }
-
-      // Generate action plan for the tour
-      const actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
-
-      // Run the Smart LangGraph Agent
-      const result = await this.smartAgent.runSmartAgent(
-        actionPlan,
-        tourConfig,
-        featureDocs,
-        credentials
-      );
-
-      // Get page info before cleanup
-      const pageInfo = await this.getPageInfo();
-      const pageTitle = await this.puppeteerWorker.getPageTitle() || 'Tour Page';
-
-      // Build response
-      const processingTime = Date.now() - startTime;
-
-      return {
-        demoId,
-        demoName: `Tour-${tourConfig.featureName}-${demoId.slice(0, 8)}`,
-        websiteUrl,
-        loginStatus: 'success',
-        pageInfo,
-        summary: {
-          processingTime,
-          loginAttempted: true,
-          finalUrl: result.finalUrl
-        },
-        scrapedData: {
-          success: result.success,
-          totalPages: 1,
-          crawlTime: processingTime,
-          pages: [{
-            url: result.finalUrl,
-            title: pageTitle,
-            html: '', // Not storing full HTML for demo
-            scrapedData: result.tourSteps,
-            timestamp: new Date().toISOString(),
-            pageInfo
-          }]
-        }
-      };
-    } catch (error) {
-      console.error('Tour generation failed:', error);
-      throw error;
-    } finally {
-      await this.puppeteerWorker.cleanup();
-    }
-  }
-
-  async generateTourForFeature(
-    websiteUrl: string,
-    credentials: { username: string; password: string },
-    featureName: string
-  ): Promise<DemoAutomationResult> {
-    const tourConfig: TourConfig = {
-      goal: `Automated tour for ${featureName}`,
-      featureName,
-      maxSteps: 10,
-      timeout: 30000,
-      includeScreenshots: true
-    };
-
-    const featureDocs: ProductDocs = {
-      featureName,
-      description: `Automated tour for ${featureName}`,
-      steps: [
-        `Navigate to ${featureName} section`,
-        'Interact with key elements',
-        'Complete the workflow'
-      ],
-      selectors: {},
-      expectedOutcomes: [
-        'Successfully navigate through the feature',
-        'Complete the intended workflow'
-      ]
-    };
-
-    try {
-      await this.puppeteerWorker.initialize();
-      await this.puppeteerWorker.navigateToUrl(websiteUrl);
-      const loginSuccess = await this.puppeteerWorker.login(credentials);
-
-      if (!loginSuccess) {
-        throw new Error('Login failed');
-      }
-
-      return await this.langGraphWorkflow.runDemoAutomation(
-        tourConfig,
-        featureDocs,
-        credentials
-      );
-    } catch (error) {
-      console.error('Feature tour generation failed:', error);
-      throw error;
-    } finally {
-      await this.puppeteerWorker.cleanup();
-    }
-  }
-
   private async getPageInfo() {
     try {
       const domState = await this.puppeteerWorker.getDOMState();
@@ -210,99 +91,6 @@ export class DemoAutomationService {
         links: 0,
         inputs: 0
       };
-    }
-  }
-
-  async generateProductTourFromFile(
-    websiteUrl: string,
-    credentials: { username: string; password: string },
-    file: Express.Multer.File,
-    featureName?: string
-  ): Promise<CreateDemoResponseDto> {
-    const demoId = uuidv4();
-    const startTime = Date.now();
-
-    try {
-      // Process file directly with Gemini
-      console.log(`Processing file directly with Gemini: ${file.originalname}`);
-      const extractedData = await this.geminiService.processFilesDirectly([file], featureName);
-
-      // Convert to ProductDocs format
-      const featureDocs: ProductDocs = {
-        featureName: extractedData.featureName,
-        description: extractedData.description,
-        steps: extractedData.steps,
-        selectors: extractedData.selectors,
-        expectedOutcomes: extractedData.expectedOutcomes,
-        prerequisites: extractedData.prerequisites,
-      };
-
-      // Generate and log action plan
-      const actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
-
-      // Generate tour configuration
-      const tourConfig: TourConfig = {
-        goal: websiteUrl,
-        featureName: featureDocs.featureName,
-        maxSteps: 10,
-        timeout: 30000,
-        includeScreenshots: true
-      };
-
-      // Initialize and login
-      await this.puppeteerWorker.initialize();
-      await this.puppeteerWorker.navigateToUrl(websiteUrl);
-      const loginSuccess = await this.puppeteerWorker.login(credentials);
-
-      if (!loginSuccess) {
-        throw new Error('Login failed - cannot generate tour');
-      }
-
-      // Run the Smart LangGraph Agent
-      const result = await this.smartAgent.runSmartAgent(
-        actionPlan,
-        tourConfig,
-        featureDocs,
-        credentials
-      );
-
-      // Get page info before cleanup
-      const pageInfo = await this.getPageInfo();
-      const pageTitle = await this.puppeteerWorker.getPageTitle() || 'Tour Page';
-
-      // Build response
-      const processingTime = Date.now() - startTime;
-
-      return {
-        demoId,
-        demoName: `Tour-${featureDocs.featureName}-${demoId.slice(0, 8)}`,
-        websiteUrl,
-        loginStatus: 'success',
-        pageInfo,
-        summary: {
-          processingTime,
-          loginAttempted: true,
-          finalUrl: result.finalUrl
-        },
-        scrapedData: {
-          success: result.success,
-          totalPages: 1,
-          crawlTime: processingTime,
-          pages: [{
-            url: result.finalUrl,
-            title: pageTitle,
-            html: '', // Not storing full HTML for demo
-            scrapedData: result.tourSteps,
-            timestamp: new Date().toISOString(),
-            pageInfo
-          }]
-        }
-      };
-    } catch (error) {
-      console.error('Tour generation from file failed:', error);
-      throw error;
-    } finally {
-      await this.puppeteerWorker.cleanup();
     }
   }
 
@@ -340,7 +128,31 @@ export class DemoAutomationService {
       };
 
       // Generate and log action plan
-      const actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
+      let actionPlan: ActionPlan;
+      try {
+        actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
+      } catch (error) {
+        console.error('Failed to generate action plan with Gemini:', error);
+        // Create a fallback plan
+        actionPlan = {
+          featureName: featureDocs.featureName,
+          totalActions: 0,
+          estimatedDuration: 0,
+          scrapingStrategy: 'Fallback plan - Gemini service unavailable',
+          actions: [],
+          summary: {
+            clickActions: 0,
+            typeActions: 0,
+            navigationActions: 0,
+            waitActions: 0,
+            extractActions: 0,
+            evaluateActions: 0
+          }
+        };
+      }
+
+      // Write the plan to JSON file
+      writePlanToFile(actionPlan);
 
       // Generate tour configuration
       const tourConfig: TourConfig = {
