@@ -117,7 +117,7 @@ export class DemoAutomationService {
             html: '', // Not storing full HTML for demo
             scrapedData: result.tourSteps,
             timestamp: new Date().toISOString(),
-            pageInfo: await this.getPageInfo()
+            pageInfo
           }]
         }
       };
@@ -244,7 +244,7 @@ export class DemoAutomationService {
 
       // Generate tour configuration
       const tourConfig: TourConfig = {
-        goal: featureDocs.description,
+        goal: websiteUrl,
         featureName: featureDocs.featureName,
         maxSteps: 10,
         timeout: 30000,
@@ -295,7 +295,7 @@ export class DemoAutomationService {
             html: '', // Not storing full HTML for demo
             scrapedData: result.tourSteps,
             timestamp: new Date().toISOString(),
-            pageInfo: await this.getPageInfo()
+            pageInfo
           }]
         }
       };
@@ -349,7 +349,7 @@ export class DemoAutomationService {
 
       // Generate tour configuration
       const tourConfig: TourConfig = {
-        goal: featureDocs.description,
+        goal: websiteUrl,
         featureName: featureDocs.featureName,
         maxSteps: 10,
         timeout: 30000,
@@ -400,7 +400,7 @@ export class DemoAutomationService {
             html: '', // Not storing full HTML for demo
             scrapedData: result.tourSteps,
             timestamp: new Date().toISOString(),
-            pageInfo: await this.getPageInfo()
+            pageInfo
           }]
         }
       };

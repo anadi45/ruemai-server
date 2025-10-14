@@ -76,11 +76,13 @@ export class LangGraphWorkflowService {
     console.log('Initializing demo automation workflow...');
     
     try {
-      // Initialize Puppeteer
-      await this.puppeteerWorker.initialize();
-      
-      // Navigate to the website
-      await this.puppeteerWorker.navigateToUrl(state.goal);
+      // Initialize Puppeteer if not already initialized
+      if (!this.puppeteerWorker.isInitialized()) {
+        await this.puppeteerWorker.initialize();
+        
+        // Navigate to the website
+        await this.puppeteerWorker.navigateToUrl(state.goal);
+      }
       
       // Get initial DOM state
       const domState = await this.puppeteerWorker.getDOMState(true);
@@ -282,8 +284,7 @@ export class LangGraphWorkflowService {
         }
       });
 
-      // Cleanup
-      await this.puppeteerWorker.cleanup();
+      // Note: Cleanup is handled by the calling service
 
       // Build result
       const processingTime = result.endTime ? result.endTime - result.startTime : 0;
@@ -308,7 +309,7 @@ export class LangGraphWorkflowService {
     } catch (error) {
       console.error('Demo automation workflow failed:', error);
       
-      await this.puppeteerWorker.cleanup();
+      // Note: Cleanup is handled by the calling service
       
       return {
         success: false,
