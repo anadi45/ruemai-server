@@ -1,5 +1,5 @@
 export interface Action {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'screenshot' | 'extract' | 'evaluate';
   selector?: string;
   inputText?: string;
   description: string;

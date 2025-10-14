@@ -3,6 +3,7 @@ import { CreateDemoResponseDto } from './demo-automation.dto';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
+import { SmartLangGraphAgentService } from './services/smart-langgraph-agent.service';
 import { 
   TourConfig, 
   ProductDocs, 
@@ -17,7 +18,8 @@ export class DemoAutomationService {
   constructor(
     private geminiService: GeminiService,
     private puppeteerWorker: PuppeteerWorkerService,
-    private langGraphWorkflow: LangGraphWorkflowService
+    private langGraphWorkflow: LangGraphWorkflowService,
+    private smartAgent: SmartLangGraphAgentService
   ) {}
 
   async loginToWebsite(
@@ -81,8 +83,12 @@ export class DemoAutomationService {
         throw new Error('Login failed - cannot generate tour');
       }
 
-      // Run the LangGraph workflow
-      const result = await this.langGraphWorkflow.runDemoAutomation(
+      // Generate action plan for the tour
+      const actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
+
+      // Run the Smart LangGraph Agent
+      const result = await this.smartAgent.runSmartAgent(
+        actionPlan,
         tourConfig,
         featureDocs,
         credentials
@@ -253,8 +259,9 @@ export class DemoAutomationService {
         throw new Error('Login failed - cannot generate tour');
       }
 
-      // Run the LangGraph workflow
-      const result = await this.langGraphWorkflow.runDemoAutomation(
+      // Run the Smart LangGraph Agent
+      const result = await this.smartAgent.runSmartAgent(
+        actionPlan,
         tourConfig,
         featureDocs,
         credentials
@@ -355,8 +362,9 @@ export class DemoAutomationService {
         throw new Error('Login failed - cannot generate tour');
       }
 
-      // Run the LangGraph workflow
-      const result = await this.langGraphWorkflow.runDemoAutomation(
+      // Run the Smart LangGraph Agent
+      const result = await this.smartAgent.runSmartAgent(
+        actionPlan,
         tourConfig,
         featureDocs,
         credentials

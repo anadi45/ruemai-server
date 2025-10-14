@@ -186,7 +186,7 @@ Generate a concise, helpful tooltip (max 100 characters) that explains what the 
     previousState: DOMState,
     currentState: DOMState,
     expectedOutcome: string
-  ): Promise<{ success: boolean; reason: string }> {
+  ): Promise<{ success: boolean; reasoning: string }> {
     const prompt = `
 Validate if the action was successful:
 
@@ -221,14 +221,14 @@ RESPONSE FORMAT (JSON):
         const parsed = JSON.parse(jsonMatch[0]);
         return {
           success: parsed.success || false,
-          reason: parsed.reason || 'No reason provided'
+          reasoning: parsed.reason || 'No reason provided'
         };
       }
       
-      return { success: false, reason: 'Failed to parse validation response' };
+      return { success: false, reasoning: 'Failed to parse validation response' };
     } catch (error) {
       console.error('Error validating action:', error);
-      return { success: false, reason: 'Error during validation' };
+      return { success: false, reasoning: 'Error during validation' };
     }
   }
 
@@ -627,5 +627,118 @@ FOCUS ON PROGRAMMATIC SCRAPING:
         evaluateActions: 0
       }
     };
+  }
+
+  async analyzeCurrentState(
+    domState: DOMState,
+    nextAction: PuppeteerAction,
+    featureDocs: ProductDocs,
+    history: Action[],
+    currentContext: string
+  ): Promise<{ context: string; reasoning: string; shouldProceed: boolean }> {
+    const prompt = this.buildAnalysisPrompt(
+      domState,
+      nextAction,
+      featureDocs,
+      history,
+      currentContext
+    );
+
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      return this.parseAnalysisResponse(text);
+    } catch (error) {
+      console.error('Error analyzing current state:', error);
+      return {
+        context: currentContext,
+        reasoning: 'Error analyzing current state',
+        shouldProceed: false
+      };
+    }
+  }
+
+  private buildAnalysisPrompt(
+    domState: DOMState,
+    nextAction: PuppeteerAction,
+    featureDocs: ProductDocs,
+    history: Action[],
+    currentContext: string
+  ): string {
+    const historyText = history.length > 0 
+      ? history.map((action, index) => 
+          `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
+        ).join('\n')
+      : 'No previous actions';
+
+    return `
+You are an AI assistant analyzing the current state of a web page to determine if the next planned action should proceed.
+
+CURRENT PAGE STATE:
+- URL: ${domState.currentUrl}
+- Title: ${domState.pageTitle}
+- Available clickable elements: ${domState.clickableSelectors.slice(0, 10).join(', ')}
+- Available input elements: ${domState.inputSelectors.slice(0, 5).join(', ')}
+- Visible text on page: ${domState.visibleText.slice(0, 15).join(' | ')}
+
+NEXT PLANNED ACTION:
+- Type: ${nextAction.type}
+- Selector: ${nextAction.selector}
+- Description: ${nextAction.description}
+- Expected Outcome: ${nextAction.expectedOutcome}
+- Priority: ${nextAction.priority}
+
+FEATURE CONTEXT:
+- Feature: ${featureDocs.featureName}
+- Description: ${featureDocs.description}
+- Steps: ${featureDocs.steps.join('\n')}
+
+PREVIOUS ACTIONS (${history.length}):
+${historyText}
+
+CURRENT CONTEXT: ${currentContext}
+
+INSTRUCTIONS:
+1. Analyze if the current page state is suitable for the next action
+2. Check if the required elements are present and accessible
+3. Consider the context and previous actions
+4. Determine if we should proceed with the action or adapt the strategy
+5. Provide reasoning for your decision
+
+RESPONSE FORMAT (JSON):
+{
+  "context": "Updated context based on current analysis",
+  "reasoning": "Why you made this decision",
+  "shouldProceed": true/false
+}
+`;
+  }
+
+  private parseAnalysisResponse(text: string): { context: string; reasoning: string; shouldProceed: boolean } {
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      return {
+        context: parsed.context || 'No context provided',
+        reasoning: parsed.reasoning || 'No reasoning provided',
+        shouldProceed: parsed.shouldProceed !== false
+      };
+    } catch (error) {
+      console.error('Error parsing analysis response:', error);
+      console.error('Raw response:', text);
+      
+      return {
+        context: 'Error parsing response',
+        reasoning: 'Failed to parse analysis response',
+        shouldProceed: false
+      };
+    }
   }
 }

@@ -380,4 +380,11 @@ export class PuppeteerWorkerService {
   async getPageTitle(): Promise<string | null> {
     return this.page?.title() || null;
   }
+
+  async getElement(selector: string): Promise<ElementHandle | null> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+    return await this.page.$(selector);
+  }
 }
