@@ -323,6 +323,12 @@ RESPONSE FORMAT (JSON):
       const response = await result.response;
       const text = response.text();
       
+      // Log the raw Gemini response for debugging
+      console.log('\n🤖 GEMINI FILE PROCESSING RESPONSE:');
+      console.log('=' .repeat(60));
+      console.log('Raw Response:', text);
+      console.log('=' .repeat(60));
+      
       // Parse the JSON response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -330,6 +336,17 @@ RESPONSE FORMAT (JSON):
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
+      
+      // Log the parsed structured data
+      console.log('\n📊 PARSED FEATURE DOCUMENTATION:');
+      console.log('=' .repeat(60));
+      console.log('Feature Name:', parsed.featureName);
+      console.log('Description:', parsed.description);
+      console.log('Steps:', parsed.steps);
+      console.log('Selectors:', parsed.selectors);
+      console.log('Expected Outcomes:', parsed.expectedOutcomes);
+      console.log('Prerequisites:', parsed.prerequisites);
+      console.log('=' .repeat(60));
       
       return {
         featureName: parsed.featureName || featureName || 'Extracted Feature',
