@@ -430,50 +430,6 @@ export class DemoAutomationService {
     }
   }
 
-  async parseDocumentFile(
-    file: Express.Multer.File,
-    featureName?: string,
-    websiteUrl?: string
-  ): Promise<{ success: boolean; featureDocs: any; validation: any; actionPlan?: ActionPlan }> {
-    try {
-      // Parse the document
-      const parsedDoc = await this.documentParser.parseDocument(file);
-      const extractedDocs = await this.documentParser.extractFeatureDocsFromDocument(
-        parsedDoc,
-        featureName
-      );
-
-      // Validate the extracted documentation
-      const validation = await this.documentParser.validateExtractedDocs(extractedDocs);
-
-      let actionPlan: ActionPlan | undefined;
-      if (validation.isValid && websiteUrl) {
-        // Convert to ProductDocs format for action planning
-        const featureDocs: ProductDocs = {
-          featureName: extractedDocs.featureName,
-          description: extractedDocs.description,
-          steps: extractedDocs.steps,
-          selectors: extractedDocs.selectors,
-          expectedOutcomes: extractedDocs.expectedOutcomes,
-          prerequisites: extractedDocs.prerequisites,
-          screenshots: extractedDocs.screenshots
-        };
-
-        // Generate and log action plan
-        actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
-      }
-
-      return {
-        success: validation.isValid,
-        featureDocs: extractedDocs,
-        validation,
-        actionPlan
-      };
-    } catch (error) {
-      console.error('Document parsing failed:', error);
-      throw error;
-    }
-  }
 
   async generateAndLogActionPlan(featureDocs: ProductDocs, websiteUrl: string): Promise<ActionPlan> {
     try {

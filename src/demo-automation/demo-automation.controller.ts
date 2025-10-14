@@ -35,51 +35,40 @@ export class DemoAutomationController {
         password: body.password
       };
       
-      // Generate tour from uploaded documents
+      console.log(`\n🚀 Starting complete demo automation workflow...`);
+      console.log(`📁 Processing ${files.length} document(s)`);
+      console.log(`🌐 Target website: ${body.websiteUrl}`);
+      console.log(`🎯 Feature: ${body.featureName || 'Auto-detected'}`);
+      
+      // Generate tour from uploaded documents (includes action planning and console logging)
       const result = await this.demoAutomationService.generateProductTourFromFiles(
         body.websiteUrl,
         credentials,
         files,
         body.featureName
       );
-      // Return just the tour steps from the scraped data
-      return result.scrapedData?.pages?.[0]?.scrapedData || [];
-    } catch (error) {
-      throw error;
-    }
-  }
-
-
-  @Post('parse-document')
-  @UseInterceptors(AnyFilesInterceptor())
-  async parseDocument(
-    @Body() body: { websiteUrl?: string; featureName?: string },
-    @UploadedFiles() files: Express.Multer.File[],
-  ): Promise<any> {
-    try {
-      console.log("🚀 ~ DemoAutomationController ~ parseDocument ~ body:", body);
       
-      if (!files || files.length === 0) {
-        throw new Error('No files received. Please ensure you are sending files with multipart/form-data content type.');
-      }
+      console.log(`\n✅ Demo automation completed successfully!`);
+      console.log(`📊 Demo ID: ${result.demoId}`);
+      console.log(`📝 Demo Name: ${result.demoName}`);
+      console.log(`🔗 Final URL: ${result.summary?.finalUrl}`);
       
-      // Parse the first file and generate action plan
-      const result = await this.demoAutomationService.parseDocumentFile(
-        files[0],
-        body.featureName,
-        body.websiteUrl
-      );
-      
+      // Return comprehensive result including tour steps and metadata
       return {
-        success: result.success,
-        featureDocs: result.featureDocs,
-        validation: result.validation,
-        actionPlan: result.actionPlan
+        demoId: result.demoId,
+        demoName: result.demoName,
+        websiteUrl: result.websiteUrl,
+        loginStatus: result.loginStatus,
+        tourSteps: result.scrapedData?.pages?.[0]?.scrapedData || [],
+        summary: result.summary,
+        pageInfo: result.pageInfo
       };
     } catch (error) {
       throw error;
     }
   }
+
+
 
   @Post('stop-automation')
   async stopAutomation(): Promise<{ message: string }> {
