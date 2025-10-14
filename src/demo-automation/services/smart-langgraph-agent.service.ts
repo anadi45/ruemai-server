@@ -309,13 +309,28 @@ export class SmartLangGraphAgentService {
             // Select and execute the best tool
             state = await self.selectAndExecuteTool(state);
             
+            // Check if execution was stopped due to critical failure
+            if (state.isComplete && !state.success) {
+              console.error('💥 Agent execution stopped due to critical failure');
+              break;
+            }
+            
             // Validate the action result
             state = await self.validateAction(state);
+            
+            // Check if validation stopped execution
+            if (state.isComplete && !state.success) {
+              console.error('💥 Agent execution stopped due to validation failure');
+              break;
+            }
             
             // Adapt if necessary
             state = await self.adaptStrategy(state);
             
-            state.currentActionIndex++;
+            // Only increment if we're continuing (not stopped)
+            if (!state.isComplete) {
+              state.currentActionIndex++;
+            }
           }
           
           // Complete the workflow
@@ -416,6 +431,20 @@ export class SmartLangGraphAgentService {
     try {
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
       
+      // Validate that we're not skipping any steps
+      if (!this.validateStepExecution(state)) {
+        console.error('💥 STEP VALIDATION FAILED - STOPPING AGENT EXECUTION');
+        console.error(`Expected action index: ${state.currentActionIndex}, but found gaps in execution`);
+        
+        return {
+          ...state,
+          isComplete: true,
+          success: false,
+          error: 'Step validation failed: Steps were skipped during execution',
+          endTime: Date.now()
+        };
+      }
+      
       // Map action type to tool
       const toolName = this.mapActionToTool(nextAction.type);
       const tool = this.tools.get(toolName);
@@ -467,9 +496,9 @@ export class SmartLangGraphAgentService {
         
         if (isCriticalAction) {
           console.log(`🚨 CRITICAL ACTION DETECTED: ${nextAction.type} - ${nextAction.description}`);
-          console.warn('⚠️ CRITICAL ACTION FAILED - CONTINUING WITH NEXT ACTION');
-          console.warn(`Critical action: ${nextAction.type} - ${nextAction.description}`);
-          console.warn(`Error: ${result.error}`);
+          console.error('💥 CRITICAL ACTION FAILED - STOPPING AGENT EXECUTION');
+          console.error(`Critical action: ${nextAction.type} - ${nextAction.description}`);
+          console.error(`Error: ${result.error}`);
           
           const tourStep: TourStep = {
             order: state.currentActionIndex + 1,
@@ -481,18 +510,20 @@ export class SmartLangGraphAgentService {
             },
             selector: nextAction.selector || '',
             description: nextAction.description,
-            tooltip: 'Critical action failed - continuing to next action',
+            tooltip: 'Critical action failed - stopping execution',
             timestamp: Date.now(),
             success: false,
-            errorMessage: `CRITICAL FAILURE (CONTINUING): ${result.error}`
+            errorMessage: `CRITICAL FAILURE (STOPPING): ${result.error}`
           };
           
           return {
             ...state,
             failedActions: [...state.failedActions, state.currentActionIndex],
             tourSteps: [...state.tourSteps, tourStep],
-            currentActionIndex: state.currentActionIndex + 1,
-            retryCount: state.retryCount + 1
+            isComplete: true,
+            success: false,
+            error: `Critical action failed: ${nextAction.type} - ${result.error}`,
+            endTime: Date.now()
           };
         }
         
@@ -528,8 +559,8 @@ export class SmartLangGraphAgentService {
       const isCriticalAction = this.isCriticalAction(nextAction, state);
       
       if (isCriticalAction) {
-        console.warn('⚠️ CRITICAL ACTION EXCEPTION - CONTINUING WITH NEXT ACTION');
-        console.warn(`Critical action exception: ${error instanceof Error ? error.message : 'Critical tool execution failed'}`);
+        console.error('💥 CRITICAL ACTION EXCEPTION - STOPPING AGENT EXECUTION');
+        console.error(`Critical action exception: ${error instanceof Error ? error.message : 'Critical tool execution failed'}`);
         
         const tourStep: TourStep = {
           order: state.currentActionIndex + 1,
@@ -541,18 +572,20 @@ export class SmartLangGraphAgentService {
           },
           selector: nextAction.selector || '',
           description: nextAction.description,
-          tooltip: 'Critical action exception - continuing to next action',
+          tooltip: 'Critical action exception - stopping execution',
           timestamp: Date.now(),
           success: false,
-          errorMessage: `CRITICAL EXCEPTION (CONTINUING): ${error instanceof Error ? error.message : 'Critical tool execution failed'}`
+          errorMessage: `CRITICAL EXCEPTION (STOPPING): ${error instanceof Error ? error.message : 'Critical tool execution failed'}`
         };
         
         return {
           ...state,
           failedActions: [...state.failedActions, state.currentActionIndex],
           tourSteps: [...state.tourSteps, tourStep],
-          currentActionIndex: state.currentActionIndex + 1,
-          retryCount: state.retryCount + 1
+          isComplete: true,
+          success: false,
+          error: `Critical action exception: ${error instanceof Error ? error.message : 'Critical tool execution failed'}`,
+          endTime: Date.now()
         };
       }
       
@@ -592,9 +625,9 @@ export class SmartLangGraphAgentService {
         
         if (isCriticalAction) {
           console.log(`🚨 CRITICAL ACTION VALIDATION DETECTED: ${nextAction.type} - ${nextAction.description}`);
-          console.warn('⚠️ CRITICAL ACTION VALIDATION FAILED - CONTINUING WITH NEXT ACTION');
-          console.warn(`Critical action validation failed: ${nextAction.type} - ${nextAction.description}`);
-          console.warn(`Validation reason: ${validation.reasoning}`);
+          console.error('💥 CRITICAL ACTION VALIDATION FAILED - STOPPING AGENT EXECUTION');
+          console.error(`Critical action validation failed: ${nextAction.type} - ${nextAction.description}`);
+          console.error(`Validation reason: ${validation.reasoning}`);
           
           const tourStep: TourStep = {
             order: state.currentActionIndex + 1,
@@ -606,18 +639,20 @@ export class SmartLangGraphAgentService {
             },
             selector: nextAction.selector || '',
             description: nextAction.description,
-            tooltip: 'Critical action validation failed - continuing to next action',
+            tooltip: 'Critical action validation failed - stopping execution',
             timestamp: Date.now(),
             success: false,
-            errorMessage: `CRITICAL VALIDATION FAILURE (CONTINUING): ${validation.reasoning}`
+            errorMessage: `CRITICAL VALIDATION FAILURE (STOPPING): ${validation.reasoning}`
           };
           
           return {
             ...state,
             failedActions: [...state.failedActions, state.currentActionIndex],
             tourSteps: [...state.tourSteps, tourStep],
-            currentActionIndex: state.currentActionIndex + 1,
-            retryCount: state.retryCount + 1
+            isComplete: true,
+            success: false,
+            error: `Critical action validation failed: ${nextAction.type} - ${validation.reasoning}`,
+            endTime: Date.now()
           };
         }
         
@@ -647,8 +682,8 @@ export class SmartLangGraphAgentService {
       const isCriticalAction = this.isCriticalAction(nextAction, state);
       
       if (isCriticalAction) {
-        console.warn('⚠️ CRITICAL ACTION VALIDATION EXCEPTION - CONTINUING WITH NEXT ACTION');
-        console.warn(`Critical action validation exception: ${error instanceof Error ? error.message : 'Unknown validation error'}`);
+        console.error('💥 CRITICAL ACTION VALIDATION EXCEPTION - STOPPING AGENT EXECUTION');
+        console.error(`Critical action validation exception: ${error instanceof Error ? error.message : 'Unknown validation error'}`);
         
         const tourStep: TourStep = {
           order: state.currentActionIndex + 1,
@@ -660,18 +695,20 @@ export class SmartLangGraphAgentService {
           },
           selector: nextAction.selector || '',
           description: nextAction.description,
-          tooltip: 'Critical action validation exception - continuing to next action',
+          tooltip: 'Critical action validation exception - stopping execution',
           timestamp: Date.now(),
           success: false,
-          errorMessage: `CRITICAL VALIDATION EXCEPTION (CONTINUING): ${error instanceof Error ? error.message : 'Unknown validation error'}`
+          errorMessage: `CRITICAL VALIDATION EXCEPTION (STOPPING): ${error instanceof Error ? error.message : 'Unknown validation error'}`
         };
         
         return {
           ...state,
           failedActions: [...state.failedActions, state.currentActionIndex],
           tourSteps: [...state.tourSteps, tourStep],
-          currentActionIndex: state.currentActionIndex + 1,
-          retryCount: state.retryCount + 1
+          isComplete: true,
+          success: false,
+          error: `Critical action validation exception: ${error instanceof Error ? error.message : 'Unknown validation error'}`,
+          endTime: Date.now()
         };
       }
       
@@ -722,6 +759,24 @@ export class SmartLangGraphAgentService {
     console.log(`   📈 Success rate: ${(successRate * 100).toFixed(1)}%`);
     console.log(`   ⏱️  Processing time: ${processingTime}ms`);
     
+    // Check if we have any critical failures that should fail the entire process
+    const hasCriticalFailures = state.failedActions.some(actionIndex => {
+      const action = state.actionPlan.actions[actionIndex];
+      return this.isCriticalAction(action, state);
+    });
+    
+    if (hasCriticalFailures) {
+      console.error('💥 Workflow completed with critical failures - marking as failed');
+      return {
+        ...state,
+        endTime,
+        isComplete: true,
+        success: false,
+        error: 'Critical actions failed during execution',
+        reasoning: `Failed due to critical action failures. Completed ${state.completedActions.length}/${state.actionPlan.actions.length} actions with ${(successRate * 100).toFixed(1)}% success rate`
+      };
+    }
+    
     return {
       ...state,
       endTime,
@@ -757,6 +812,33 @@ export class SmartLangGraphAgentService {
     };
     
     return mapping[actionType] || 'click';
+  }
+
+  private validateStepExecution(state: SmartAgentState): boolean {
+    // Check if we're executing steps in the correct order
+    const expectedIndex = state.completedActions.length + state.failedActions.length;
+    
+    if (state.currentActionIndex !== expectedIndex) {
+      console.error(`❌ Step execution order violation detected:`);
+      console.error(`   Expected action index: ${expectedIndex}`);
+      console.error(`   Current action index: ${state.currentActionIndex}`);
+      console.error(`   Completed actions: ${state.completedActions.length}`);
+      console.error(`   Failed actions: ${state.failedActions.length}`);
+      return false;
+    }
+    
+    // Check for gaps in completed actions
+    const allProcessedActions = [...state.completedActions, ...state.failedActions].sort((a, b) => a - b);
+    for (let i = 0; i < allProcessedActions.length; i++) {
+      if (allProcessedActions[i] !== i) {
+        console.error(`❌ Gap detected in action execution:`);
+        console.error(`   Missing action at index: ${i}`);
+        console.error(`   Found action at index: ${allProcessedActions[i]}`);
+        return false;
+      }
+    }
+    
+    return true;
   }
 
   private isCriticalAction(action: PuppeteerAction, state: SmartAgentState): boolean {

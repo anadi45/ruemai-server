@@ -183,6 +183,34 @@ export class LangGraphWorkflowService {
     } catch (error) {
       console.error('Execution failed:', error);
       
+      // Check if this is a critical action that should stop the workflow
+      const action = (state as any).action as Action;
+      const isCriticalAction = this.isCriticalAction(action);
+      
+      if (isCriticalAction) {
+        console.error('💥 CRITICAL ACTION EXECUTION FAILED - STOPPING WORKFLOW');
+        console.error(`Critical action: ${action?.type} - ${action?.description}`);
+        console.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        
+        const tourStep: TourStep = {
+          order: state.currentStep + 1,
+          action: action,
+          selector: action?.selector || '',
+          description: action?.description || '',
+          tooltip: 'Critical action failed - stopping workflow',
+          timestamp: Date.now(),
+          success: false,
+          errorMessage: `CRITICAL EXECUTION FAILURE (STOPPING): ${error instanceof Error ? error.message : 'Unknown error'}`
+        };
+
+        return {
+          currentStep: state.currentStep + 1,
+          tourSteps: [...state.tourSteps, tourStep],
+          error: `Critical action execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          isComplete: true
+        };
+      }
+      
       const tourStep: TourStep = {
         order: state.currentStep + 1,
         action: (state as any).action,
@@ -327,5 +355,27 @@ export class LangGraphWorkflowService {
 
   async stopWorkflow(): Promise<void> {
     await this.puppeteerWorker.cleanup();
+  }
+
+  private isCriticalAction(action: Action): boolean {
+    if (!action) return false;
+    
+    // Navigation actions are always critical
+    if (action.type === 'navigate') {
+      return true;
+    }
+    
+    // Actions with specific critical keywords in description
+    const criticalKeywords = [
+      'login', 'authenticate', 'navigate', 'go to', 'access', 'enter',
+      'submit', 'confirm', 'proceed', 'continue', 'next step'
+    ];
+    
+    const description = action.description?.toLowerCase() || '';
+    const hasCriticalKeyword = criticalKeywords.some(keyword => 
+      description.includes(keyword)
+    );
+    
+    return hasCriticalKeyword;
   }
 }
