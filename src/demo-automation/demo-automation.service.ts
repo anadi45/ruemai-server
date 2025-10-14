@@ -439,18 +439,21 @@ export class DemoAutomationService {
       const actionPlan = await this.geminiService.generateActionPlan(featureDocs, websiteUrl);
       
       // Log the action plan in a structured format
-      console.log(`\n📋 ACTION PLAN FOR: ${actionPlan.featureName}`);
+      console.log(`\n📋 PUPPETEER SCRAPING PLAN FOR: ${actionPlan.featureName}`);
       console.log(`⏱️  Total Estimated Duration: ${actionPlan.estimatedDuration} seconds`);
       console.log(`📊 Total Actions: ${actionPlan.totalActions}`);
+      console.log(`🎯 Scraping Strategy: ${actionPlan.scrapingStrategy}`);
       console.log('=' .repeat(60));
       
       // Log action summary
-      console.log('\n📈 ACTION SUMMARY:');
+      console.log('\n📈 SCRAPING ACTION SUMMARY:');
       console.log(`   🖱️  Click Actions: ${actionPlan.summary.clickActions}`);
       console.log(`   ⌨️  Type Actions: ${actionPlan.summary.typeActions}`);
       console.log(`   🧭 Navigation Actions: ${actionPlan.summary.navigationActions}`);
       console.log(`   ⏳ Wait Actions: ${actionPlan.summary.waitActions}`);
       console.log(`   📸 Screenshot Actions: ${actionPlan.summary.screenshotActions}`);
+      console.log(`   📊 Extract Actions: ${actionPlan.summary.extractActions}`);
+      console.log(`   🔧 Evaluate Actions: ${actionPlan.summary.evaluateActions}`);
       
       // Log detailed action list
       console.log('\n📝 DETAILED ACTION LIST:');
@@ -466,11 +469,27 @@ export class DemoAutomationService {
         console.log(`   ⏱️  Duration: ${action.estimatedDuration}s`);
         
         if (action.selector) {
-          console.log(`   🎯 Selector: ${action.selector}`);
+          console.log(`   🎯 Primary Selector: ${action.selector}`);
+        }
+        
+        if (action.fallbackSelector) {
+          console.log(`   🔄 Fallback Selector: ${action.fallbackSelector}`);
         }
         
         if (action.inputText) {
           console.log(`   ⌨️  Input Text: "${action.inputText}"`);
+        }
+        
+        if (action.waitCondition) {
+          console.log(`   ⏳ Wait Condition: ${action.waitCondition}`);
+        }
+        
+        if (action.extractData) {
+          console.log(`   📊 Extract Data: ${action.extractData}`);
+        }
+        
+        if (action.errorHandling) {
+          console.log(`   🛡️  Error Handling: ${action.errorHandling}`);
         }
         
         if (action.prerequisites && action.prerequisites.length > 0) {
@@ -498,7 +517,9 @@ export class DemoAutomationService {
       'scroll': '📜',
       'screenshot': '📸',
       'select': '📋',
-      'hover': '👆'
+      'hover': '👆',
+      'extract': '📊',
+      'evaluate': '🔧'
     };
     return emojiMap[actionType] || '🔧';
   }

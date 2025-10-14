@@ -95,11 +95,15 @@ export interface ProductDocs {
 }
 
 export interface PuppeteerAction {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'screenshot';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'screenshot' | 'extract' | 'evaluate';
   selector?: string;
+  fallbackSelector?: string;
   inputText?: string;
   description: string;
   expectedOutcome: string;
+  waitCondition?: string;
+  extractData?: string;
+  errorHandling?: string;
   priority: 'high' | 'medium' | 'low';
   estimatedDuration: number; // in seconds
   prerequisites?: string[];
@@ -109,6 +113,7 @@ export interface ActionPlan {
   featureName: string;
   totalActions: number;
   estimatedDuration: number; // total in seconds
+  scrapingStrategy?: string;
   actions: PuppeteerAction[];
   summary: {
     clickActions: number;
@@ -116,6 +121,8 @@ export interface ActionPlan {
     navigationActions: number;
     waitActions: number;
     screenshotActions: number;
+    extractActions: number;
+    evaluateActions: number;
   };
 }
 

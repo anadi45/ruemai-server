@@ -309,6 +309,7 @@ RESPONSE FORMAT (JSON):
         featureName: parsed.featureName || featureDocs.featureName,
         totalActions: parsed.actions?.length || 0,
         estimatedDuration: parsed.estimatedDuration || 0,
+        scrapingStrategy: parsed.scrapingStrategy || 'Standard web scraping approach',
         actions: parsed.actions || [],
         summary: {
           clickActions: parsed.summary?.clickActions || 0,
@@ -316,6 +317,8 @@ RESPONSE FORMAT (JSON):
           navigationActions: parsed.summary?.navigationActions || 0,
           waitActions: parsed.summary?.waitActions || 0,
           screenshotActions: parsed.summary?.screenshotActions || 0,
+          extractActions: parsed.summary?.extractActions || 0,
+          evaluateActions: parsed.summary?.evaluateActions || 0,
         }
       };
 
@@ -330,16 +333,16 @@ RESPONSE FORMAT (JSON):
 
   private buildActionPlanningPrompt(featureDocs: ProductDocs, websiteUrl: string): string {
     return `
-You are an expert automation engineer. Create a detailed action plan for automating the following feature using Puppeteer.
+You are an expert Puppeteer automation engineer specializing in programmatic web scraping. Your task is to create a detailed, executable action plan for automating web interactions using Puppeteer based on both textual documentation and visual context from images.
 
 FEATURE: ${featureDocs.featureName}
 DESCRIPTION: ${featureDocs.description}
 WEBSITE: ${websiteUrl}
 
-FEATURE STEPS:
+FEATURE STEPS (from documentation):
 ${featureDocs.steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}
 
-SELECTORS AVAILABLE:
+AVAILABLE SELECTORS (from documentation):
 ${Object.entries(featureDocs.selectors).map(([key, value]) => `${key}: ${value}`).join('\n')}
 
 EXPECTED OUTCOMES:
@@ -348,38 +351,80 @@ ${featureDocs.expectedOutcomes.join('\n')}
 PREREQUISITES:
 ${featureDocs.prerequisites?.join('\n') || 'None specified'}
 
-Create a comprehensive action plan that includes:
+VISUAL CONTEXT (from images):
+${featureDocs.screenshots?.map((screenshot, index) => `Image ${index + 1}: ${screenshot.description}`).join('\n') || 'No visual context available'}
 
-1. **Navigation actions** - Navigate to the feature
-2. **Click actions** - Click buttons, links, menu items
-3. **Type actions** - Fill forms, input fields
-4. **Wait actions** - Wait for elements to load, animations to complete
-5. **Screenshot actions** - Capture key moments for documentation
-6. **Scroll actions** - Scroll to reveal elements
-7. **Select actions** - Select options from dropdowns
+CRITICAL ANALYSIS INSTRUCTIONS:
+1. **Carefully analyze BOTH text and image data together** to understand the complete user interface
+2. **Identify UI elements** visible in images that may not be mentioned in text
+3. **Map visual elements to programmatic selectors** for Puppeteer automation
+4. **Consider the actual user flow** as shown in images vs. documented steps
+5. **Identify potential scraping challenges** like dynamic content, modals, or complex interactions
 
-For each action, specify:
-- Action type (click, type, navigate, wait, scroll, screenshot, select)
-- CSS selector (use the provided selectors or suggest new ones)
-- Description of what the action does
-- Expected outcome after the action
-- Priority level (high, medium, low)
-- Estimated duration in seconds
-- Any prerequisites
+Create a comprehensive Puppeteer automation plan that includes:
+
+**NAVIGATION & SETUP:**
+- Navigate to specific URLs or routes
+- Handle authentication and login flows
+- Set up proper viewport and user agent
+
+**ELEMENT INTERACTION:**
+- Click buttons, links, menu items with robust selectors
+- Fill forms and input fields with realistic data
+- Handle dropdowns, checkboxes, radio buttons
+- Manage file uploads if applicable
+
+**DYNAMIC CONTENT HANDLING:**
+- Wait for AJAX requests and dynamic content loading
+- Handle infinite scroll or pagination
+- Manage modal dialogs and overlays
+- Deal with loading states and spinners
+
+**DATA EXTRACTION:**
+- Scrape text content, attributes, and metadata
+- Extract form data and user inputs
+- Capture structured data from tables or lists
+- Handle different data formats (JSON, HTML, etc.)
+
+**ERROR HANDLING & VALIDATION:**
+- Verify element existence before interaction
+- Handle network timeouts and retries
+- Validate expected outcomes and states
+- Capture screenshots for debugging
+
+**ADVANCED PUPPETEER TECHNIQUES:**
+- Use page.evaluate() for complex DOM manipulation
+- Handle iframes and shadow DOM
+- Manage cookies and local storage
+- Implement proper waiting strategies (waitForSelector, waitForFunction)
+
+For each action, provide:
+- **Robust selectors** (prefer data attributes, IDs, or stable classes)
+- **Fallback selectors** for dynamic content
+- **Realistic input data** for forms
+- **Proper waiting conditions** before and after actions
+- **Error handling strategies** for each step
+- **Screenshot capture** at critical points
+- **Data extraction** where applicable
 
 Return the plan in this JSON format:
 {
   "featureName": "string",
   "estimatedDuration": number,
+  "scrapingStrategy": "Brief description of the overall scraping approach",
   "actions": [
     {
-      "type": "click|type|navigate|wait|scroll|screenshot|select",
-      "selector": "CSS selector",
-      "inputText": "text to type (for type actions)",
-      "description": "What this action does",
+      "type": "click|type|navigate|wait|scroll|screenshot|select|extract|evaluate",
+      "selector": "Primary CSS selector",
+      "fallbackSelector": "Alternative selector if primary fails",
+      "inputText": "Text to input (for type actions)",
+      "description": "Detailed description of the Puppeteer action",
       "expectedOutcome": "What should happen after this action",
+      "waitCondition": "What to wait for before proceeding",
+      "extractData": "What data to extract (if applicable)",
       "priority": "high|medium|low",
       "estimatedDuration": number,
+      "errorHandling": "How to handle failures",
       "prerequisites": ["prerequisite1", "prerequisite2"]
     }
   ],
@@ -388,17 +433,20 @@ Return the plan in this JSON format:
     "typeActions": number,
     "navigationActions": number,
     "waitActions": number,
-    "screenshotActions": number
+    "screenshotActions": number,
+    "extractActions": number,
+    "evaluateActions": number
   }
 }
 
-Focus on:
-- Logical sequence of actions
-- Realistic selectors and interactions
-- Proper waiting for page loads and animations
-- Capturing key moments with screenshots
-- Handling form inputs and selections
-- Error handling and validation steps
+FOCUS ON PROGRAMMATIC SCRAPING:
+- Create executable Puppeteer code patterns
+- Use robust, maintainable selectors
+- Handle real-world web application challenges
+- Implement proper error handling and retries
+- Consider performance and reliability
+- Plan for data extraction and storage
+- Account for dynamic content and user interactions
 `;
   }
 
@@ -434,13 +482,16 @@ Focus on:
       featureName: featureDocs.featureName,
       totalActions: basicActions.length,
       estimatedDuration: basicActions.reduce((sum, action) => sum + action.estimatedDuration, 0),
+      scrapingStrategy: 'Basic navigation and documentation capture',
       actions: basicActions,
       summary: {
         clickActions: 0,
         typeActions: 0,
         navigationActions: 1,
         waitActions: 1,
-        screenshotActions: 1
+        screenshotActions: 1,
+        extractActions: 0,
+        evaluateActions: 0
       }
     };
   }
