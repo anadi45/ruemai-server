@@ -903,8 +903,25 @@ export class SmartLangGraphAgentService {
     switch (action.type) {
       case 'navigate':
         // For navigation, use the goal URL from state or action inputText
-        const url = action.inputText || state.goal;
-        console.log(`🧭 Navigation URL resolution: inputText="${action.inputText}", goal="${state.goal}", resolved="${url}"`);
+        let url = action.inputText || state.goal;
+        
+        // If still no URL, try to extract from the action description or use a default
+        if (!url) {
+          // Try to extract URL from description (e.g., "Navigate to https://example.com")
+          const urlMatch = action.description.match(/https?:\/\/[^\s]+/);
+          if (urlMatch) {
+            url = urlMatch[0];
+          } else {
+            // Use a default URL based on the goal or feature
+            url = state.goal || 'https://app.gorattle.com';
+          }
+        }
+        
+        console.log(`🧭 Navigation URL resolution:`);
+        console.log(`   Action inputText: "${action.inputText}"`);
+        console.log(`   State goal: "${state.goal}"`);
+        console.log(`   Resolved URL: "${url}"`);
+        console.log(`   Action description: "${action.description}"`);
         
         if (!url) {
           throw new Error('No URL available for navigation action');

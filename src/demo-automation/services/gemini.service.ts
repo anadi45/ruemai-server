@@ -605,7 +605,7 @@ Only return valid JSON. Do not include any other text or explanations.
       console.error('Error generating action plan:', error);
       
       // Fallback to basic action plan
-      return this.createFallbackActionPlan(featureDocs);
+      return this.createFallbackActionPlan(featureDocs, websiteUrl);
     }
   }
 
@@ -752,10 +752,12 @@ FOCUS ON PROGRAMMATIC SCRAPING:
 `;
   }
 
-  private createFallbackActionPlan(featureDocs: ProductDocs): ActionPlan {
+  private createFallbackActionPlan(featureDocs: ProductDocs, websiteUrl?: string): ActionPlan {
     const basicActions: PuppeteerAction[] = [
       {
         type: 'navigate',
+        selector: undefined,
+        inputText: websiteUrl || 'https://app.gorattle.com',
         description: `Navigate to the ${featureDocs.featureName} feature`,
         expectedOutcome: 'Feature page loads successfully',
         priority: 'high',
