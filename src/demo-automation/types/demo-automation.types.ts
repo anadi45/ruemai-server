@@ -90,7 +90,7 @@ export interface ProductDocs {
 export interface PuppeteerAction {
   type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate';
   selector?: string;
-  fallbackSelector?: string;
+  fallbackAction?: PuppeteerAction; // Alternative action (different type)
   inputText?: string;
   description: string;
   expectedOutcome: string;

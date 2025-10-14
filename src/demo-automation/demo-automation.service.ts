@@ -261,8 +261,8 @@ export class DemoAutomationService {
           console.log(`   🎯 Primary Selector: ${action.selector}`);
         }
         
-        if (action.fallbackSelector) {
-          console.log(`   🔄 Fallback Selector: ${action.fallbackSelector}`);
+        if (action.fallbackAction) {
+          console.log(`   🔄 Fallback Action: ${action.fallbackAction.type} - ${action.fallbackAction.description}`);
         }
         
         if (action.inputText) {

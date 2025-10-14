@@ -108,11 +108,12 @@ export class SmartLangGraphAgentService {
     this.tools.set('click', {
       name: 'click',
       description: 'Click on an element using selector',
-      parameters: { selector: 'string', fallbackSelector: 'string', waitAfter: 'number' },
+      parameters: { selector: 'string', fallbackAction: 'object', waitAfter: 'number' },
       execute: async (params, state) => {
         try {
           let success = false;
           let selector = params.selector;
+          let usedFallback = false;
           
           // Try primary selector first
           try {
@@ -123,18 +124,20 @@ export class SmartLangGraphAgentService {
             });
             success = true;
           } catch (error) {
-            // Try fallback selector if provided
-            if (params.fallbackSelector) {
+            // Try fallback action if provided
+            if (params.fallbackAction) {
               try {
                 await this.puppeteerWorker.executeAction({
-                  type: 'click',
-                  selector: params.fallbackSelector,
-                  description: `Click on fallback ${params.fallbackSelector}`
+                  type: params.fallbackAction.type,
+                  selector: params.fallbackAction.selector,
+                  inputText: params.fallbackAction.inputText,
+                  description: params.fallbackAction.description
                 });
                 success = true;
-                selector = params.fallbackSelector;
-              } catch (fallbackError) {
-                // Both selectors failed
+                selector = params.fallbackAction.selector;
+                usedFallback = true;
+              } catch (fallbackActionError) {
+                // Fallback action failed
               }
             }
           }
@@ -143,7 +146,7 @@ export class SmartLangGraphAgentService {
             await new Promise(resolve => setTimeout(resolve, params.waitAfter));
           }
           
-          return { success, result: { selector, usedFallback: selector !== params.selector } };
+          return { success, result: { selector, usedFallback } };
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Click failed' };
         }
@@ -895,7 +898,7 @@ export class SmartLangGraphAgentService {
   private prepareToolParameters(action: PuppeteerAction, state: SmartAgentState): any {
     const baseParams = {
       selector: action.selector,
-      fallbackSelector: action.fallbackSelector,
+      fallbackAction: action.fallbackAction,
       inputText: action.inputText,
       description: action.description
     };
@@ -935,7 +938,7 @@ export class SmartLangGraphAgentService {
       case 'click':
         return {
           selector: action.selector,
-          fallbackSelector: action.fallbackSelector,
+          fallbackAction: action.fallbackAction,
           waitAfter: action.estimatedDuration * 1000
         };
       

@@ -642,7 +642,7 @@ Return the plan in this JSON format:
     {
       "type": "click|type|navigate|wait|scroll|select|extract|evaluate",
       "selector": "Primary CSS selector",
-      "fallbackSelector": "Alternative selector if primary fails",
+      "fallbackAction": "Alternative action with different type if needed (e.g., click -> navigate)",
       "inputText": "Text to input (for type actions)",
       "description": "Detailed description of the Puppeteer action",
       "expectedOutcome": "What should happen after this action",
