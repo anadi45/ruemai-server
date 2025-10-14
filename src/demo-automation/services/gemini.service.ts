@@ -2,19 +2,142 @@ import { Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Action, DOMState, GeminiResponse, ProductDocs, ActionPlan, PuppeteerAction } from '../types/demo-automation.types';
 
+/**
+ * GeminiService with API key rotation support
+ * 
+ * Environment Variables:
+ * - GEMINI_API_KEY: Single API key (legacy support)
+ * - GEMINI_API_KEYS: Multiple API keys as JSON array or comma-separated string
+ * 
+ * Examples:
+ * GEMINI_API_KEYS='["key1", "key2", "key3"]'
+ * GEMINI_API_KEYS='key1,key2,key3'
+ * 
+ * Features:
+ * - Automatic key rotation on 429 errors
+ * - Usage tracking per key
+ * - Cooldown periods between key switches
+ * - Fallback to least recently used key
+ */
 @Injectable()
 export class GeminiService {
-  private genAI: GoogleGenerativeAI;
-  private model: any;
+  private genAIs: GoogleGenerativeAI[];
+  private models: any[];
+  private currentKeyIndex: number = 0;
+  private keyUsageCount: Map<number, number> = new Map();
+  private keyLastUsed: Map<number, number> = new Map();
+  private readonly maxRequestsPerKey = 100; // Adjust based on your rate limits
+  private readonly keyCooldownMs = 60000; // 1 minute cooldown between key switches
 
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is required');
+    const apiKeys = this.getApiKeys();
+    if (apiKeys.length === 0) {
+      throw new Error('At least one GEMINI_API_KEY is required');
     }
-    
-    this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+    this.genAIs = apiKeys.map(key => new GoogleGenerativeAI(key));
+    this.models = this.genAIs.map(genAI => genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }));
+
+    // Initialize usage tracking
+    apiKeys.forEach((_, index) => {
+      this.keyUsageCount.set(index, 0);
+      this.keyLastUsed.set(index, 0);
+    });
+  }
+
+  private getApiKeys(): string[] {
+    // Support both single key and multiple keys
+    const singleKey = process.env.GEMINI_API_KEY;
+    const multipleKeys = process.env.GEMINI_API_KEYS;
+
+    if (multipleKeys) {
+      try {
+        const keys = JSON.parse(multipleKeys);
+        return Array.isArray(keys) ? keys.filter(key => key && key.trim()) : [];
+      } catch (error) {
+        console.warn('Failed to parse GEMINI_API_KEYS as JSON, trying comma-separated format');
+        return multipleKeys.split(',').map(key => key.trim()).filter(key => key);
+      }
+    }
+
+    if (singleKey) {
+      return [singleKey];
+    }
+
+    return [];
+  }
+
+  private getNextAvailableKey(): { keyIndex: number; model: any } {
+    const now = Date.now();
+
+    // First, try to find a key that hasn't been used recently and is under the limit
+    for (let i = 0; i < this.genAIs.length; i++) {
+      const keyIndex = (this.currentKeyIndex + i) % this.genAIs.length;
+      const usageCount = this.keyUsageCount.get(keyIndex) || 0;
+      const lastUsed = this.keyLastUsed.get(keyIndex) || 0;
+
+      if (usageCount < this.maxRequestsPerKey && (now - lastUsed) > this.keyCooldownMs) {
+        this.currentKeyIndex = keyIndex;
+        return { keyIndex, model: this.models[keyIndex] };
+      }
+    }
+
+    // If all keys are at limit, find the least recently used one
+    let leastRecentlyUsedIndex = 0;
+    let oldestLastUsed = this.keyLastUsed.get(0) || 0;
+
+    for (let i = 1; i < this.genAIs.length; i++) {
+      const lastUsed = this.keyLastUsed.get(i) || 0;
+      if (lastUsed < oldestLastUsed) {
+        oldestLastUsed = lastUsed;
+        leastRecentlyUsedIndex = i;
+      }
+    }
+
+    this.currentKeyIndex = leastRecentlyUsedIndex;
+    return { keyIndex: leastRecentlyUsedIndex, model: this.models[leastRecentlyUsedIndex] };
+  }
+
+  private updateKeyUsage(keyIndex: number): void {
+    const currentCount = this.keyUsageCount.get(keyIndex) || 0;
+    this.keyUsageCount.set(keyIndex, currentCount + 1);
+    this.keyLastUsed.set(keyIndex, Date.now());
+  }
+
+  private async makeRequestWithRetry<T>(
+    requestFn: (model: any) => Promise<T>,
+    maxRetries: number = 3
+  ): Promise<T> {
+    let lastError: any;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const { keyIndex, model } = this.getNextAvailableKey();
+
+      try {
+        console.log(`🔄 Using Gemini API key ${keyIndex + 1}/${this.genAIs.length} (attempt ${attempt + 1})`);
+        const result = await requestFn(model);
+        this.updateKeyUsage(keyIndex);
+        return result;
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`❌ API key ${keyIndex + 1} failed:`, error.message);
+
+        // Check if it's a rate limit error
+        if (error.message?.includes('429') || error.message?.includes('rate limit') || error.message?.includes('quota')) {
+          console.log(`⏳ Rate limit hit for key ${keyIndex + 1}, switching to next key`);
+          this.keyLastUsed.set(keyIndex, Date.now() + 300000); // 5 minute penalty
+          continue;
+        }
+
+        // For other errors, try next key immediately
+        if (attempt < maxRetries - 1) {
+          console.log(`🔄 Retrying with different API key...`);
+          continue;
+        }
+      }
+    }
+
+    throw lastError;
   }
 
   async decideNextAction(
@@ -35,11 +158,13 @@ export class GeminiService {
     );
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      return this.parseGeminiResponse(text);
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
+
+      return this.parseGeminiResponse(result);
     } catch (error) {
       console.error('Error calling Gemini API:', error);
       return {
@@ -59,10 +184,10 @@ export class GeminiService {
     maxSteps: number,
     currentStep: number
   ): string {
-    const historyText = history.length > 0 
-      ? history.map((action, index) => 
-          `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
-        ).join('\n')
+    const historyText = history.length > 0
+      ? history.map((action, index) =>
+        `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
+      ).join('\n')
       : 'No previous actions';
 
     const availableSelectors = [
@@ -132,7 +257,7 @@ If no action should be taken (goal achieved, error, or no progress possible), se
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       return {
         action: parsed.action,
         reasoning: parsed.reasoning || 'No reasoning provided',
@@ -142,7 +267,7 @@ If no action should be taken (goal achieved, error, or no progress possible), se
     } catch (error) {
       console.error('Error parsing Gemini response:', error);
       console.error('Raw response:', text);
-      
+
       return {
         action: null,
         reasoning: 'Failed to parse response',
@@ -172,9 +297,13 @@ Generate a concise, helpful tooltip (max 100 characters) that explains what the 
 `;
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().trim();
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text().trim();
+      });
+
+      return result;
     } catch (error) {
       console.error('Error generating tooltip:', error);
       return action.description;
@@ -186,7 +315,7 @@ Generate a concise, helpful tooltip (max 100 characters) that explains what the 
     previousState: DOMState,
     currentState: DOMState,
     expectedOutcome: string
-  ): Promise<{ success: boolean; reason: string }> {
+  ): Promise<{ success: boolean; reasoning: string }> {
     const prompt = `
 Validate if the action was successful:
 
@@ -200,7 +329,17 @@ BEFORE ACTION:
 AFTER ACTION:
 - URL: ${currentState.currentUrl}
 - Title: ${currentState.pageTitle}
-- New visible text: ${currentState.visibleText.slice(0, 5).join(' | ')}
+- New visible text: ${currentState.visibleText.slice(0, 10).join(' | ')}
+
+VALIDATION GUIDELINES:
+- For navigation actions: Check if the URL changed or if the expected page content is now visible
+- For click actions: Check if the element was clicked successfully (element may still be present but action completed)
+- For wait actions: Check if the expected element or content is now visible - focus on the functional presence rather than exact selector matching
+- For dynamic web applications: Elements may be implemented as buttons, divs, or other components - not just anchor tags
+- Focus on the functional outcome rather than strict selector matching
+- Consider that modern web apps use JavaScript frameworks that may render elements differently
+- For wait actions with href selectors: If the text content is visible and the element appears to be a navigation link, consider it successful even if the exact href attribute structure differs
+- Priority should be given to functional visibility over exact attribute matching
 
 Determine if the action was successful and provide reasoning.
 
@@ -212,80 +351,25 @@ RESPONSE FORMAT (JSON):
 `;
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
+
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         return {
           success: parsed.success || false,
-          reason: parsed.reason || 'No reason provided'
+          reasoning: parsed.reason || 'No reason provided'
         };
       }
-      
-      return { success: false, reason: 'Failed to parse validation response' };
+
+      return { success: false, reasoning: 'Failed to parse validation response' };
     } catch (error) {
       console.error('Error validating action:', error);
-      return { success: false, reason: 'Error during validation' };
-    }
-  }
-
-  async extractStructuredData(prompt: string): Promise<string> {
-    try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
-    } catch (error) {
-      console.error('Error extracting structured data:', error);
-      
-      // If it's a model not found error, try with a different model
-      if (error.message && error.message.includes('not found')) {
-        console.log('Trying with gemini-1.5-flash-latest model...');
-        try {
-          const fallbackModel = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
-          const result = await fallbackModel.generateContent(prompt);
-          const response = await result.response;
-          return response.text();
-        } catch (fallbackError) {
-          console.error('Fallback model also failed:', fallbackError);
-          throw new Error('Failed to extract structured data from document - no available models');
-        }
-      }
-      
-      throw new Error('Failed to extract structured data from document');
-    }
-  }
-
-  async analyzeImage(base64Image: string, prompt: string): Promise<string> {
-    try {
-      // Use Gemini's vision capabilities for image analysis
-      const visionModel = this.genAI.getGenerativeModel({ 
-        model: 'gemini-1.5-flash-latest',
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 1000,
-        }
-      });
-
-      const result = await visionModel.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data: base64Image,
-            mimeType: 'image/jpeg' // Default mime type, could be enhanced to detect actual type
-          }
-        }
-      ]);
-
-      const response = await result.response;
-      return response.text();
-    } catch (error) {
-      console.error('Error analyzing image with Gemini:', error);
-      
-      // Fallback to a generic description
-      return 'Screenshot showing UI elements and interface components';
+      return { success: false, reasoning: 'Error during validation' };
     }
   }
 
@@ -302,7 +386,7 @@ RESPONSE FORMAT (JSON):
   }> {
     try {
       const prompt = this.buildFileProcessingPrompt(featureName);
-      
+
       // Prepare file data for Gemini
       const fileParts = files.map(file => {
         const mimeType = this.getMimeType(file.originalname);
@@ -315,20 +399,22 @@ RESPONSE FORMAT (JSON):
       });
 
       // Use Gemini's file upload capabilities
-      const result = await this.model.generateContent([
-        prompt,
-        ...fileParts
-      ]);
+      const text = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent([
+          prompt,
+          ...fileParts
+        ]);
 
-      const response = await result.response;
-      const text = response.text();
-      
+        const response = await result.response;
+        return response.text();
+      });
+
       // Log the raw Gemini response for debugging
       console.log('\n🤖 GEMINI FILE PROCESSING RESPONSE:');
-      console.log('=' .repeat(60));
+      console.log('='.repeat(60));
       console.log('Raw Response:', text);
-      console.log('=' .repeat(60));
-      
+      console.log('='.repeat(60));
+
       // Parse the JSON response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -336,18 +422,18 @@ RESPONSE FORMAT (JSON):
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       // Log the parsed structured data
       console.log('\n📊 PARSED FEATURE DOCUMENTATION:');
-      console.log('=' .repeat(60));
+      console.log('='.repeat(60));
       console.log('Feature Name:', parsed.featureName);
       console.log('Description:', parsed.description);
       console.log('Steps:', parsed.steps);
       console.log('Selectors:', parsed.selectors);
       console.log('Expected Outcomes:', parsed.expectedOutcomes);
       console.log('Prerequisites:', parsed.prerequisites);
-      console.log('=' .repeat(60));
-      
+      console.log('='.repeat(60));
+
       return {
         featureName: parsed.featureName || featureName || 'Extracted Feature',
         description: parsed.description || '',
@@ -425,10 +511,12 @@ Only return valid JSON. Do not include any other text or explanations.
   async generateActionPlan(featureDocs: ProductDocs, websiteUrl: string): Promise<ActionPlan> {
     try {
       const prompt = this.buildActionPlanningPrompt(featureDocs, websiteUrl);
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
+      const text = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
+
       // Parse the JSON response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -436,7 +524,7 @@ Only return valid JSON. Do not include any other text or explanations.
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       // Validate and structure the response
       const actionPlan: ActionPlan = {
         featureName: parsed.featureName || featureDocs.featureName,
@@ -449,18 +537,20 @@ Only return valid JSON. Do not include any other text or explanations.
           typeActions: parsed.summary?.typeActions || 0,
           navigationActions: parsed.summary?.navigationActions || 0,
           waitActions: parsed.summary?.waitActions || 0,
-          screenshotActions: parsed.summary?.screenshotActions || 0,
           extractActions: parsed.summary?.extractActions || 0,
           evaluateActions: parsed.summary?.evaluateActions || 0,
         }
       };
 
+      // Validate plan completeness
+      this.validatePlanCompleteness(actionPlan, featureDocs);
+
       return actionPlan;
     } catch (error) {
       console.error('Error generating action plan:', error);
-      
+
       // Fallback to basic action plan
-      return this.createFallbackActionPlan(featureDocs);
+      return this.createFallbackActionPlan(featureDocs, websiteUrl);
     }
   }
 
@@ -485,7 +575,6 @@ PREREQUISITES:
 ${featureDocs.prerequisites?.join('\n') || 'None specified'}
 
 VISUAL CONTEXT (from images):
-${featureDocs.screenshots?.map((screenshot, index) => `Image ${index + 1}: ${screenshot.description}`).join('\n') || 'No visual context available'}
 
 CRITICAL ANALYSIS INSTRUCTIONS:
 1. **Carefully analyze BOTH text and image data together** to understand the complete user interface
@@ -494,18 +583,47 @@ CRITICAL ANALYSIS INSTRUCTIONS:
 4. **Consider the actual user flow** as shown in images vs. documented steps
 5. **Identify potential scraping challenges** like dynamic content, modals, or complex interactions
 
+**MANDATORY STEP-BY-STEP ANALYSIS:**
+- **GO THROUGH EACH DOCUMENTED STEP**: For every step in the feature documentation, create a corresponding action in the plan
+- **IDENTIFY MISSING STEPS**: Look for navigation, validation, or intermediate steps that might not be explicitly documented
+- **SEQUENCE VALIDATION**: Ensure the action sequence follows the logical user flow
+- **COMPLETE COVERAGE**: Every documented step must have at least one corresponding action in the plan
+- **NO STEP LEFT BEHIND**: Double-check that all feature steps are represented in the action plan
+
+**DRY RUN EXECUTION STRATEGY:**
+- **GO THROUGH THE ENTIRE FEATURE FLOW**: Create a plan that covers all steps of the feature from start to finish
+- **AVOID FINAL SAVE/SUBMIT ACTIONS**: Do NOT include actions that would trigger save, submit, create, update, or delete API calls
+- **STOP BEFORE PERSISTENT CHANGES**: End the plan just before any action that would permanently save data or make irreversible changes
+- **IDENTIFY SAVE TRIGGERS**: Look for buttons/elements with text like "Save", "Submit", "Create", "Update", "Delete", "Confirm", "Finish", "Complete"
+- **FOCUS ON DEMONSTRATION**: The goal is to demonstrate the feature flow without actually persisting changes
+- **INCLUDE VALIDATION STEPS**: Include form validation and data entry steps, but stop before final submission
+
+**COMPREHENSIVE STEP MAPPING REQUIREMENTS:**
+- **MANDATORY COMPLETENESS**: Every single step from the feature documentation MUST have a corresponding action in the plan
+- **DETAILED BREAKDOWN**: If a documented step is complex, break it down into multiple actions
+- **NAVIGATION COVERAGE**: Include all necessary navigation steps between different pages/sections
+- **FORM INTERACTION COVERAGE**: Include all form fields, dropdowns, checkboxes, and input interactions
+- **VALIDATION COVERAGE**: Include all validation steps, error checking, and confirmation steps
+- **SEQUENCE VERIFICATION**: Ensure the action sequence matches the logical user flow exactly
+- **NO ASSUMPTIONS**: Do not assume any steps are implicit - make everything explicit in the plan
+
 Create a comprehensive Puppeteer automation plan that includes:
 
 **NAVIGATION & SETUP:**
-- Navigate to specific URLs or routes
-- Handle authentication and login flows
+- **DO NOT ASSUME LOGIN STATE**: Never assume user is logged in or logged out. Handle both scenarios
+- **DETECT AUTHENTICATION STATE**: Check if redirected to login page and handle accordingly
+- **PREFER DOM SELECTOR INTERACTIONS**: Use click actions on navigation elements (buttons, links, menu items) rather than direct URL navigation
+- **URL NAVIGATION AS FALLBACK**: Only use direct URL navigation when DOM selectors are not available or when navigating to external pages
 - Set up proper viewport and user agent
 
-**ELEMENT INTERACTION:**
-- Click buttons, links, menu items with robust selectors
+**ELEMENT INTERACTION (PRIORITY APPROACH):**
+- **PRIMARY**: Click buttons, links, menu items with robust selectors to navigate
+- **SECONDARY**: Use direct URL navigation only when DOM selectors fail or are unavailable
 - Fill forms and input fields with realistic data
 - Handle dropdowns, checkboxes, radio buttons
 - Manage file uploads if applicable
+- **AVOID SAVE/SUBMIT ACTIONS**: Do NOT include clicks on save, submit, create, update, delete buttons
+- **STOP BEFORE PERSISTENCE**: End the plan before any action that would save data to the server
 
 **DYNAMIC CONTENT HANDLING:**
 - Wait for AJAX requests and dynamic content loading
@@ -523,7 +641,6 @@ Create a comprehensive Puppeteer automation plan that includes:
 - Verify element existence before interaction
 - Handle network timeouts and retries
 - Validate expected outcomes and states
-- Capture screenshots for debugging
 
 **ADVANCED PUPPETEER TECHNIQUES:**
 - Use page.evaluate() for complex DOM manipulation
@@ -540,16 +657,23 @@ For each action, provide:
 - **Screenshot capture** at critical points
 - **Data extraction** where applicable
 
+**SELECTOR INTERACTION PRIORITY:**
+1. **FIRST CHOICE**: Use DOM selectors to click navigation elements (buttons, links, menu items)
+2. **SECOND CHOICE**: Use DOM selectors to interact with forms and inputs
+3. **FALLBACK ONLY**: Use direct URL navigation when DOM selectors are unavailable or fail
+4. **AVOID**: Direct URL navigation for internal page transitions - always prefer clicking UI elements
+
 Return the plan in this JSON format:
 {
   "featureName": "string",
+  "totalActions": number,
   "estimatedDuration": number,
   "scrapingStrategy": "Brief description of the overall scraping approach",
   "actions": [
     {
-      "type": "click|type|navigate|wait|scroll|screenshot|select|extract|evaluate",
+      "type": "click|type|navigate|wait|scroll|select|extract|evaluate",
       "selector": "Primary CSS selector",
-      "fallbackSelector": "Alternative selector if primary fails",
+      "fallbackAction": "Alternative action with different type if needed (e.g., click -> navigate)",
       "inputText": "Text to input (for type actions)",
       "description": "Detailed description of the Puppeteer action",
       "expectedOutcome": "What should happen after this action",
@@ -566,27 +690,90 @@ Return the plan in this JSON format:
     "typeActions": number,
     "navigationActions": number,
     "waitActions": number,
-    "screenshotActions": number,
     "extractActions": number,
     "evaluateActions": number
   }
 }
 
 FOCUS ON PROGRAMMATIC SCRAPING:
-- Create executable Puppeteer code patterns
-- Use robust, maintainable selectors
-- Handle real-world web application challenges
+- **PRIORITIZE DOM INTERACTIONS**: Always prefer clicking UI elements over direct URL navigation
+- Create executable Puppeteer code patterns that mimic real user behavior
+- Use robust, maintainable selectors for all interactions
+- Handle real-world web application challenges through DOM manipulation
 - Implement proper error handling and retries
 - Consider performance and reliability
 - Plan for data extraction and storage
 - Account for dynamic content and user interactions
+- **NAVIGATION STRATEGY**: Use click actions on navigation elements (buttons, links, menus) as the primary method, with URL navigation only as a last resort
+
+**AUTHENTICATION HANDLING:**
+- **NO ASSUMPTIONS**: Do not assume user is logged in or out
+- **DETECT REDIRECTS**: If redirected to login page, handle authentication flow
+- **FLEXIBLE APPROACH**: Plan should work whether user starts logged in or not
+- **HANDLE BOTH SCENARIOS**: Include logic to detect and handle authentication state
+
+**DRY RUN EXECUTION REQUIREMENTS:**
+- **COMPLETE FEATURE COVERAGE**: Include all steps of the feature flow from start to finish
+- **AVOID DATA PERSISTENCE**: Do NOT include actions that would save, submit, create, update, or delete data
+- **DEMONSTRATION FOCUS**: The plan should demonstrate the complete user journey without making permanent changes
+- **STOP BEFORE SAVE**: End the plan just before any button or action that would trigger API calls to save data
+- **INCLUDE VALIDATION**: Include form filling, validation, and navigation steps, but stop before final submission
+
+**FINAL VALIDATION CHECKLIST (MANDATORY):**
+Before generating the final plan, you MUST verify:
+1. **STEP COUNT MATCH**: The number of actions should be sufficient to cover all documented steps
+2. **SEQUENCE LOGIC**: Each action logically follows from the previous one
+3. **COMPLETENESS AUDIT**: Every documented step has at least one corresponding action
+4. **NAVIGATION FLOW**: All necessary page transitions and navigation steps are included
+5. **FORM COVERAGE**: All form fields, inputs, and interactions are covered
+6. **VALIDATION STEPS**: All validation, confirmation, and error handling steps are included
+7. **NO GAPS**: No logical gaps exist between actions
+8. **REALISTIC FLOW**: The plan represents a realistic user journey through the feature
+
+**CRITICAL REMINDER**: This plan will be executed by an automation system. Missing steps or incorrect sequences will cause the automation to fail. Be extremely thorough and methodical in your analysis.
 `;
   }
 
-  private createFallbackActionPlan(featureDocs: ProductDocs): ActionPlan {
+  private validatePlanCompleteness(actionPlan: ActionPlan, featureDocs: ProductDocs): void {
+    console.log('🔍 Validating plan completeness...');
+    
+    // Check if we have enough actions for the documented steps
+    const documentedSteps = featureDocs.steps.length;
+    const plannedActions = actionPlan.actions.length;
+    
+    console.log(`📊 Documented steps: ${documentedSteps}, Planned actions: ${plannedActions}`);
+    
+    // Warn if there are significantly fewer actions than documented steps
+    if (plannedActions < documentedSteps * 0.5) {
+      console.warn(`⚠️  WARNING: Plan has ${plannedActions} actions but ${documentedSteps} documented steps. This may indicate missing steps.`);
+    }
+    
+    // Check for critical action types that should be present
+    const hasNavigation = actionPlan.actions.some(action => action.type === 'navigate');
+    const hasClicks = actionPlan.actions.some(action => action.type === 'click');
+    const hasTyping = actionPlan.actions.some(action => action.type === 'type');
+    
+    if (!hasNavigation && !hasClicks) {
+      console.warn('⚠️  WARNING: Plan lacks navigation or click actions. This may indicate incomplete coverage.');
+    }
+    
+    // Log plan summary for review
+    console.log('📋 Plan Summary:');
+    console.log(`   - Total actions: ${plannedActions}`);
+    console.log(`   - Click actions: ${actionPlan.summary.clickActions}`);
+    console.log(`   - Type actions: ${actionPlan.summary.typeActions}`);
+    console.log(`   - Navigation actions: ${actionPlan.summary.navigationActions}`);
+    console.log(`   - Wait actions: ${actionPlan.summary.waitActions}`);
+    
+    console.log('✅ Plan validation completed');
+  }
+
+  private createFallbackActionPlan(featureDocs: ProductDocs, websiteUrl?: string): ActionPlan {
     const basicActions: PuppeteerAction[] = [
       {
         type: 'navigate',
+        selector: undefined,
+        inputText: websiteUrl || 'https://app.gorattle.com',
         description: `Navigate to the ${featureDocs.featureName} feature`,
         expectedOutcome: 'Feature page loads successfully',
         priority: 'high',
@@ -601,14 +788,6 @@ FOCUS ON PROGRAMMATIC SCRAPING:
         estimatedDuration: 2,
         prerequisites: []
       },
-      {
-        type: 'screenshot',
-        description: 'Capture initial state of the feature',
-        expectedOutcome: 'Screenshot saved for documentation',
-        priority: 'medium',
-        estimatedDuration: 1,
-        prerequisites: []
-      }
     ];
 
     return {
@@ -622,10 +801,149 @@ FOCUS ON PROGRAMMATIC SCRAPING:
         typeActions: 0,
         navigationActions: 1,
         waitActions: 1,
-        screenshotActions: 1,
         extractActions: 0,
         evaluateActions: 0
       }
     };
+  }
+
+  async analyzeCurrentState(
+    domState: DOMState,
+    nextAction: PuppeteerAction,
+    featureDocs: ProductDocs,
+    history: Action[],
+    currentContext: string
+  ): Promise<{ context: string; reasoning: string; shouldProceed: boolean }> {
+    const prompt = this.buildAnalysisPrompt(
+      domState,
+      nextAction,
+      featureDocs,
+      history,
+      currentContext
+    );
+
+    try {
+      const text = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
+
+      return this.parseAnalysisResponse(text);
+    } catch (error) {
+      console.error('Error analyzing current state:', error);
+      return {
+        context: currentContext,
+        reasoning: 'Error analyzing current state',
+        shouldProceed: false
+      };
+    }
+  }
+
+  private buildAnalysisPrompt(
+    domState: DOMState,
+    nextAction: PuppeteerAction,
+    featureDocs: ProductDocs,
+    history: Action[],
+    currentContext: string
+  ): string {
+    const historyText = history.length > 0
+      ? history.map((action, index) =>
+        `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
+      ).join('\n')
+      : 'No previous actions';
+
+    return `
+You are an AI assistant analyzing the current state of a web page to determine if the next planned action should proceed.
+
+CURRENT PAGE STATE:
+- URL: ${domState.currentUrl}
+- Title: ${domState.pageTitle}
+- Available clickable elements: ${domState.clickableSelectors.slice(0, 10).join(', ')}
+- Available input elements: ${domState.inputSelectors.slice(0, 5).join(', ')}
+- Visible text on page: ${domState.visibleText.slice(0, 15).join(' | ')}
+
+NEXT PLANNED ACTION:
+- Type: ${nextAction.type}
+- Selector: ${nextAction.selector}
+- Description: ${nextAction.description}
+- Expected Outcome: ${nextAction.expectedOutcome}
+- Priority: ${nextAction.priority}
+
+FEATURE CONTEXT:
+- Feature: ${featureDocs.featureName}
+- Description: ${featureDocs.description}
+- Steps: ${featureDocs.steps.join('\n')}
+
+PREVIOUS ACTIONS (${history.length}):
+${historyText}
+
+CURRENT CONTEXT: ${currentContext}
+
+INSTRUCTIONS:
+1. Analyze if the current page state is suitable for the next action
+2. Check if the required elements are present and accessible
+3. Consider the context and previous actions
+4. Determine if we should proceed with the action or adapt the strategy
+5. Provide reasoning for your decision
+
+RESPONSE FORMAT (JSON):
+{
+  "context": "Updated context based on current analysis",
+  "reasoning": "Why you made this decision",
+  "shouldProceed": true/false
+}
+`;
+  }
+
+  private parseAnalysisResponse(text: string): { context: string; reasoning: string; shouldProceed: boolean } {
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      return {
+        context: parsed.context || 'No context provided',
+        reasoning: parsed.reasoning || 'No reasoning provided',
+        shouldProceed: parsed.shouldProceed !== false
+      };
+    } catch (error) {
+      console.error('Error parsing analysis response:', error);
+      console.error('Raw response:', text);
+
+      return {
+        context: 'Error parsing response',
+        reasoning: 'Failed to parse analysis response',
+        shouldProceed: false
+      };
+    }
+  }
+
+  // Utility method to get API key status for monitoring
+  getApiKeyStatus(): { keyIndex: number; usageCount: number; lastUsed: number; totalKeys: number }[] {
+    const status = [];
+    for (let i = 0; i < this.genAIs.length; i++) {
+      status.push({
+        keyIndex: i,
+        usageCount: this.keyUsageCount.get(i) || 0,
+        lastUsed: this.keyLastUsed.get(i) || 0,
+        totalKeys: this.genAIs.length
+      });
+    }
+    return status;
+  }
+
+  // Method to reset key usage (useful for testing or manual reset)
+  resetKeyUsage(): void {
+    this.keyUsageCount.clear();
+    this.keyLastUsed.clear();
+    this.genAIs.forEach((_, index) => {
+      this.keyUsageCount.set(index, 0);
+      this.keyLastUsed.set(index, 0);
+    });
+    console.log('🔄 API key usage counters reset');
   }
 }
