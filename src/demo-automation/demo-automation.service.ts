@@ -89,6 +89,10 @@ export class DemoAutomationService {
         credentials
       );
 
+      // Get page info before cleanup
+      const pageInfo = await this.getPageInfo();
+      const pageTitle = await this.puppeteerWorker.getPageTitle() || 'Tour Page';
+
       // Build response
       const processingTime = Date.now() - startTime;
 
@@ -97,7 +101,7 @@ export class DemoAutomationService {
         demoName: `Tour-${tourConfig.featureName}-${demoId.slice(0, 8)}`,
         websiteUrl,
         loginStatus: 'success',
-        pageInfo: await this.getPageInfo(),
+        pageInfo,
         summary: {
           processingTime,
           loginAttempted: true,
@@ -109,7 +113,7 @@ export class DemoAutomationService {
           crawlTime: processingTime,
           pages: [{
             url: result.finalUrl,
-            title: await this.puppeteerWorker.getPageTitle() || 'Tour Page',
+            title: pageTitle,
             html: '', // Not storing full HTML for demo
             scrapedData: result.tourSteps,
             timestamp: new Date().toISOString(),
@@ -263,6 +267,10 @@ export class DemoAutomationService {
         credentials
       );
 
+      // Get page info before cleanup
+      const pageInfo = await this.getPageInfo();
+      const pageTitle = await this.puppeteerWorker.getPageTitle() || 'Tour Page';
+
       // Build response
       const processingTime = Date.now() - startTime;
 
@@ -271,7 +279,7 @@ export class DemoAutomationService {
         demoName: `Tour-${featureDocs.featureName}-${demoId.slice(0, 8)}`,
         websiteUrl,
         loginStatus: 'success',
-        pageInfo: await this.getPageInfo(),
+        pageInfo,
         summary: {
           processingTime,
           loginAttempted: true,
@@ -283,7 +291,7 @@ export class DemoAutomationService {
           crawlTime: processingTime,
           pages: [{
             url: result.finalUrl,
-            title: await this.puppeteerWorker.getPageTitle() || 'Tour Page',
+            title: pageTitle,
             html: '', // Not storing full HTML for demo
             scrapedData: result.tourSteps,
             timestamp: new Date().toISOString(),
@@ -364,6 +372,10 @@ export class DemoAutomationService {
         credentials
       );
 
+      // Get page info before cleanup
+      const pageInfo = await this.getPageInfo();
+      const pageTitle = await this.puppeteerWorker.getPageTitle() || 'Tour Page';
+
       // Build response
       const processingTime = Date.now() - startTime;
 
@@ -372,7 +384,7 @@ export class DemoAutomationService {
         demoName: `Tour-${featureDocs.featureName}-${demoId.slice(0, 8)}`,
         websiteUrl,
         loginStatus: 'success',
-        pageInfo: await this.getPageInfo(),
+        pageInfo,
         summary: {
           processingTime,
           loginAttempted: true,
@@ -384,7 +396,7 @@ export class DemoAutomationService {
           crawlTime: processingTime,
           pages: [{
             url: result.finalUrl,
-            title: await this.puppeteerWorker.getPageTitle() || 'Tour Page',
+            title: pageTitle,
             html: '', // Not storing full HTML for demo
             scrapedData: result.tourSteps,
             timestamp: new Date().toISOString(),

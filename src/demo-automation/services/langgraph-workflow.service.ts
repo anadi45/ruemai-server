@@ -28,35 +28,42 @@ export class LangGraphWorkflowService {
   private createWorkflow(): any {
     // Create a simplified workflow using a state machine approach
     // Since LangGraphJS API is complex, we'll implement a custom workflow
+    const self = this;
     return {
       async invoke(initialState: DemoAutomationState, options?: any): Promise<DemoAutomationState> {
         let state = { ...initialState };
         
         try {
           // Initialize
-          state = await this.initializeNode(state);
+          const initResult = await self.initializeNode(state);
+          state = { ...state, ...initResult };
           
           // Main loop
           while (!state.isComplete && state.currentStep < state.totalSteps) {
             // Analyze
-            state = await this.analyzeNode(state);
+            const analyzeResult = await self.analyzeNode(state);
+            state = { ...state, ...analyzeResult };
             
             if (state.isComplete) break;
             
             // Execute
-            state = await this.executeNode(state);
+            const executeResult = await self.executeNode(state);
+            state = { ...state, ...executeResult };
             
             // Validate
-            state = await this.validateNode(state);
+            const validateResult = await self.validateNode(state);
+            state = { ...state, ...validateResult };
             
             state.currentStep++;
           }
           
           // Complete
-          state = await this.completeNode(state);
+          const completeResult = await self.completeNode(state);
+          state = { ...state, ...completeResult };
           
         } catch (error) {
-          state = await this.errorNode(state);
+          const errorResult = await self.errorNode(state);
+          state = { ...state, ...errorResult };
           state.error = error instanceof Error ? error.message : 'Unknown error';
         }
         
