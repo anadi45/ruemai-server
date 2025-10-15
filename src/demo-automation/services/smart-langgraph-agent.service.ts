@@ -1356,47 +1356,143 @@ export class SmartLangGraphAgentService {
         
         if (isCriticalAction) {
           console.log(`🚨 CRITICAL ACTION VALIDATION DETECTED: ${nextAction.type} - ${nextAction.description}`);
-          console.error('💥 CRITICAL ACTION VALIDATION FAILED - STOPPING AGENT EXECUTION');
-          console.error(`Critical action validation failed: ${nextAction.type} - ${nextAction.description}`);
-          console.error(`Validation reason: ${validationReasoning}`);
           
-          const tourStep: TourStep = {
-            order: state.currentActionIndex + 1,
-            action: {
-              type: nextAction.type,
-              selector: nextAction.selector,
-              inputText: nextAction.inputText,
-              description: nextAction.description
-            },
-            selector: nextAction.selector || '',
-            description: nextAction.description,
-            tooltip: 'Critical action validation failed - stopping execution',
-            timestamp: Date.now(),
-            success: false,
-            errorMessage: `CRITICAL VALIDATION FAILURE (STOPPING): ${validationReasoning}`
-          };
-          
-          return {
-            ...state,
-            failedActions: [...state.failedActions, state.currentActionIndex],
-            tourSteps: [...state.tourSteps, tourStep],
-            isComplete: true,
-            success: false,
-            error: `Critical action validation failed: ${nextAction.type} - ${validation.reasoning}`,
-            endTime: Date.now()
-          };
+          // For critical actions, also use intelligent retry but with stricter limits
+          if (state.retryCount < state.maxRetries) {
+            console.log(`🔄 Critical action validation failed, attempting intelligent retry (${state.retryCount + 1}/${state.maxRetries})...`);
+            
+            try {
+              // Use LLM to analyze failure and regenerate improved action
+              const retryAnalysis = await this.geminiService.analyzeFailureAndRegenerateAction(
+                nextAction,
+                validationReasoning,
+                state.domState!,
+                state.goal,
+                state.retryCount + 1
+              );
+              
+              console.log(`🧠 Critical action intelligent retry analysis:`, {
+                analysis: retryAnalysis.analysis,
+                improvedAction: retryAnalysis.improvedAction,
+                recommendations: retryAnalysis.recommendations
+              });
+              
+              // Update the action plan with the improved action
+              const updatedActionPlan = {
+                ...state.actionPlan,
+                actions: state.actionPlan.actions.map((action, index) => 
+                  index === state.currentActionIndex ? {
+                    ...retryAnalysis.improvedAction,
+                    expectedOutcome: action.expectedOutcome || retryAnalysis.improvedAction.description,
+                    priority: action.priority || 'medium',
+                    estimatedDuration: action.estimatedDuration || 5
+                  } : action
+                )
+              };
+              
+              return {
+                ...state,
+                retryCount: state.retryCount + 1,
+                actionPlan: updatedActionPlan,
+                currentActionIndex: state.currentActionIndex - 1, // Retry the same action index
+                reasoning: `Critical action intelligent retry ${state.retryCount + 1}: ${retryAnalysis.analysis}`
+              };
+            } catch (error) {
+              console.error('Critical action intelligent retry failed:', error);
+              console.log('🔄 Critical action falling back to simple retry...');
+              
+              return {
+                ...state,
+                retryCount: state.retryCount + 1,
+                currentActionIndex: state.currentActionIndex - 1 // Simple retry fallback
+              };
+            }
+          } else {
+            // After max retries for critical action, stop execution
+            console.error('💥 CRITICAL ACTION VALIDATION FAILED AFTER MAX RETRIES - STOPPING AGENT EXECUTION');
+            console.error(`Critical action validation failed: ${nextAction.type} - ${nextAction.description}`);
+            console.error(`Validation reason: ${validationReasoning}`);
+            
+            const tourStep: TourStep = {
+              order: state.currentActionIndex + 1,
+              action: {
+                type: nextAction.type,
+                selector: nextAction.selector,
+                inputText: nextAction.inputText,
+                description: nextAction.description
+              },
+              selector: nextAction.selector || '',
+              description: nextAction.description,
+              tooltip: 'Critical action validation failed after max retries - stopping execution',
+              timestamp: Date.now(),
+              success: false,
+              errorMessage: `CRITICAL VALIDATION FAILURE AFTER MAX RETRIES: ${validationReasoning}`
+            };
+            
+            return {
+              ...state,
+              failedActions: [...state.failedActions, state.currentActionIndex],
+              tourSteps: [...state.tourSteps, tourStep],
+              isComplete: true,
+              success: false,
+              error: `Critical action validation failed after max retries: ${nextAction.type} - ${validation.reasoning}`,
+              endTime: Date.now()
+            };
+          }
         }
         
-        // For non-critical actions, check retry count
+        // For non-critical actions, check retry count and use intelligent retry
         if (state.retryCount < state.maxRetries) {
-          console.log('🔄 Action validation failed, will retry...');
-          return {
-            ...state,
-            retryCount: state.retryCount + 1,
-            currentActionIndex: state.currentActionIndex - 1 // Retry the same action
-          };
+          console.log(`🔄 Action validation failed, attempting intelligent retry (${state.retryCount + 1}/${state.maxRetries})...`);
+          
+          try {
+            // Use LLM to analyze failure and regenerate improved action
+            const retryAnalysis = await this.geminiService.analyzeFailureAndRegenerateAction(
+              nextAction,
+              validationReasoning,
+              state.domState!,
+              state.goal,
+              state.retryCount + 1
+            );
+            
+            console.log(`🧠 Intelligent retry analysis:`, {
+              analysis: retryAnalysis.analysis,
+              improvedAction: retryAnalysis.improvedAction,
+              recommendations: retryAnalysis.recommendations
+            });
+            
+            // Update the action plan with the improved action
+            const updatedActionPlan = {
+              ...state.actionPlan,
+              actions: state.actionPlan.actions.map((action, index) => 
+                index === state.currentActionIndex ? {
+                  ...retryAnalysis.improvedAction,
+                  expectedOutcome: action.expectedOutcome || retryAnalysis.improvedAction.description,
+                  priority: action.priority || 'medium',
+                  estimatedDuration: action.estimatedDuration || 5
+                } : action
+              )
+            };
+            
+            return {
+              ...state,
+              retryCount: state.retryCount + 1,
+              actionPlan: updatedActionPlan,
+              currentActionIndex: state.currentActionIndex - 1, // Retry the same action index
+              reasoning: `Intelligent retry ${state.retryCount + 1}: ${retryAnalysis.analysis}`
+            };
+          } catch (error) {
+            console.error('Intelligent retry failed:', error);
+            console.log('🔄 Falling back to simple retry...');
+            
+            return {
+              ...state,
+              retryCount: state.retryCount + 1,
+              currentActionIndex: state.currentActionIndex - 1 // Simple retry fallback
+            };
+          }
         } else {
-          console.log('⚠️  Non-critical action validation failed, continuing...');
+          console.log('⚠️  Non-critical action validation failed after max retries, continuing...');
         }
       } else {
         // Log successful validation

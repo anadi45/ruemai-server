@@ -63,6 +63,100 @@ export class GeminiService {
     return response;
   }
 
+  /**
+   * Analyze action failure and generate improved action using LLM
+   * This enables intelligent retry with learning from failures
+   */
+  async analyzeFailureAndRegenerateAction(
+    failedAction: Action,
+    validationReasoning: string,
+    currentDOMState: DOMState,
+    goal: string,
+    retryAttempt: number
+  ): Promise<{ improvedAction: Action; analysis: string; recommendations: string[] }> {
+    const prompt = `
+You are an intelligent automation agent that learns from failures. Analyze the failed action and generate an improved version.
+
+CONTEXT:
+- Goal: ${goal}
+- Failed Action: ${failedAction.type} - ${failedAction.description}
+- Validation Failure Reason: ${validationReasoning}
+- Retry Attempt: ${retryAttempt}/3
+- Current URL: ${currentDOMState.currentUrl}
+- Page Title: ${currentDOMState.pageTitle}
+
+CURRENT PAGE STATE:
+- Available clickable elements: ${currentDOMState.clickableSelectors.slice(0, 10).join(', ')}
+- Available input elements: ${currentDOMState.inputSelectors.slice(0, 5).join(', ')}
+- Visible text snippets: ${currentDOMState.visibleText.slice(0, 10).join(', ')}
+
+ANALYSIS INSTRUCTIONS:
+1. Analyze WHY the original action failed
+2. Identify what went wrong (selector issues, navigation problems, timing, etc.)
+3. Consider the current page state and available elements
+4. Generate an improved action that addresses the failure
+5. Provide specific recommendations for success
+
+Return JSON with:
+{
+  "analysis": "Detailed analysis of why the action failed and what needs to be improved",
+  "improvedAction": {
+    "type": "click|type|navigate|wait|extract|evaluate",
+    "selector": "Improved selector or navigation target",
+    "inputText": "Text to input (if applicable)",
+    "description": "Clear description of the improved action",
+    "reasoning": "Why this improved action should work"
+  },
+  "recommendations": [
+    "Specific recommendation 1",
+    "Specific recommendation 2"
+  ]
+}
+
+Focus on:
+- Better selectors based on current page state
+- Alternative navigation approaches
+- Timing considerations
+- Element discovery strategies
+- Fallback approaches
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
+
+      console.log(`🧠 LLM Failure Analysis (Attempt ${retryAttempt}):`, {
+        analysis: parsed.analysis,
+        improvedAction: parsed.improvedAction,
+        recommendations: parsed.recommendations
+      });
+
+      return {
+        improvedAction: parsed.improvedAction,
+        analysis: parsed.analysis,
+        recommendations: parsed.recommendations || []
+      };
+    } catch (error) {
+      console.error('Failed to analyze failure and regenerate action:', error);
+      
+      // Fallback: return the original action with basic improvements
+      return {
+        improvedAction: {
+          ...failedAction,
+          description: `${failedAction.description} (Retry ${retryAttempt} - ${validationReasoning})`
+        },
+        analysis: `Unable to analyze failure: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        recommendations: ['Retry with original action', 'Check page state manually']
+      };
+    }
+  }
+
   private getApiKeys(): string[] {
     // Support both single key and multiple keys
     const singleKey = process.env.GEMINI_API_KEY;
