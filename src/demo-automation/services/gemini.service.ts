@@ -373,6 +373,73 @@ RESPONSE FORMAT (JSON):
     }
   }
 
+  async validateActionSuccessWithScreenshot(
+    action: Action,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    expectedOutcome: string
+  ): Promise<{ success: boolean; reasoning: string }> {
+    const prompt = `
+You are an AI assistant that validates whether an action was successful by looking at a screenshot.
+
+ACTION PERFORMED: ${action.type} - ${action.description}
+EXPECTED OUTCOME: ${expectedOutcome}
+
+CURRENT STATE:
+- URL: ${currentUrl}
+- Title: ${pageTitle}
+- Screenshot: [Image provided below]
+
+QUESTIONS TO ANSWER:
+1. What do you see in the screenshot? Describe the current state of the page.
+2. Does the page look like it's in the expected state after the action?
+3. Are there any visual indicators that the action was successful?
+4. Do you see any errors, loading states, or issues that suggest the action failed?
+5. What evidence in the screenshot supports or contradicts the expected outcome?
+
+Please analyze the screenshot and provide your assessment in this JSON format:
+{
+  "pageState": "Description of what you see in the screenshot",
+  "successIndicators": ["Visual signs that the action succeeded"],
+  "failureIndicators": ["Visual signs that the action failed"],
+  "evidence": "Specific evidence from the screenshot that supports your conclusion",
+  "success": true/false,
+  "reason": "Explanation of why you think it succeeded or failed based on what you see"
+}
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: screenshot,
+              mimeType: 'image/png'
+            }
+          }
+        ]);
+        const response = await result.response;
+        return response.text();
+      });
+
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          success: parsed.success || false,
+          reasoning: parsed.reason || 'No reason provided'
+        };
+      }
+
+      return { success: false, reasoning: 'Failed to parse validation response' };
+    } catch (error) {
+      console.error('Error validating action with screenshot:', error);
+      return { success: false, reasoning: 'Error during validation' };
+    }
+  }
+
   async processFilesDirectly(
     files: Express.Multer.File[],
     featureName?: string
@@ -886,6 +953,51 @@ Before generating the final plan, you MUST verify:
     }
   }
 
+  async analyzeCurrentStateWithScreenshot(
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    nextAction: PuppeteerAction,
+    featureDocs: ProductDocs,
+    history: Action[],
+    currentContext: string
+  ): Promise<{ context: string; reasoning: string; shouldProceed: boolean }> {
+    const prompt = this.buildScreenshotAnalysisPrompt(
+      screenshot,
+      currentUrl,
+      pageTitle,
+      nextAction,
+      featureDocs,
+      history,
+      currentContext
+    );
+
+    try {
+      const text = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: screenshot,
+              mimeType: 'image/png'
+            }
+          }
+        ]);
+        const response = await result.response;
+        return response.text();
+      });
+
+      return this.parseAnalysisResponse(text);
+    } catch (error) {
+      console.error('Error analyzing current state with screenshot:', error);
+      return {
+        context: currentContext,
+        reasoning: 'Error analyzing current state with screenshot',
+        shouldProceed: false
+      };
+    }
+  }
+
   private buildAnalysisPrompt(
     domState: DOMState,
     nextAction: PuppeteerAction,
@@ -937,6 +1049,64 @@ RESPONSE FORMAT (JSON):
 {
   "context": "Updated context based on current analysis",
   "reasoning": "Why you made this decision",
+  "shouldProceed": true/false
+}
+`;
+  }
+
+  private buildScreenshotAnalysisPrompt(
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    nextAction: PuppeteerAction,
+    featureDocs: ProductDocs,
+    history: Action[],
+    currentContext: string
+  ): string {
+    const historyText = history.length > 0
+      ? history.map((action, index) =>
+        `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
+      ).join('\n')
+      : 'No previous actions';
+
+    return `
+You are an AI assistant analyzing a screenshot of a web page to help with automation decisions.
+
+CURRENT PAGE STATE:
+- URL: ${currentUrl}
+- Title: ${pageTitle}
+- Screenshot: [Image provided below]
+
+NEXT PLANNED ACTION:
+- Type: ${nextAction.type}
+- Description: ${nextAction.description}
+- Expected Outcome: ${nextAction.expectedOutcome}
+
+FEATURE CONTEXT:
+- Feature: ${featureDocs.featureName}
+- Description: ${featureDocs.description}
+
+PREVIOUS ACTIONS (${history.length}):
+${historyText}
+
+CURRENT CONTEXT: ${currentContext}
+
+QUESTIONS TO ANSWER:
+1. What do you see in the screenshot? Describe the main elements and layout.
+2. Can you see any elements that might match the target action: "${nextAction.description}"?
+3. What is the current state of the page? Is it ready for the next action?
+4. Are there any errors, loading states, or issues visible in the screenshot?
+5. What would be the best way to proceed based on what you see?
+
+Please provide your analysis in this JSON format:
+{
+  "pageDescription": "What you see in the screenshot",
+  "targetElements": ["Elements that might match the target action"],
+  "pageState": "Current state of the page (ready, loading, error, etc.)",
+  "issues": ["Any problems or issues visible"],
+  "recommendations": ["What should be done next"],
+  "context": "Updated context based on visual analysis",
+  "reasoning": "Why you made this decision based on the screenshot",
   "shouldProceed": true/false
 }
 `;
@@ -1063,6 +1233,179 @@ Focus on high-confidence matches that are likely to be the intended element.
         recommendations: ['AI analysis failed - using fallback strategies']
       };
     }
+  }
+
+  /**
+   * Analyze page screenshot to find elements that match the target description
+   * This method uses visual analysis to understand what's on the page and find target elements
+   */
+  async analyzePageForElementWithScreenshot(
+    targetDescription: string,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    context: string
+  ): Promise<{
+    suggestedSelectors: Array<{ selector: string; confidence: number; reasoning: string }>;
+    recommendations: string[];
+  }> {
+    const prompt = `
+You are an expert web automation AI that analyzes screenshots to help with element discovery.
+
+TARGET: Find elements that match: "${targetDescription}"
+
+CONTEXT:
+${context}
+
+CURRENT PAGE STATE:
+- URL: ${currentUrl}
+- Title: ${pageTitle}
+- Screenshot: [Image provided below]
+
+TASK: Look at the screenshot and help identify elements that match the target description.
+
+Based on what you see in the screenshot, provide:
+1. A description of what elements you can see that might match the target
+2. Any text content that could help identify the target element
+3. Visual characteristics that could be used to locate the element
+4. Suggestions for how to interact with the page
+
+Return JSON with your analysis:
+{
+  "visibleElements": [
+    {
+      "description": "string - what you see in the screenshot",
+      "text": "string - any visible text",
+      "type": "string - button, link, input, etc.",
+      "location": "string - where it appears on screen"
+    }
+  ],
+  "targetMatches": [
+    {
+      "description": "string - elements that might match the target",
+      "confidence": number (0-1),
+      "reasoning": "string - why this might be the target"
+    }
+  ],
+  "recommendations": ["string - suggestions for next steps"]
+}
+
+Focus on describing what you actually see in the screenshot rather than trying to generate CSS selectors.
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: screenshot,
+              mimeType: 'image/png'
+            }
+          }
+        ]);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      const parsed = JSON.parse(result);
+      
+      // Convert the visual analysis into selector suggestions
+      const suggestedSelectors = this.convertVisualAnalysisToSelectors(parsed, targetDescription);
+      
+      return {
+        suggestedSelectors,
+        recommendations: parsed.recommendations || []
+      };
+    } catch (error) {
+      console.error('Screenshot element analysis failed:', error);
+      return {
+        suggestedSelectors: [],
+        recommendations: ['Screenshot analysis failed - using fallback strategies']
+      };
+    }
+  }
+
+  /**
+   * Convert visual analysis results into CSS selector suggestions
+   */
+  private convertVisualAnalysisToSelectors(
+    analysis: any,
+    targetDescription: string
+  ): Array<{ selector: string; confidence: number; reasoning: string }> {
+    const selectors: Array<{ selector: string; confidence: number; reasoning: string }> = [];
+    
+    if (analysis.targetMatches && analysis.targetMatches.length > 0) {
+      for (const match of analysis.targetMatches) {
+        // Generate common selectors based on the visual analysis
+        const textBasedSelectors = this.generateTextBasedSelectors(match.description, match.text);
+        const typeBasedSelectors = this.generateTypeBasedSelectors(match.type);
+        
+        selectors.push(...textBasedSelectors.map(selector => ({
+          selector,
+          confidence: match.confidence * 0.8, // Slightly lower confidence for generated selectors
+          reasoning: `Visual analysis: ${match.reasoning}`
+        })));
+        
+        selectors.push(...typeBasedSelectors.map(selector => ({
+          selector,
+          confidence: match.confidence * 0.6,
+          reasoning: `Type-based from visual analysis: ${match.reasoning}`
+        })));
+      }
+    }
+    
+    return selectors;
+  }
+
+  /**
+   * Generate text-based selectors from visual analysis
+   */
+  private generateTextBasedSelectors(description: string, text: string): string[] {
+    const selectors: string[] = [];
+    
+    if (text) {
+      // Button with text
+      selectors.push(`button:contains("${text}")`);
+      selectors.push(`input[value="${text}"]`);
+      selectors.push(`a:contains("${text}")`);
+      
+      // Generic text-based selectors
+      selectors.push(`*:contains("${text}")`);
+    }
+    
+    return selectors;
+  }
+
+  /**
+   * Generate type-based selectors from visual analysis
+   */
+  private generateTypeBasedSelectors(type: string): string[] {
+    const selectors: string[] = [];
+    
+    switch (type?.toLowerCase()) {
+      case 'button':
+        selectors.push('button');
+        selectors.push('input[type="button"]');
+        selectors.push('input[type="submit"]');
+        selectors.push('[role="button"]');
+        break;
+      case 'link':
+        selectors.push('a');
+        selectors.push('[role="link"]');
+        break;
+      case 'input':
+        selectors.push('input');
+        selectors.push('textarea');
+        selectors.push('select');
+        break;
+      case 'form':
+        selectors.push('form');
+        selectors.push('[role="form"]');
+        break;
+    }
+    
+    return selectors;
   }
 
   /**

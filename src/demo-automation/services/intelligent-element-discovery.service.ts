@@ -62,6 +62,53 @@ export class IntelligentElementDiscoveryService {
   }
 
   /**
+   * Intelligently discover elements using screenshot analysis
+   * This method uses visual analysis to find elements based on action description
+   */
+  async discoverElementWithScreenshot(
+    action: PuppeteerAction,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    context?: string
+  ): Promise<IntelligentElementDiscovery> {
+    console.log(`🔍 Intelligent element discovery with screenshot for: "${action.description}"`);
+    
+    const targetDescription = this.extractTargetDescription(action);
+    const searchContext = this.buildScreenshotSearchContext(action, currentUrl, pageTitle, context);
+    
+    // Use screenshot-based discovery strategy
+    try {
+      const discovery = await this.screenshotBasedElementDiscovery(
+        targetDescription,
+        screenshot,
+        currentUrl,
+        pageTitle,
+        searchContext
+      );
+      
+      if (discovery.bestMatch && discovery.bestMatch.confidence > 0.3) {
+        console.log(`✅ Element found using screenshot analysis: ${discovery.bestMatch.selector}`);
+        return discovery;
+      }
+      
+      return discovery;
+    } catch (error) {
+      console.warn(`Screenshot-based discovery failed:`, error);
+      
+      // Fallback to basic discovery
+      return {
+        targetDescription,
+        foundElements: [],
+        bestMatch: null,
+        searchStrategy: 'screenshot-fallback',
+        searchContext,
+        recommendations: ['Screenshot analysis failed. Consider using DOM-based discovery or checking if the page has loaded correctly.']
+      };
+    }
+  }
+
+  /**
    * Semantic element discovery using AI to understand the intent
    */
   private async semanticElementDiscovery(
@@ -369,6 +416,85 @@ export class IntelligentElementDiscoveryService {
     }
 
     return context.join('\n');
+  }
+
+  /**
+   * Build search context for screenshot-based AI analysis
+   */
+  private buildScreenshotSearchContext(
+    action: PuppeteerAction,
+    currentUrl: string,
+    pageTitle: string,
+    additionalContext?: string
+  ): string {
+    const context = [
+      `Action: ${action.description}`,
+      `Expected Outcome: ${action.expectedOutcome}`,
+      `Current URL: ${currentUrl}`,
+      `Page Title: ${pageTitle}`,
+      `Screenshot: [Image provided for visual analysis]`
+    ];
+
+    if (additionalContext) {
+      context.push(`Additional context: ${additionalContext}`);
+    }
+
+    return context.join('\n');
+  }
+
+  /**
+   * Screenshot-based element discovery using visual analysis
+   */
+  private async screenshotBasedElementDiscovery(
+    targetDescription: string,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    searchContext: string
+  ): Promise<IntelligentElementDiscovery> {
+    console.log('📸 Using screenshot-based discovery strategy...');
+    
+    // Use Gemini to analyze the screenshot and find elements
+    const analysis = await this.geminiService.analyzePageForElementWithScreenshot(
+      targetDescription,
+      screenshot,
+      currentUrl,
+      pageTitle,
+      searchContext
+    );
+
+    const foundElements: ElementMatch[] = [];
+    
+    if (analysis.suggestedSelectors && analysis.suggestedSelectors.length > 0) {
+      for (const suggestion of analysis.suggestedSelectors) {
+        try {
+          const element = await this.puppeteerWorker.getElement(suggestion.selector);
+          if (element) {
+            const match = await this.analyzeElement(element, suggestion.selector, suggestion.reasoning);
+            if (match) {
+              foundElements.push(match);
+            }
+          }
+        } catch (error) {
+          console.warn(`Failed to analyze suggested selector: ${suggestion.selector}`, error);
+        }
+      }
+    }
+
+    const bestMatch = foundElements.length > 0 
+      ? foundElements.reduce((best, current) => 
+          current.confidence > best.confidence ? current : best
+        )
+      : null;
+
+    return {
+      targetDescription,
+      foundElements,
+      bestMatch,
+      searchStrategy: 'screenshot-analysis',
+      searchContext,
+      recommendations: analysis.recommendations || ['Screenshot analysis completed']
+    };
   }
 
   /**

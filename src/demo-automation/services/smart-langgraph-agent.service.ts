@@ -259,14 +259,11 @@ export class SmartLangGraphAgentService {
     // Intelligent Element Discovery Tool
     this.tools.set('discover_element', {
       name: 'discover_element',
-      description: 'Intelligently discover and correlate elements on the page based on action description',
-      parameters: { actionDescription: 'string', actionType: 'string', context: 'string' },
+      description: 'Intelligently discover and correlate elements on the page based on action description using visual analysis',
+      parameters: { actionDescription: 'string', actionType: 'string', context: 'string', screenshot: 'string', currentUrl: 'string', pageTitle: 'string' },
       execute: async (params, state) => {
         try {
           console.log(`🔍 Intelligent element discovery for: "${params.actionDescription}"`);
-          
-          // Get current DOM state
-          const currentDomState = await this.puppeteerWorker.getDOMState();
           
           // Create a mock action for discovery
           const mockAction: PuppeteerAction = {
@@ -278,10 +275,12 @@ export class SmartLangGraphAgentService {
             prerequisites: []
           };
           
-          // Use intelligent element discovery
-          const discovery = await this.elementDiscovery.discoverElement(
+          // Use intelligent element discovery with screenshot
+          const discovery = await this.elementDiscovery.discoverElementWithScreenshot(
             mockAction,
-            currentDomState,
+            params.screenshot,
+            params.currentUrl,
+            params.pageTitle,
             params.context
           );
           
@@ -382,12 +381,15 @@ export class SmartLangGraphAgentService {
         await this.puppeteerWorker.initialize();
       }
       
-      // Get initial DOM state
-      const domState = await this.puppeteerWorker.getDOMState(true);
+      // Take initial screenshot for visual analysis
+      const initialScreenshot = await this.puppeteerWorker.takeScreenshot();
+      const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+      const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+      
+      console.log('📸 Initial screenshot captured for visual analysis');
       
       return {
         ...state,
-        domState,
         startTime: Date.now(),
         currentActionIndex: 0,
         completedActions: [],
@@ -411,8 +413,10 @@ export class SmartLangGraphAgentService {
     console.log('🧠 Analyzing current state and planning next action...');
     
     try {
-      // Get current DOM state
-      const currentDomState = await this.puppeteerWorker.getDOMState(true);
+      // Take screenshot instead of getting DOM state
+      const screenshot = await this.puppeteerWorker.takeScreenshot();
+      const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+      const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
       // Get the next action from the plan
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
@@ -425,43 +429,18 @@ export class SmartLangGraphAgentService {
         };
       }
       
-      // Analyze DOM changes if we have previous state
-      let domAnalysis: DOMAnalysis | undefined;
-      if (state.domState) {
-        domAnalysis = await this.analyzeDOMChanges(state.domState, currentDomState, nextAction);
-        console.log('📊 DOM Analysis for planning:', {
-          urlChanged: domAnalysis.urlChanged,
-          newClickableElements: domAnalysis.newClickableElements.length,
-          hasErrors: domAnalysis.hasErrors,
-          actionImpact: domAnalysis.actionImpact
-        });
-      }
-      
-      // Build enhanced context with DOM analysis
+      // Build enhanced context with screenshot analysis
       let enhancedContext = state.currentContext;
-      if (domAnalysis) {
-        enhancedContext += `\n\nDOM Analysis Results:\n`;
-        enhancedContext += `- Action Impact: ${domAnalysis.actionImpact}\n`;
-        if (domAnalysis.urlChanged) {
-          enhancedContext += `- Navigation occurred: ${state.domState?.currentUrl} → ${currentDomState.currentUrl}\n`;
-        }
-        if (domAnalysis.newClickableElements.length > 0) {
-          enhancedContext += `- New clickable elements available: ${domAnalysis.newClickableElements.slice(0, 3).join(', ')}\n`;
-        }
-        if (domAnalysis.newInputElements.length > 0) {
-          enhancedContext += `- New input elements available: ${domAnalysis.newInputElements.slice(0, 3).join(', ')}\n`;
-        }
-        if (domAnalysis.hasErrors) {
-          enhancedContext += `- Errors detected: ${domAnalysis.errorMessages.join(', ')}\n`;
-        }
-        if (domAnalysis.nextActionRecommendations.length > 0) {
-          enhancedContext += `- Recommendations: ${domAnalysis.nextActionRecommendations.join(', ')}\n`;
-        }
-      }
+      enhancedContext += `\n\nCurrent Page State:\n`;
+      enhancedContext += `- URL: ${currentUrl}\n`;
+      enhancedContext += `- Title: ${pageTitle}\n`;
+      enhancedContext += `- Screenshot captured for visual analysis\n`;
       
-      // Use Gemini to analyze the current state and determine if we should proceed
-      const analysis = await this.geminiService.analyzeCurrentState(
-        currentDomState,
+      // Use Gemini to analyze the screenshot and determine if we should proceed
+      const analysis = await this.geminiService.analyzeCurrentStateWithScreenshot(
+        screenshot,
+        currentUrl,
+        pageTitle,
         nextAction,
         state.featureDocs,
         state.history,
@@ -470,8 +449,6 @@ export class SmartLangGraphAgentService {
       
       return {
         ...state,
-        domState: currentDomState,
-        domAnalysis: domAnalysis,
         currentContext: enhancedContext,
         reasoning: analysis.reasoning,
         // Store the next action for execution
@@ -507,13 +484,21 @@ export class SmartLangGraphAgentService {
         };
       }
       
-      // INTELLIGENT ELEMENT DISCOVERY - First try to discover the element intelligently
+      // INTELLIGENT ELEMENT DISCOVERY - First try to discover the element intelligently using screenshot
       console.log(`🧠 Using intelligent element discovery for: "${nextAction.description}"`);
+      
+      // Take screenshot for visual analysis
+      const screenshot = await this.puppeteerWorker.takeScreenshot();
+      const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+      const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
       const discoveryResult = await this.tools.get('discover_element')!.execute({
         actionDescription: nextAction.description,
         actionType: nextAction.type,
-        context: state.currentContext
+        context: state.currentContext,
+        screenshot: screenshot,
+        currentUrl: currentUrl,
+        pageTitle: pageTitle
       }, state);
       
       let enhancedAction = { ...nextAction };
@@ -605,13 +590,11 @@ export class SmartLangGraphAgentService {
       if (result.success) {
         console.log('✅ Tool execution successful');
         
-        // Extract current DOM state after successful tool execution
-        console.log('🔍 Extracting current DOM state for next action context...');
-        const currentDomState = await this.puppeteerWorker.getDOMState();
-        
-        // Analyze the DOM state to understand what changed
-        const domAnalysis = await this.analyzeDOMChanges(state.domState, currentDomState, nextAction);
-        console.log('📊 DOM Analysis:', domAnalysis);
+        // Take screenshot after successful tool execution for visual analysis
+        console.log('📸 Taking screenshot for visual analysis...');
+        const screenshot = await this.puppeteerWorker.takeScreenshot();
+        const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+        const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
         
         // Create tour step
         const tourStep: TourStep = {
@@ -633,9 +616,7 @@ export class SmartLangGraphAgentService {
           ...state,
           completedActions: [...state.completedActions, state.currentActionIndex],
           tourSteps: [...state.tourSteps, tourStep],
-          extractedData: { ...state.extractedData, ...result.result },
-          domState: currentDomState,
-          domAnalysis: domAnalysis
+          extractedData: { ...state.extractedData, ...result.result }
         };
       } else {
         console.log('❌ Tool execution failed:', result.error);
@@ -751,66 +732,55 @@ export class SmartLangGraphAgentService {
     
     try {
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
-      const currentDomState = await this.puppeteerWorker.getDOMState();
       
-      // Perform DOM analysis for validation context
-      const domAnalysis = await this.analyzeDOMChanges(state.domState, currentDomState, nextAction);
-      console.log('📊 DOM Analysis for validation:', {
-        urlChanged: domAnalysis.urlChanged,
-        hasErrors: domAnalysis.hasErrors,
-        actionImpact: domAnalysis.actionImpact
-      });
+      // Take screenshot for visual validation
+      const screenshot = await this.puppeteerWorker.takeScreenshot();
+      const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+      const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
-      // Use Gemini to validate the action was successful
-      const validation = await this.geminiService.validateActionSuccess(
+      console.log('📸 Screenshot captured for validation analysis');
+      
+      // Use Gemini to validate the action was successful using screenshot
+      const validation = await this.geminiService.validateActionSuccessWithScreenshot(
         {
           type: nextAction.type,
           selector: nextAction.selector,
           inputText: nextAction.inputText,
           description: nextAction.description
         },
-        state.domState!,
-        currentDomState,
+        screenshot,
+        currentUrl,
+        pageTitle,
         nextAction.expectedOutcome
       );
       
-      // Enhanced validation logic using DOM analysis
+      // Enhanced validation logic using screenshot analysis
       let validationSuccess = validation.success;
       let validationReasoning = validation.reasoning;
       
-      // Override validation based on DOM analysis
-      if (domAnalysis.hasErrors) {
-        validationSuccess = false;
-        validationReasoning = `DOM analysis detected errors: ${domAnalysis.errorMessages.join(', ')}`;
-      } else if (nextAction.type === 'navigate' && !domAnalysis.urlChanged) {
-        // For navigation actions, check if we're already on the target URL
+      // For navigation actions, check if URL changed
+      if (nextAction.type === 'navigate') {
         const targetUrl = nextAction.inputText || nextAction.selector;
-        const currentUrl = currentDomState.currentUrl;
         
         console.log(`🔍 Navigation validation details:`);
         console.log(`   Target URL: "${targetUrl}"`);
         console.log(`   Current URL: "${currentUrl}"`);
-        console.log(`   URL Changed: ${domAnalysis.urlChanged}`);
         
         if (targetUrl && currentUrl && currentUrl.includes(targetUrl.split('/')[2])) {
-          // We're on the same domain, navigation might be successful even if URL didn't change
+          // We're on the same domain, navigation might be successful
           validationSuccess = true;
-          validationReasoning = 'Navigation successful - already on target domain';
-          console.log(`✅ Navigation validation: Same domain detected`);
-        } else {
+          validationReasoning = 'Navigation successful - reached target domain';
+          console.log(`✅ Navigation validation: Target domain reached`);
+        } else if (targetUrl && currentUrl && currentUrl !== targetUrl) {
           validationSuccess = false;
-          validationReasoning = 'Navigation action did not result in URL change';
+          validationReasoning = 'Navigation action did not result in expected URL change';
           console.log(`❌ Navigation validation: URL change required but not detected`);
         }
-      } else if (nextAction.type === 'click' && domAnalysis.newClickableElements.length === 0 && !domAnalysis.urlChanged) {
-        // Click action should either reveal new elements or navigate
-        validationSuccess = false;
-        validationReasoning = 'Click action did not reveal new elements or navigate';
       }
       
       if (!validationSuccess) {
         console.log('❌ Action validation failed');
-        console.log(`📊 DOM Analysis: ${domAnalysis.actionImpact}`);
+        console.log(`📊 Validation reasoning: ${validationReasoning}`);
         
         // Check if this is a critical action
         const isCriticalAction = this.isCriticalAction(nextAction, state);
@@ -863,8 +833,6 @@ export class SmartLangGraphAgentService {
       
         return {
           ...state,
-          domState: currentDomState,
-          domAnalysis: domAnalysis,
           reasoning: validationReasoning
         };
     } catch (error) {

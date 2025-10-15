@@ -52,7 +52,7 @@ export interface IntelligentElementDiscovery {
   targetDescription: string;
   foundElements: ElementMatch[];
   bestMatch: ElementMatch | null;
-  searchStrategy: 'text_match' | 'attribute_match' | 'semantic_match' | 'fallback';
+  searchStrategy: 'text_match' | 'attribute_match' | 'semantic_match' | 'fallback' | 'screenshot-analysis' | 'screenshot-fallback';
   searchContext: string;
   recommendations: string[];
 }
