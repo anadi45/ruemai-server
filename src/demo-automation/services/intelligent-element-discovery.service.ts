@@ -472,6 +472,7 @@ export class IntelligentElementDiscoveryService {
           if (element) {
             const match = await this.analyzeElement(element, suggestion.selector, suggestion.reasoning);
             if (match) {
+              match.confidence = suggestion.confidence;
               foundElements.push(match);
             }
           }
@@ -479,6 +480,19 @@ export class IntelligentElementDiscoveryService {
           console.warn(`Failed to analyze suggested selector: ${suggestion.selector}`, error);
         }
       }
+    }
+
+    // If no elements found through AI analysis, try fallback strategies
+    if (foundElements.length === 0) {
+      console.log('🔄 No elements found through AI analysis, trying fallback strategies...');
+      
+      // Try to find elements by text content
+      const textBasedElements = await this.findElementsByTextContent(targetDescription);
+      foundElements.push(...textBasedElements);
+      
+      // Try to find elements by common patterns
+      const patternBasedElements = await this.findElementsByCommonPatterns(targetDescription);
+      foundElements.push(...patternBasedElements);
     }
 
     const bestMatch = foundElements.length > 0 
@@ -495,6 +509,161 @@ export class IntelligentElementDiscoveryService {
       searchContext,
       recommendations: analysis.recommendations || ['Screenshot analysis completed']
     };
+  }
+
+  /**
+   * Find elements by text content as a fallback strategy
+   */
+  private async findElementsByTextContent(targetDescription: string): Promise<ElementMatch[]> {
+    console.log('🔍 Searching for elements by text content...');
+    
+    const searchTerms = this.extractSearchTerms(targetDescription);
+    const foundElements: ElementMatch[] = [];
+    
+    // Get all clickable elements
+    const clickableElements = await this.puppeteerWorker.evaluate(() => {
+      const elements = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"], [onclick]');
+      return Array.from(elements).map(el => ({
+        tagName: el.tagName,
+        textContent: el.textContent?.trim() || '',
+        className: el.className,
+        id: el.id,
+        role: el.getAttribute('role'),
+        onclick: el.getAttribute('onclick'),
+        href: el.getAttribute('href')
+      }));
+    });
+    
+    if (!clickableElements) return foundElements;
+    
+    // Find elements that match our search terms
+    for (const element of clickableElements) {
+      const text = element.textContent.toLowerCase();
+      const matches = searchTerms.filter(term => text.includes(term.toLowerCase()));
+      
+      if (matches.length > 0) {
+        const confidence = matches.length / searchTerms.length;
+        
+        // Generate selector for this element
+        let selector = '';
+        if (element.id) {
+          selector = `#${element.id}`;
+        } else if (element.className) {
+          selector = `.${element.className.split(' ')[0]}`;
+        } else if (element.href) {
+          selector = `a[href="${element.href}"]`;
+        } else {
+          selector = `${element.tagName.toLowerCase()}:contains("${element.textContent}")`;
+        }
+        
+        try {
+          const puppeteerElement = await this.puppeteerWorker.getElement(selector);
+          if (puppeteerElement) {
+            const match = await this.analyzeElement(puppeteerElement, selector, `Text match: "${element.textContent}"`);
+            if (match) {
+              match.confidence = confidence;
+              foundElements.push(match);
+            }
+          }
+        } catch (error) {
+          console.warn(`Failed to analyze element: ${selector}`, error);
+        }
+      }
+    }
+    
+    return foundElements;
+  }
+
+  /**
+   * Find elements by common UI patterns
+   */
+  private async findElementsByCommonPatterns(targetDescription: string): Promise<ElementMatch[]> {
+    console.log('🔍 Searching for elements by common patterns...');
+    
+    const foundElements: ElementMatch[] = [];
+    const searchTerms = this.extractSearchTerms(targetDescription);
+    
+    // Common UI patterns based on description
+    const patterns = this.generateCommonPatterns(targetDescription, searchTerms);
+    
+    for (const pattern of patterns) {
+      try {
+        const element = await this.puppeteerWorker.getElement(pattern.selector);
+        if (element) {
+          const match = await this.analyzeElement(element, pattern.selector, pattern.reasoning);
+          if (match) {
+            match.confidence = pattern.confidence;
+            foundElements.push(match);
+          }
+        }
+      } catch (error) {
+        console.warn(`Pattern failed: ${pattern.selector}`, error);
+      }
+    }
+    
+    return foundElements;
+  }
+
+  /**
+   * Generate common UI patterns based on description
+   */
+  private generateCommonPatterns(targetDescription: string, searchTerms: string[]): Array<{selector: string; confidence: number; reasoning: string}> {
+    const patterns: Array<{selector: string; confidence: number; reasoning: string}> = [];
+    const description = targetDescription.toLowerCase();
+    
+    // Navigation patterns
+    if (description.includes('workflow') || description.includes('workflows')) {
+      patterns.push(
+        { selector: 'a[href*="workflow"]', confidence: 0.8, reasoning: 'Link containing "workflow" in href' },
+        { selector: 'button:contains("Workflow")', confidence: 0.7, reasoning: 'Button containing "Workflow" text' },
+        { selector: '[data-testid*="workflow"]', confidence: 0.6, reasoning: 'Element with workflow test ID' }
+      );
+    }
+    
+    if (description.includes('dashboard')) {
+      patterns.push(
+        { selector: 'a[href*="dashboard"]', confidence: 0.8, reasoning: 'Link containing "dashboard" in href' },
+        { selector: 'button:contains("Dashboard")', confidence: 0.7, reasoning: 'Button containing "Dashboard" text' },
+        { selector: '[data-testid*="dashboard"]', confidence: 0.6, reasoning: 'Element with dashboard test ID' }
+      );
+    }
+    
+    if (description.includes('setting') || description.includes('settings')) {
+      patterns.push(
+        { selector: 'a[href*="setting"]', confidence: 0.8, reasoning: 'Link containing "setting" in href' },
+        { selector: 'button:contains("Setting")', confidence: 0.7, reasoning: 'Button containing "Setting" text' },
+        { selector: '[data-testid*="setting"]', confidence: 0.6, reasoning: 'Element with setting test ID' }
+      );
+    }
+    
+    // Sidebar/navigation patterns
+    if (description.includes('left') || description.includes('sidebar') || description.includes('nav')) {
+      patterns.push(
+        { selector: 'nav a', confidence: 0.6, reasoning: 'Navigation link' },
+        { selector: '.sidebar a', confidence: 0.7, reasoning: 'Sidebar link' },
+        { selector: '.nav a', confidence: 0.6, reasoning: 'Navigation link' },
+        { selector: '[role="navigation"] a', confidence: 0.5, reasoning: 'Navigation role link' }
+      );
+    }
+    
+    // Button patterns
+    if (description.includes('button') || description.includes('click')) {
+      patterns.push(
+        { selector: 'button', confidence: 0.5, reasoning: 'Generic button' },
+        { selector: '[role="button"]', confidence: 0.4, reasoning: 'Element with button role' },
+        { selector: 'input[type="button"]', confidence: 0.4, reasoning: 'Input button' }
+      );
+    }
+    
+    // Link patterns
+    if (description.includes('link') || description.includes('href')) {
+      patterns.push(
+        { selector: 'a', confidence: 0.5, reasoning: 'Generic link' },
+        { selector: 'a[href]', confidence: 0.6, reasoning: 'Link with href attribute' }
+      );
+    }
+    
+    return patterns;
   }
 
   /**

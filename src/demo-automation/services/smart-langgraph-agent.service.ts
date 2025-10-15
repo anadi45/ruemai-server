@@ -521,6 +521,12 @@ export class SmartLangGraphAgentService {
         };
       } else {
         console.log(`⚠️  Intelligent discovery failed, using original selector: ${nextAction.selector}`);
+        
+        // If no selector is available, try to generate one from the description
+        if (!enhancedAction.selector) {
+          console.log(`🔧 No selector available, generating from description: "${nextAction.description}"`);
+          enhancedAction.selector = this.generateSelectorFromDescription(nextAction.description);
+        }
       }
       
       // Map action type to tool
@@ -1497,5 +1503,51 @@ export class SmartLangGraphAgentService {
 
   async stopAgent(): Promise<void> {
     await this.puppeteerWorker.cleanup();
+  }
+
+  /**
+   * Generate a selector from action description as a fallback
+   */
+  private generateSelectorFromDescription(description: string): string {
+    console.log(`🔧 Generating selector from description: "${description}"`);
+    
+    const desc = description.toLowerCase();
+    
+    // Extract key terms
+    const words = desc.split(/\s+/).filter(word => 
+      word.length > 2 && 
+      !['click', 'on', 'the', 'button', 'link', 'element', 'in', 'left', 'right', 'top', 'bottom'].includes(word)
+    );
+    
+    if (words.length === 0) {
+      return 'button'; // Fallback to generic button
+    }
+    
+    const primaryWord = words[0];
+    
+    // Generate selectors based on common patterns
+    const selectors = [
+      `button:contains("${primaryWord}")`,
+      `a:contains("${primaryWord}")`,
+      `[role="button"]:contains("${primaryWord}")`,
+      `*:contains("${primaryWord}")`
+    ];
+    
+    // If it's a navigation element, try more specific patterns
+    if (desc.includes('workflow') || desc.includes('workflows')) {
+      selectors.unshift('a[href*="workflow"]', 'button:contains("Workflow")');
+    } else if (desc.includes('dashboard')) {
+      selectors.unshift('a[href*="dashboard"]', 'button:contains("Dashboard")');
+    } else if (desc.includes('setting') || desc.includes('settings')) {
+      selectors.unshift('a[href*="setting"]', 'button:contains("Setting")');
+    }
+    
+    // If it's a sidebar/navigation element
+    if (desc.includes('left') || desc.includes('sidebar') || desc.includes('nav')) {
+      selectors.unshift('nav a', '.sidebar a', '.nav a');
+    }
+    
+    console.log(`🔧 Generated selectors: ${selectors.join(', ')}`);
+    return selectors[0]; // Return the first (most specific) selector
   }
 }

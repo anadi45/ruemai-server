@@ -276,49 +276,32 @@ export class PuppeteerWorkerService {
         console.warn('JavaScript errors detected on page, but continuing with action');
       }
 
+      console.log(`🎯 Executing action: ${action.type} - ${action.description}`);
+      console.log(`🔍 Using selector: ${action.selector}`);
+
       switch (action.type) {
         case 'click':
-          // Wait for element to be visible and clickable
-          await this.page.waitForSelector(action.selector!, { 
-            visible: true, 
-            timeout: this.config.waitForSelectorTimeout 
-          });
-          await this.page.click(action.selector!);
+          await this.executeClickAction(action);
           break;
         
         case 'type':
-          // Wait for input field to be visible
-          await this.page.waitForSelector(action.selector!, { 
-            visible: true, 
-            timeout: this.config.waitForSelectorTimeout 
-          });
-          await this.page.click(action.selector!);
-          await this.page.type(action.selector!, String(action.inputText || ''), { delay: 100 });
+          await this.executeTypeAction(action);
           break;
         
         case 'hover':
-          await this.page.waitForSelector(action.selector!, { 
-            visible: true, 
-            timeout: this.config.waitForSelectorTimeout 
-          });
-          await this.page.hover(action.selector!);
+          await this.executeHoverAction(action);
           break;
         
         case 'select':
-          await this.page.waitForSelector(action.selector!, { 
-            visible: true, 
-            timeout: this.config.waitForSelectorTimeout 
-          });
-          await this.page.select(action.selector!, action.inputText || '');
+          await this.executeSelectAction(action);
           break;
         
         case 'navigate':
-          await this.navigateToUrl(action.inputText || '');
+          await this.executeNavigateAction(action);
           break;
         
         case 'wait':
-          const waitTime = parseInt(action.inputText || '1000');
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+          await this.executeWaitAction(action);
           break;
         
         default:
@@ -334,14 +317,295 @@ export class PuppeteerWorkerService {
         console.warn('JavaScript errors detected after action execution');
       }
 
+      console.log(`✅ Action completed successfully: ${action.type}`);
       return { success: true };
     } catch (error) {
-      console.error(`Action failed: ${action.type} on ${action.selector}`, error);
+      console.error(`❌ Action failed: ${action.type} on ${action.selector}`, error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
       };
     }
+  }
+
+  private async executeClickAction(action: Action): Promise<void> {
+    if (!action.selector) {
+      throw new Error('Selector is required for click action');
+    }
+
+    // Try multiple strategies to find and click the element
+    const strategies = [
+      // Strategy 1: Direct selector
+      () => this.clickWithSelector(action.selector!),
+      // Strategy 2: Text-based search
+      () => this.clickByText(action.description),
+      // Strategy 3: XPath search
+      () => this.clickByXPath(action.description),
+      // Strategy 4: Generic element search
+      () => this.clickByGenericSearch(action.description)
+    ];
+
+    let lastError: Error | null = null;
+    
+    for (let i = 0; i < strategies.length; i++) {
+      try {
+        console.log(`🔄 Trying click strategy ${i + 1}/${strategies.length}`);
+        await strategies[i]();
+        console.log(`✅ Click successful with strategy ${i + 1}`);
+        return;
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`❌ Click strategy ${i + 1} failed:`, error);
+        if (i < strategies.length - 1) {
+          console.log(`🔄 Trying next strategy...`);
+        }
+      }
+    }
+
+    throw lastError || new Error('All click strategies failed');
+  }
+
+  private async clickWithSelector(selector: string): Promise<void> {
+    console.log(`🎯 Clicking with selector: ${selector}`);
+    
+    // Wait for element to be visible and clickable
+    await this.page!.waitForSelector(selector, { 
+      visible: true, 
+      timeout: this.config.waitForSelectorTimeout 
+    });
+    
+    // Ensure element is in viewport
+    await this.page!.evaluate((sel) => {
+      const element = document.querySelector(sel);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, selector);
+    
+    // Wait a bit for scroll to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Click the element
+    await this.page!.click(selector);
+  }
+
+  private async clickByText(description: string): Promise<void> {
+    console.log(`🔍 Searching for clickable element by text: "${description}"`);
+    
+    // Extract key terms from description
+    const searchTerms = this.extractSearchTerms(description);
+    console.log(`🔍 Search terms: ${searchTerms.join(', ')}`);
+    
+    // Try different text-based selectors
+    const textSelectors = [
+      `button:contains("${searchTerms[0]}")`,
+      `a:contains("${searchTerms[0]}")`,
+      `[role="button"]:contains("${searchTerms[0]}")`,
+      `*:contains("${searchTerms[0]}")`
+    ];
+    
+    for (const selector of textSelectors) {
+      try {
+        console.log(`🔍 Trying text selector: ${selector}`);
+        await this.page!.waitForSelector(selector, { 
+          visible: true, 
+          timeout: 2000 
+        });
+        await this.page!.click(selector);
+        console.log(`✅ Click successful with text selector: ${selector}`);
+        return;
+      } catch (error) {
+        console.warn(`❌ Text selector failed: ${selector}`, error);
+      }
+    }
+    
+    throw new Error(`No clickable element found for text: "${description}"`);
+  }
+
+  private async clickByXPath(description: string): Promise<void> {
+    console.log(`🔍 Searching for clickable element by XPath: "${description}"`);
+    
+    const searchTerms = this.extractSearchTerms(description);
+    
+    // Try XPath expressions using evaluate
+    const xpathExpressions = [
+      `//button[contains(text(), "${searchTerms[0]}")]`,
+      `//a[contains(text(), "${searchTerms[0]}")]`,
+      `//*[@role="button" and contains(text(), "${searchTerms[0]}")]`,
+      `//*[contains(text(), "${searchTerms[0]}")]`
+    ];
+    
+    for (const xpath of xpathExpressions) {
+      try {
+        console.log(`🔍 Trying XPath: ${xpath}`);
+        const elements = await this.page!.evaluateHandle((xpath) => {
+          const result = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          const elements = [];
+          for (let i = 0; i < result.snapshotLength; i++) {
+            elements.push(result.snapshotItem(i));
+          }
+          return elements;
+        }, xpath);
+        
+        const elementArray = await elements.evaluate((el) => el);
+        if (elementArray.length > 0) {
+          await this.page!.evaluate((xpath) => {
+            const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            if (result.singleNodeValue) {
+              (result.singleNodeValue as HTMLElement).click();
+            }
+          }, xpath);
+          console.log(`✅ Click successful with XPath: ${xpath}`);
+          return;
+        }
+      } catch (error) {
+        console.warn(`❌ XPath failed: ${xpath}`, error);
+      }
+    }
+    
+    throw new Error(`No clickable element found with XPath for: "${description}"`);
+  }
+
+  private async clickByGenericSearch(description: string): Promise<void> {
+    console.log(`🔍 Generic search for clickable element: "${description}"`);
+    
+    // Get all clickable elements and search by text content
+    const clickableElements = await this.page!.evaluate(() => {
+      const elements = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]');
+      return Array.from(elements).map(el => ({
+        tagName: el.tagName,
+        textContent: el.textContent?.trim() || '',
+        className: el.className,
+        id: el.id,
+        role: el.getAttribute('role')
+      }));
+    });
+    
+    console.log(`🔍 Found ${clickableElements.length} clickable elements`);
+    
+    const searchTerms = this.extractSearchTerms(description);
+    console.log(`🔍 Looking for elements containing: ${searchTerms.join(', ')}`);
+    
+    // Find matching elements
+    const matchingElements = clickableElements.filter(el => {
+      const text = el.textContent.toLowerCase();
+      return searchTerms.some(term => text.includes(term.toLowerCase()));
+    });
+    
+    console.log(`🔍 Found ${matchingElements.length} matching elements`);
+    
+    if (matchingElements.length === 0) {
+      throw new Error(`No clickable elements found matching: "${description}"`);
+    }
+    
+    // Try to click the first matching element
+    const targetElement = matchingElements[0];
+    console.log(`🎯 Attempting to click element: ${targetElement.tagName} with text "${targetElement.textContent}"`);
+    
+    // Try different selectors for the matching element
+    const selectors = [
+      targetElement.id ? `#${targetElement.id}` : null,
+      targetElement.className ? `.${targetElement.className.split(' ')[0]}` : null,
+      `${targetElement.tagName.toLowerCase()}:contains("${targetElement.textContent}")`
+    ].filter(Boolean);
+    
+    for (const selector of selectors) {
+      try {
+        console.log(`🔍 Trying selector: ${selector}`);
+        await this.page!.waitForSelector(selector!, { 
+          visible: true, 
+          timeout: 2000 
+        });
+        await this.page!.click(selector!);
+        console.log(`✅ Click successful with selector: ${selector}`);
+        return;
+      } catch (error) {
+        console.warn(`❌ Selector failed: ${selector}`, error);
+      }
+    }
+    
+    throw new Error(`Could not click element matching: "${description}"`);
+  }
+
+  private extractSearchTerms(description: string): string[] {
+    // Extract meaningful terms from the description
+    const words = description.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !['click', 'on', 'the', 'button', 'link', 'element'].includes(word));
+    
+    return words;
+  }
+
+  private async executeTypeAction(action: Action): Promise<void> {
+    if (!action.selector) {
+      throw new Error('Selector is required for type action');
+    }
+
+    console.log(`⌨️ Typing "${action.inputText}" into ${action.selector}`);
+    
+    // Wait for input field to be visible
+    await this.page!.waitForSelector(action.selector, { 
+      visible: true, 
+      timeout: this.config.waitForSelectorTimeout 
+    });
+    
+    // Clear the field first
+    await this.page!.click(action.selector);
+    await this.page!.keyboard.down('Control');
+    await this.page!.keyboard.press('KeyA');
+    await this.page!.keyboard.up('Control');
+    
+    // Type the text
+    await this.page!.type(action.selector, String(action.inputText || ''), { delay: 100 });
+  }
+
+  private async executeHoverAction(action: Action): Promise<void> {
+    if (!action.selector) {
+      throw new Error('Selector is required for hover action');
+    }
+
+    console.log(`🖱️ Hovering over ${action.selector}`);
+    
+    await this.page!.waitForSelector(action.selector, { 
+      visible: true, 
+      timeout: this.config.waitForSelectorTimeout 
+    });
+    
+    await this.page!.hover(action.selector);
+  }
+
+  private async executeSelectAction(action: Action): Promise<void> {
+    if (!action.selector) {
+      throw new Error('Selector is required for select action');
+    }
+
+    console.log(`📋 Selecting "${action.inputText}" from ${action.selector}`);
+    
+    await this.page!.waitForSelector(action.selector, { 
+      visible: true, 
+      timeout: this.config.waitForSelectorTimeout 
+    });
+    
+    await this.page!.select(action.selector, action.inputText || '');
+  }
+
+  private async executeNavigateAction(action: Action): Promise<void> {
+    const url = action.inputText || action.selector || '';
+    console.log(`🧭 Navigating to: ${url}`);
+    
+    if (!url) {
+      throw new Error('URL is required for navigate action');
+    }
+    
+    await this.navigateToUrl(url);
+  }
+
+  private async executeWaitAction(action: Action): Promise<void> {
+    const waitTime = parseInt(action.inputText || '1000');
+    console.log(`⏳ Waiting for ${waitTime}ms`);
+    
+    await new Promise(resolve => setTimeout(resolve, waitTime));
   }
 
   async checkForJavaScriptErrors(): Promise<boolean> {
@@ -560,6 +824,13 @@ export class PuppeteerWorkerService {
       throw new Error('Page not initialized. Call initialize() first.');
     }
     return await this.page.$(selector);
+  }
+
+  async evaluate<T = any>(pageFunction: () => T): Promise<T> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+    return await this.page.evaluate(pageFunction);
   }
 
   async waitForAppToLoad(maxWaitTime: number = 10000): Promise<boolean> {
