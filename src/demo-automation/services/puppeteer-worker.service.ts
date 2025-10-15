@@ -316,6 +316,26 @@ export class PuppeteerWorkerService {
           await this.executeWaitAction(action);
           break;
         
+        case 'click_coordinates':
+          await this.executeCoordinateClickAction(action);
+          break;
+        
+        case 'hover_coordinates':
+          await this.executeCoordinateHoverAction(action);
+          break;
+        
+        case 'type_coordinates':
+          await this.executeCoordinateTypeAction(action);
+          break;
+        
+        case 'scroll_coordinates':
+          await this.executeCoordinateScrollAction(action);
+          break;
+        
+        case 'select_coordinates':
+          await this.executeCoordinateSelectAction(action);
+          break;
+        
         default:
           throw new Error(`Unknown action type: ${action.type}`);
       }
@@ -999,5 +1019,225 @@ export class PuppeteerWorkerService {
 
     console.error('All navigation attempts failed');
     return false;
+  }
+
+  /**
+   * Execute coordinate-based click action
+   */
+  private async executeCoordinateClickAction(action: Action): Promise<void> {
+    if (!action.coordinates) {
+      throw new Error('Coordinates are required for coordinate-based click action');
+    }
+
+    const { x, y, confidence, reasoning } = action.coordinates;
+    
+    console.log(`🎯 Executing coordinate click at (${x}, ${y}) with confidence ${confidence}`);
+    console.log(`💭 Reasoning: ${reasoning}`);
+
+    // Validate coordinates are within reasonable bounds
+    if (x < 0 || y < 0 || x > 1920 || y > 1080) {
+      throw new Error(`Invalid coordinates: (${x}, ${y}). Coordinates should be within screen bounds.`);
+    }
+
+    // Take a screenshot before clicking for verification
+    const screenshot = await this.takeScreenshot();
+    console.log(`📸 Screenshot taken before coordinate click`);
+
+    try {
+      // Click at the specified coordinates
+      await this.page!.mouse.click(x, y);
+      console.log(`✅ Coordinate click successful at (${x}, ${y})`);
+      
+      // Wait for any potential page changes after click
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+    } catch (error) {
+      console.error(`❌ Coordinate click failed at (${x}, ${y}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute coordinate-based hover action
+   */
+  private async executeCoordinateHoverAction(action: Action): Promise<void> {
+    if (!action.coordinates) {
+      throw new Error('Coordinates are required for coordinate-based hover action');
+    }
+
+    const { x, y, confidence, reasoning } = action.coordinates;
+    
+    console.log(`🎯 Executing coordinate hover at (${x}, ${y}) with confidence ${confidence}`);
+    console.log(`💭 Reasoning: ${reasoning}`);
+
+    // Validate coordinates are within reasonable bounds
+    if (x < 0 || y < 0 || x > 1920 || y > 1080) {
+      throw new Error(`Invalid coordinates: (${x}, ${y}). Coordinates should be within screen bounds.`);
+    }
+
+    try {
+      // Move mouse to the specified coordinates
+      await this.page!.mouse.move(x, y);
+      console.log(`✅ Coordinate hover successful at (${x}, ${y})`);
+      
+      // Wait for any hover effects to trigger
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+    } catch (error) {
+      console.error(`❌ Coordinate hover failed at (${x}, ${y}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute coordinate-based type action
+   */
+  private async executeCoordinateTypeAction(action: Action): Promise<void> {
+    if (!action.coordinates) {
+      throw new Error('Coordinates are required for coordinate-based type action');
+    }
+
+    if (!action.inputText) {
+      throw new Error('Input text is required for coordinate-based type action');
+    }
+
+    const { x, y, confidence, reasoning } = action.coordinates;
+    
+    console.log(`🎯 Executing coordinate type at (${x}, ${y}) with text: "${action.inputText}"`);
+    console.log(`💭 Reasoning: ${reasoning}`);
+
+    // Validate coordinates are within reasonable bounds
+    if (x < 0 || y < 0 || x > 1920 || y > 1080) {
+      throw new Error(`Invalid coordinates: (${x}, ${y}). Coordinates should be within screen bounds.`);
+    }
+
+    try {
+      // Click at the coordinates first to focus the input field
+      await this.page!.mouse.click(x, y);
+      console.log(`✅ Clicked at coordinates (${x}, ${y}) to focus input field`);
+      
+      // Wait for input field to be focused
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Clear any existing text and type new text
+      await this.page!.keyboard.down('Control');
+      await this.page!.keyboard.press('KeyA');
+      await this.page!.keyboard.up('Control');
+      await this.page!.keyboard.type(action.inputText);
+      
+      console.log(`✅ Typed text "${action.inputText}" at coordinates (${x}, ${y})`);
+      
+      // Wait for any potential page changes after typing
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+    } catch (error) {
+      console.error(`❌ Coordinate type failed at (${x}, ${y}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute coordinate-based scroll action
+   */
+  private async executeCoordinateScrollAction(action: Action): Promise<void> {
+    if (!action.coordinates) {
+      throw new Error('Coordinates are required for coordinate-based scroll action');
+    }
+
+    const { x, y, confidence, reasoning } = action.coordinates;
+    
+    console.log(`🎯 Executing coordinate scroll at (${x}, ${y})`);
+    console.log(`💭 Reasoning: ${reasoning}`);
+
+    // Validate coordinates are within reasonable bounds
+    if (x < 0 || y < 0 || x > 1920 || y > 1080) {
+      throw new Error(`Invalid coordinates: (${x}, ${y}). Coordinates should be within screen bounds.`);
+    }
+
+    try {
+      // Move mouse to the coordinates
+      await this.page!.mouse.move(x, y);
+      console.log(`✅ Moved mouse to coordinates (${x}, ${y})`);
+      
+      // Perform scroll action at the coordinates
+      // Use wheel event for more precise scrolling
+      await this.page!.mouse.wheel({ deltaY: 500 }); // Scroll down
+      
+      console.log(`✅ Scrolled at coordinates (${x}, ${y})`);
+      
+      // Wait for scroll to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+    } catch (error) {
+      console.error(`❌ Coordinate scroll failed at (${x}, ${y}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute coordinate-based select action
+   */
+  private async executeCoordinateSelectAction(action: Action): Promise<void> {
+    if (!action.coordinates) {
+      throw new Error('Coordinates are required for coordinate-based select action');
+    }
+
+    if (!action.inputText) {
+      throw new Error('Input text is required for coordinate-based select action');
+    }
+
+    const { x, y, confidence, reasoning } = action.coordinates;
+    
+    console.log(`🎯 Executing coordinate select at (${x}, ${y}) with option: "${action.inputText}"`);
+    console.log(`💭 Reasoning: ${reasoning}`);
+
+    // Validate coordinates are within reasonable bounds
+    if (x < 0 || y < 0 || x > 1920 || y > 1080) {
+      throw new Error(`Invalid coordinates: (${x}, ${y}). Coordinates should be within screen bounds.`);
+    }
+
+    try {
+      // Click at the coordinates to open the dropdown/select
+      await this.page!.mouse.click(x, y);
+      console.log(`✅ Clicked at coordinates (${x}, ${y}) to open select`);
+      
+      // Wait for dropdown to open
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Try to find and click the option by text using evaluate
+      const optionFound = await this.page!.evaluate((text) => {
+        const selectors = [
+          `option:contains("${text}")`,
+          `div:contains("${text}")`,
+          `li:contains("${text}")`,
+          `[role="option"]:contains("${text}")`
+        ];
+        
+        for (const selector of selectors) {
+          const element = document.querySelector(selector);
+          if (element) {
+            (element as HTMLElement).click();
+            return true;
+          }
+        }
+        return false;
+      }, action.inputText);
+      
+      if (optionFound) {
+        console.log(`✅ Selected option "${action.inputText}" at coordinates (${x}, ${y})`);
+      } else {
+        // Fallback: try to type the option text
+        await this.page!.keyboard.type(action.inputText);
+        await this.page!.keyboard.press('Enter');
+        console.log(`✅ Typed and selected option "${action.inputText}" at coordinates (${x}, ${y})`);
+      }
+      
+      // Wait for selection to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+    } catch (error) {
+      console.error(`❌ Coordinate select failed at (${x}, ${y}):`, error);
+      throw error;
+    }
   }
 }

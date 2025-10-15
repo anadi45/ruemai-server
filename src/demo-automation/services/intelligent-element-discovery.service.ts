@@ -31,6 +31,7 @@ export class IntelligentElementDiscoveryService {
     const searchContext = this.buildSearchContext(action, domState, context);
     
     // Try multiple discovery strategies in order of preference
+    // Note: Coordinate-based discovery requires screenshot, so it's handled separately
     const strategies = [
       () => this.semanticElementDiscovery(targetDescription, domState, searchContext),
       () => this.textBasedElementDiscovery(targetDescription, domState),
@@ -63,6 +64,68 @@ export class IntelligentElementDiscoveryService {
   }
 
   /**
+   * Discover element coordinates using screenshot analysis
+   */
+  async discoverElementWithCoordinates(
+    action: PuppeteerAction,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    viewportDimensions: { width: number; height: number },
+    context?: string
+  ): Promise<CoordinateDiscovery> {
+    console.log(`🎯 Coordinate discovery with screenshot for: "${action.description}"`);
+    
+    const targetDescription = this.extractTargetDescription(action);
+    const searchContext = this.buildCoordinateSearchContext(action, currentUrl, pageTitle, viewportDimensions, context);
+    
+    try {
+      // Use Gemini to detect click coordinates
+      const coordinateResult = await this.geminiService.detectClickCoordinates(
+        targetDescription,
+        screenshot,
+        currentUrl,
+        pageTitle,
+        viewportDimensions,
+        searchContext
+      );
+      
+      const bestMatch = coordinateResult.coordinates.length > 0 
+        ? coordinateResult.coordinates.reduce((best, current) => 
+            current.confidence > best.confidence ? current : best
+          )
+        : null;
+      
+      if (bestMatch && bestMatch.confidence > 0.3) {
+        console.log(`✅ Coordinates found: (${bestMatch.x}, ${bestMatch.y}) with confidence ${bestMatch.confidence}`);
+      }
+      
+      return {
+        targetDescription,
+        coordinates: coordinateResult.coordinates,
+        pageAnalysis: coordinateResult.pageAnalysis,
+        searchStrategy: 'coordinate-detection',
+        searchContext,
+        recommendations: coordinateResult.recommendations,
+        bestMatch
+      };
+    } catch (error) {
+      console.warn(`Coordinate discovery failed:`, error);
+      
+      // Fallback to basic coordinate discovery
+      return {
+        targetDescription,
+        coordinates: [],
+        pageAnalysis: 'Coordinate discovery failed',
+        searchStrategy: 'coordinate-detection',
+        searchContext,
+        recommendations: ['Coordinate discovery failed. Consider using DOM-based discovery or checking if the page has loaded correctly.'],
+        bestMatch: null
+      };
+    }
+  }
+
+  /**
    * Intelligently discover elements using screenshot analysis
    * This method uses visual analysis to find elements based on action description
    */
@@ -78,8 +141,48 @@ export class IntelligentElementDiscoveryService {
     const targetDescription = this.extractTargetDescription(action);
     const searchContext = this.buildScreenshotSearchContext(action, currentUrl, pageTitle, context);
     
-    // Use screenshot-based discovery strategy
+    // Use coordinate-based discovery as primary strategy
     try {
+      // First try coordinate-based discovery
+      const coordinateDiscovery = await this.discoverElementWithCoordinates(
+        action,
+        screenshot,
+        currentUrl,
+        pageTitle,
+        { width: 1920, height: 1080 }, // Default viewport
+        context
+      );
+      
+      if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+        console.log(`✅ Element found using coordinate discovery: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y})`);
+        
+        // Convert coordinate discovery to element discovery format
+        const elementMatch: ElementMatch = {
+          selector: `coordinates:${coordinateDiscovery.bestMatch.x},${coordinateDiscovery.bestMatch.y}`,
+          textContent: coordinateDiscovery.bestMatch.elementDescription,
+          elementType: 'coordinates',
+          isVisible: true,
+          isClickable: true,
+          confidence: coordinateDiscovery.bestMatch.confidence,
+          reasoning: coordinateDiscovery.bestMatch.reasoning,
+          attributes: {
+            x: coordinateDiscovery.bestMatch.x.toString(),
+            y: coordinateDiscovery.bestMatch.y.toString(),
+            confidence: coordinateDiscovery.bestMatch.confidence.toString()
+          }
+        };
+        
+        return {
+          targetDescription,
+          foundElements: [elementMatch],
+          bestMatch: elementMatch,
+          searchStrategy: 'coordinate-discovery',
+          searchContext,
+          recommendations: coordinateDiscovery.recommendations
+        };
+      }
+      
+      // Fallback to traditional screenshot-based discovery
       const discovery = await this.screenshotBasedElementDiscovery(
         targetDescription,
         screenshot,

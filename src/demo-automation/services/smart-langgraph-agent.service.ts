@@ -485,6 +485,235 @@ export class SmartLangGraphAgentService {
         }
       }
     });
+
+    // Coordinate-based Type Tool
+    this.tools.set('type_coordinates', {
+      name: 'type_coordinates',
+      description: 'Type text at specific coordinates using screenshot-based coordinate detection',
+      parameters: { actionDescription: 'string', inputText: 'string', context: 'string', fallbackAction: 'object', waitAfter: 'number' },
+      execute: async (params, state) => {
+        try {
+          console.log(`🎯 Coordinate-based type for: "${params.actionDescription}" with text: "${params.inputText}"`);
+          
+          // Take screenshot for coordinate detection
+          const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
+          const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+          const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+          
+          // Use intelligent coordinate discovery
+          const coordinateDiscovery = await this.elementDiscovery.discoverCoordinatesWithScreenshot(
+            {
+              type: 'type_coordinates',
+              description: params.actionDescription,
+              inputText: params.inputText,
+              expectedOutcome: 'Text typed successfully',
+              priority: 'high',
+              estimatedDuration: 3,
+              prerequisites: []
+            },
+            screenshotData.screenshot,
+            currentUrl,
+            pageTitle,
+            screenshotData.viewport,
+            params.context || state.currentContext
+          );
+          
+          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+            console.log(`✅ Coordinates found: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y}) with confidence ${coordinateDiscovery.bestMatch.confidence}`);
+            
+            const typeResult = await this.puppeteerWorker.executeAction({
+              type: 'type_coordinates',
+              coordinates: {
+                x: coordinateDiscovery.bestMatch.x,
+                y: coordinateDiscovery.bestMatch.y,
+                confidence: coordinateDiscovery.bestMatch.confidence,
+                reasoning: coordinateDiscovery.bestMatch.reasoning
+              },
+              inputText: params.inputText,
+              description: params.actionDescription
+            });
+            
+            if (typeResult.success) {
+              console.log('✅ Coordinate-based type successful');
+              
+              if (params.waitAfter) {
+                await new Promise(resolve => setTimeout(resolve, params.waitAfter));
+              }
+              
+              return { 
+                success: true, 
+                result: {
+                  coordinates: { x: coordinateDiscovery.bestMatch.x, y: coordinateDiscovery.bestMatch.y },
+                  confidence: coordinateDiscovery.bestMatch.confidence,
+                  reasoning: coordinateDiscovery.bestMatch.reasoning,
+                  method: 'coordinates'
+                }
+              };
+            }
+          }
+          
+          return { 
+            success: false, 
+            error: 'No suitable coordinates found for typing' 
+          };
+        } catch (error) {
+          console.error('Coordinate-based type failed:', error);
+          return { success: false, error: error instanceof Error ? error.message : 'Coordinate-based type failed' };
+        }
+      }
+    });
+
+    // Coordinate-based Scroll Tool
+    this.tools.set('scroll_coordinates', {
+      name: 'scroll_coordinates',
+      description: 'Scroll at specific coordinates using screenshot-based coordinate detection',
+      parameters: { actionDescription: 'string', context: 'string', fallbackAction: 'object', waitAfter: 'number' },
+      execute: async (params, state) => {
+        try {
+          console.log(`🎯 Coordinate-based scroll for: "${params.actionDescription}"`);
+          
+          // Take screenshot for coordinate detection
+          const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
+          const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+          const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+          
+          // Use intelligent coordinate discovery
+          const coordinateDiscovery = await this.elementDiscovery.discoverCoordinatesWithScreenshot(
+            {
+              type: 'scroll_coordinates',
+              description: params.actionDescription,
+              expectedOutcome: 'Page scrolled successfully',
+              priority: 'medium',
+              estimatedDuration: 2,
+              prerequisites: []
+            },
+            screenshotData.screenshot,
+            currentUrl,
+            pageTitle,
+            screenshotData.viewport,
+            params.context || state.currentContext
+          );
+          
+          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+            console.log(`✅ Coordinates found: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y}) with confidence ${coordinateDiscovery.bestMatch.confidence}`);
+            
+            const scrollResult = await this.puppeteerWorker.executeAction({
+              type: 'scroll_coordinates',
+              coordinates: {
+                x: coordinateDiscovery.bestMatch.x,
+                y: coordinateDiscovery.bestMatch.y,
+                confidence: coordinateDiscovery.bestMatch.confidence,
+                reasoning: coordinateDiscovery.bestMatch.reasoning
+              },
+              description: params.actionDescription
+            });
+            
+            if (scrollResult.success) {
+              console.log('✅ Coordinate-based scroll successful');
+              
+              if (params.waitAfter) {
+                await new Promise(resolve => setTimeout(resolve, params.waitAfter));
+              }
+              
+              return { 
+                success: true, 
+                result: {
+                  coordinates: { x: coordinateDiscovery.bestMatch.x, y: coordinateDiscovery.bestMatch.y },
+                  confidence: coordinateDiscovery.bestMatch.confidence,
+                  reasoning: coordinateDiscovery.bestMatch.reasoning,
+                  method: 'coordinates'
+                }
+              };
+            }
+          }
+          
+          return { 
+            success: false, 
+            error: 'No suitable coordinates found for scrolling' 
+          };
+        } catch (error) {
+          console.error('Coordinate-based scroll failed:', error);
+          return { success: false, error: error instanceof Error ? error.message : 'Coordinate-based scroll failed' };
+        }
+      }
+    });
+
+    // Coordinate-based Select Tool
+    this.tools.set('select_coordinates', {
+      name: 'select_coordinates',
+      description: 'Select option at specific coordinates using screenshot-based coordinate detection',
+      parameters: { actionDescription: 'string', inputText: 'string', context: 'string', fallbackAction: 'object', waitAfter: 'number' },
+      execute: async (params, state) => {
+        try {
+          console.log(`🎯 Coordinate-based select for: "${params.actionDescription}" with option: "${params.inputText}"`);
+          
+          // Take screenshot for coordinate detection
+          const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
+          const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+          const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+          
+          // Use intelligent coordinate discovery
+          const coordinateDiscovery = await this.elementDiscovery.discoverCoordinatesWithScreenshot(
+            {
+              type: 'select_coordinates',
+              description: params.actionDescription,
+              inputText: params.inputText,
+              expectedOutcome: 'Option selected successfully',
+              priority: 'high',
+              estimatedDuration: 3,
+              prerequisites: []
+            },
+            screenshotData.screenshot,
+            currentUrl,
+            pageTitle,
+            screenshotData.viewport,
+            params.context || state.currentContext
+          );
+          
+          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+            console.log(`✅ Coordinates found: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y}) with confidence ${coordinateDiscovery.bestMatch.confidence}`);
+            
+            const selectResult = await this.puppeteerWorker.executeAction({
+              type: 'select_coordinates',
+              coordinates: {
+                x: coordinateDiscovery.bestMatch.x,
+                y: coordinateDiscovery.bestMatch.y,
+                confidence: coordinateDiscovery.bestMatch.confidence,
+                reasoning: coordinateDiscovery.bestMatch.reasoning
+              },
+              inputText: params.inputText,
+              description: params.actionDescription
+            });
+            
+            if (selectResult.success) {
+              console.log('✅ Coordinate-based select successful');
+              
+              if (params.waitAfter) {
+                await new Promise(resolve => setTimeout(resolve, params.waitAfter));
+              }
+              
+              return { 
+                success: true, 
+                result: {
+                  coordinates: { x: coordinateDiscovery.bestMatch.x, y: coordinateDiscovery.bestMatch.y },
+                  confidence: coordinateDiscovery.bestMatch.confidence,
+                  reasoning: coordinateDiscovery.bestMatch.reasoning,
+                  method: 'coordinates'
+                }
+              };
+            }
+          }
+          
+          return { 
+            success: false, 
+            error: 'No suitable coordinates found for selection' 
+          };
+        } catch (error) {
+          console.error('Coordinate-based select failed:', error);
+          return { success: false, error: error instanceof Error ? error.message : 'Coordinate-based select failed' };
+        }
+      }
+    });
   }
 
   private createSmartWorkflow(): any {
@@ -1194,11 +1423,15 @@ export class SmartLangGraphAgentService {
       'click': 'click', // Uses coordinate-based approach with DOM fallback
       'click_coordinates': 'click_coordinates', // Pure coordinate-based approach
       'type': 'type',
+      'type_coordinates': 'type_coordinates', // Pure coordinate-based typing
       'navigate': 'navigate',
       'wait': 'wait',
-      'scroll': 'wait', // Map scroll to wait for now
-      'select': 'click', // Map select to click (coordinate-based)
+      'scroll': 'scroll_coordinates', // Use coordinate-based scrolling
+      'scroll_coordinates': 'scroll_coordinates', // Pure coordinate-based scrolling
+      'select': 'select_coordinates', // Use coordinate-based selection
+      'select_coordinates': 'select_coordinates', // Pure coordinate-based selection
       'hover': 'click', // Map hover to click (coordinate-based)
+      'hover_coordinates': 'click_coordinates', // Pure coordinate-based hover
       'extract': 'extract',
       'evaluate': 'evaluate'
     };

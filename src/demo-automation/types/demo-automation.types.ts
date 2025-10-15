@@ -1,5 +1,5 @@
 export interface Action {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate' | 'click_coordinates';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate' | 'click_coordinates' | 'hover_coordinates' | 'type_coordinates' | 'scroll_coordinates' | 'select_coordinates';
   selector?: string;
   inputText?: string;
   description: string;
@@ -46,7 +46,7 @@ export interface ElementMatch {
   selector: string;
   confidence: number;
   reasoning: string;
-  elementType: 'button' | 'input' | 'link' | 'dropdown' | 'text' | 'container';
+  elementType: 'button' | 'input' | 'link' | 'dropdown' | 'text' | 'container' | 'coordinates';
   textContent?: string;
   attributes?: Record<string, string>;
   position?: { x: number; y: number };
@@ -58,7 +58,7 @@ export interface IntelligentElementDiscovery {
   targetDescription: string;
   foundElements: ElementMatch[];
   bestMatch: ElementMatch | null;
-  searchStrategy: 'text_match' | 'attribute_match' | 'semantic_match' | 'fallback' | 'screenshot-analysis' | 'screenshot-fallback' | 'coordinate-detection';
+  searchStrategy: 'text_match' | 'attribute_match' | 'semantic_match' | 'fallback' | 'screenshot-analysis' | 'screenshot-fallback' | 'coordinate-detection' | 'coordinate-discovery';
   searchContext: string;
   recommendations: string[];
 }
@@ -152,7 +152,7 @@ export interface ProductDocs {
 }
 
 export interface PuppeteerAction {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate' | 'click_coordinates';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate' | 'click_coordinates' | 'hover_coordinates' | 'type_coordinates' | 'scroll_coordinates' | 'select_coordinates';
   selector?: string;
   fallbackAction?: PuppeteerAction; // Alternative action (different type)
   inputText?: string;

@@ -623,7 +623,7 @@ Only return valid JSON. Do not include any other text or explanations.
 
   private buildActionPlanningPrompt(featureDocs: ProductDocs, websiteUrl: string): string {
     return `
-You are an expert Puppeteer automation engineer specializing in programmatic web scraping. Your task is to create a detailed, executable action plan for automating web interactions using Puppeteer based on both textual documentation and visual context from images.
+You are an expert Puppeteer automation engineer specializing in programmatic web scraping with screenshot + coordinate based execution. Your task is to create a detailed, executable action plan for automating web interactions using Puppeteer based on both textual documentation and visual context from images.
 
 FEATURE: ${featureDocs.featureName}
 DESCRIPTION: ${featureDocs.description}
@@ -649,6 +649,20 @@ CRITICAL ANALYSIS INSTRUCTIONS:
 3. **Use generic element descriptions** instead of specific CSS selectors (e.g., "workflows link" not "a[href='/workflows']")
 4. **Consider the actual user flow** as shown in images vs. documented steps
 5. **Identify potential scraping challenges** like dynamic content, modals, or complex interactions
+
+**SCREENSHOT + COORDINATE EXECUTION APPROACH:**
+- **VISUAL ELEMENT DETECTION**: The automation system will use screenshots to visually identify and locate UI elements
+- **COORDINATE-BASED INTERACTIONS**: Actions will be executed using coordinate-based clicking and interaction
+- **VISUAL HIERARCHY AWARENESS**: Account for nested UI elements, collapsible sections, dropdowns, and expandable menus
+- **LAYERED INTERFACE UNDERSTANDING**: Consider that UI elements may be hidden behind other elements or require scrolling to reveal
+- **DYNAMIC UI STATE CHANGES**: Plan for UI elements that change state (expand/collapse, show/hide) during the interaction flow
+
+**ENHANCED UI STRUCTURE ANALYSIS:**
+1. **COLLAPSIBLE ELEMENTS**: Identify dropdowns, accordions, expandable sections, and nested menus that need to be opened before accessing sub-elements
+2. **VISUAL HIERARCHY**: Understand parent-child relationships in the UI (e.g., "Workflows" menu that contains "General" submenu)
+3. **PROGRESSIVE DISCLOSURE**: Account for UI patterns where information is revealed progressively (tabs, steps, wizards)
+4. **CONTEXTUAL ELEMENTS**: Identify elements that only appear after certain actions (conditional UI, dynamic content)
+5. **NAVIGATION PATTERNS**: Understand breadcrumbs, back buttons, and multi-level navigation structures
 
 **MANDATORY STEP-BY-STEP ANALYSIS:**
 - **GO THROUGH EACH DOCUMENTED STEP**: For every step in the feature documentation, create a corresponding action in the plan
@@ -701,6 +715,14 @@ Create a comprehensive Puppeteer automation plan that includes:
 - **AVOID SAVE/SUBMIT ACTIONS**: Do NOT include clicks on save, submit, create, update, delete buttons
 - **STOP BEFORE PERSISTENCE**: End the plan before any action that would save data to the server
 
+**COLLAPSIBLE UI ELEMENT HANDLING:**
+- **IDENTIFY EXPANDABLE ELEMENTS**: Look for dropdowns, accordions, collapsible sections, and nested menus in the UI
+- **PROGRESSIVE EXPANSION**: Plan to expand/collapse elements in the correct order to reveal nested options
+- **PARENT-CHILD RELATIONSHIPS**: Account for hierarchical UI structures (e.g., "Workflows" → "General" → specific workflow options)
+- **STATE-DEPENDENT ELEMENTS**: Plan for elements that only become available after expanding parent elements
+- **VISUAL INDICATORS**: Consider UI indicators like arrows, chevrons, or plus/minus icons that suggest expandable content
+- **NESTED NAVIGATION**: Plan for multi-level navigation where each level must be expanded before accessing the next level
+
 **DYNAMIC CONTENT HANDLING:**
 - Wait for AJAX requests and dynamic content loading
 - Handle infinite scroll or pagination
@@ -733,6 +755,14 @@ For each action, provide:
 - **Screenshot capture** at critical points
 - **Data extraction** where applicable
 - **INTELLIGENT FALLBACK ACTIONS**: Meaningful alternatives for each action type
+
+**SCREENSHOT + COORDINATE EXECUTION SPECIFICATIONS:**
+- **VISUAL ELEMENT IDENTIFICATION**: Use descriptive names that can be visually identified in screenshots (e.g., "Workflows dropdown arrow", "General submenu item", "Create Workflow button")
+- **COORDINATE-BASED CLICKING**: Plan for precise coordinate-based interactions with UI elements
+- **VISUAL HIERARCHY MAPPING**: Map out the visual structure of collapsible elements and nested menus
+- **EXPANSION SEQUENCE**: Plan the correct sequence of expanding/collapsing UI elements to reach target functionality
+- **VISUAL STATE CHANGES**: Account for how UI elements change appearance when expanded/collapsed
+- **SCREENSHOT ANALYSIS**: Plan for taking screenshots at key points to verify UI state changes
 
 **FALLBACK ACTION REQUIREMENTS:**
 - **Navigation Actions**: Must have fallback to direct URL navigation (e.g., click "Workflows" → navigate to "/workflows")
@@ -776,26 +806,27 @@ Return the plan in this JSON format:
   "featureName": "string",
   "totalActions": number,
   "estimatedDuration": number,
-  "scrapingStrategy": "Brief description of the overall scraping approach",
+  "scrapingStrategy": "Brief description of the overall scraping approach with screenshot + coordinate execution",
   "actions": [
     {
-      "type": "click|type|navigate|wait|scroll|select|extract|evaluate",
-      "selector": "Generic element description (e.g., 'workflows link', 'create button', 'name input field')",
+      "type": "click|type|navigate|wait|scroll|select|extract|evaluate|expand|collapse|hover",
+      "selector": "Generic element description (e.g., 'workflows dropdown', 'general submenu', 'create button', 'name input field')",
       "fallbackAction": {
-        "type": "navigate|click|wait|retry",
+        "type": "navigate|click|wait|retry|expand|collapse",
         "selector": "Alternative element description or URL",
         "inputText": "Alternative input or URL path",
         "description": "Fallback action description"
       },
       "inputText": "Text to input (for type actions)",
-      "description": "Detailed description of the Puppeteer action",
-      "expectedOutcome": "What should happen after this action",
-      "waitCondition": "What to wait for before proceeding",
+      "description": "Detailed description of the Puppeteer action with visual context",
+      "expectedOutcome": "What should happen after this action (including visual state changes)",
+      "waitCondition": "What to wait for before proceeding (visual indicators, element visibility)",
       "extractData": "What data to extract (if applicable)",
       "priority": "high|medium|low",
       "estimatedDuration": number,
-      "errorHandling": "How to handle failures",
-      "prerequisites": ["prerequisite1", "prerequisite2"]
+      "errorHandling": "How to handle failures with visual fallbacks",
+      "prerequisites": ["prerequisite1", "prerequisite2"],
+      "visualContext": "Description of visual elements and UI state for screenshot analysis"
     }
   ],
   "summary": {
@@ -843,7 +874,14 @@ Before generating the final plan, you MUST verify:
 7. **NO GAPS**: No logical gaps exist between actions
 8. **REALISTIC FLOW**: The plan represents a realistic user journey through the feature
 
-**CRITICAL REMINDER**: This plan will be executed by an automation system. Missing steps or incorrect sequences will cause the automation to fail. Be extremely thorough and methodical in your analysis.
+**SPECIFIC UI PATTERN EXAMPLES:**
+- **DROPDOWN MENUS**: If you see "Workflows" in documentation, plan to first click "Workflows" to expand the dropdown, then click "General" submenu item
+- **NESTED NAVIGATION**: Plan for multi-level menu structures where each level must be expanded before accessing the next level
+- **COLLAPSIBLE SECTIONS**: Account for accordion-style interfaces where sections need to be expanded to reveal content
+- **TAB INTERFACES**: Plan for tab-based navigation where content changes based on selected tabs
+- **MODAL DIALOGS**: Plan for popup windows or overlays that may appear during the interaction flow
+
+**CRITICAL REMINDER**: This plan will be executed by an automation system using screenshot + coordinate based execution. Missing steps or incorrect sequences will cause the automation to fail. Be extremely thorough and methodical in your analysis, paying special attention to collapsible UI elements and visual hierarchy.
 `;
   }
 
