@@ -941,6 +941,15 @@ export class SmartLangGraphAgentService {
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
       console.log(`📸 Screenshot captured with dimensions: ${screenshotData.dimensions.width}x${screenshotData.dimensions.height}`);
+      console.log(`📊 Screenshot Analysis Input:`, {
+        actionDescription: nextAction.description,
+        actionType: nextAction.type,
+        currentUrl: currentUrl,
+        pageTitle: pageTitle,
+        viewportDimensions: screenshotData.dimensions,
+        screenshotLength: screenshotData.screenshot.length,
+        context: state.currentContext
+      });
       
       const discoveryResult = await this.tools.get('discover_element')!.execute({
         actionDescription: nextAction.description,
@@ -951,6 +960,16 @@ export class SmartLangGraphAgentService {
         pageTitle: pageTitle,
         viewportDimensions: screenshotData.dimensions
       }, state);
+      
+      console.log(`📊 Screenshot Analysis Output:`, {
+        success: discoveryResult.success,
+        method: discoveryResult.result?.method,
+        recommendedSelector: discoveryResult.result?.recommendedSelector,
+        confidence: discoveryResult.result?.confidence,
+        coordinates: discoveryResult.result?.coordinates,
+        reasoning: discoveryResult.result?.reasoning,
+        error: discoveryResult.error
+      });
       
       let enhancedAction = { ...nextAction };
       
@@ -1239,6 +1258,19 @@ export class SmartLangGraphAgentService {
       
       console.log('📸 Screenshot captured for validation analysis with dimensions:', screenshotData.dimensions);
       
+      console.log(`📊 Validation Analysis Input:`, {
+        actionType: nextAction.type,
+        selector: nextAction.selector,
+        inputText: nextAction.inputText,
+        description: nextAction.description,
+        coordinates: nextAction.coordinates,
+        currentUrl: currentUrl,
+        pageTitle: pageTitle,
+        expectedOutcome: nextAction.expectedOutcome,
+        screenshotLength: screenshotData.screenshot.length,
+        viewportDimensions: screenshotData.dimensions
+      });
+      
       // Use Gemini to validate the action was successful using screenshot
       const validation = await this.geminiService.validateActionSuccessWithScreenshot(
         {
@@ -1253,6 +1285,11 @@ export class SmartLangGraphAgentService {
         pageTitle,
         nextAction.expectedOutcome
       );
+      
+      console.log(`📊 Validation Analysis Output:`, {
+        success: validation.success,
+        reasoning: validation.reasoning
+      });
       
       // Enhanced validation logic using screenshot analysis
       let validationSuccess = validation.success;

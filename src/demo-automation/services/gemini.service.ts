@@ -380,6 +380,17 @@ RESPONSE FORMAT (JSON):
     pageTitle: string,
     expectedOutcome: string
   ): Promise<{ success: boolean; reasoning: string }> {
+    console.log(`📊 Validation Analysis Input:`, {
+      actionType: action.type,
+      actionDescription: action.description,
+      selector: action.selector,
+      inputText: action.inputText,
+      coordinates: action.coordinates,
+      currentUrl,
+      pageTitle,
+      expectedOutcome,
+      screenshotLength: screenshot.length
+    });
     const prompt = `
 You are an AI assistant that validates whether an action was successful by looking at a screenshot.
 
@@ -424,14 +435,31 @@ Please analyze the screenshot and provide your assessment in this JSON format:
         return response.text();
       });
 
+      console.log(`📊 Validation Analysis Raw Output:`, {
+        rawResponse: result
+      });
+      
       const jsonMatch = result.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        return {
+        const finalResult = {
           success: parsed.success || false,
           reasoning: parsed.reason || 'No reason provided'
         };
+        
+        console.log(`📊 Validation Analysis Final Output:`, {
+          success: finalResult.success,
+          reasoning: finalResult.reasoning,
+          parsedResponse: parsed
+        });
+        
+        return finalResult;
       }
+
+      console.log(`📊 Validation Analysis Failed to Parse:`, {
+        rawResponse: result,
+        error: 'No JSON match found'
+      });
 
       return { success: false, reasoning: 'Failed to parse validation response' };
     } catch (error) {
@@ -1380,6 +1408,14 @@ Focus on describing what you actually see in the screenshot rather than trying t
     recommendations: string[];
     pageAnalysis: string;
   }> {
+    console.log(`📊 Gemini Coordinate Detection Input:`, {
+      targetDescription,
+      currentUrl,
+      pageTitle,
+      viewportDimensions,
+      screenshotLength: screenshot.length,
+      context
+    });
     const prompt = `
 You are an expert web automation AI that analyzes screenshots to detect precise click coordinates for target elements.
 
@@ -1444,6 +1480,11 @@ IMPORTANT:
       
       const parsed = JSON.parse(result);
       
+      console.log(`📊 Gemini Coordinate Detection Raw Output:`, {
+        rawResponse: result,
+        parsedResponse: parsed
+      });
+      
       // Validate coordinates are within viewport bounds
       const validatedCoordinates = parsed.coordinates?.map((coord: any) => ({
         ...coord,
@@ -1451,11 +1492,20 @@ IMPORTANT:
         y: Math.max(0, Math.min(coord.y, viewportDimensions.height))
       })) || [];
       
-      return {
+      const finalResult = {
         coordinates: validatedCoordinates,
         recommendations: parsed.recommendations || [],
         pageAnalysis: parsed.pageAnalysis || 'Screenshot analysis completed'
       };
+      
+      console.log(`📊 Gemini Coordinate Detection Final Output:`, {
+        coordinatesFound: finalResult.coordinates.length,
+        coordinates: finalResult.coordinates,
+        recommendations: finalResult.recommendations,
+        pageAnalysis: finalResult.pageAnalysis
+      });
+      
+      return finalResult;
     } catch (error) {
       console.error('Coordinate detection failed:', error);
       return {

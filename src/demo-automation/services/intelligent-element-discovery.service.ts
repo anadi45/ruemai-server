@@ -229,6 +229,16 @@ export class IntelligentElementDiscoveryService {
     const targetDescription = this.extractTargetDescription(action);
     const searchContext = this.buildCoordinateSearchContext(action, currentUrl, pageTitle, viewportDimensions, context);
     
+    console.log(`📊 Coordinate Discovery Input:`, {
+      targetDescription,
+      currentUrl,
+      pageTitle,
+      viewportDimensions,
+      screenshotLength: screenshot.length,
+      searchContext,
+      context
+    });
+    
     try {
       // Use Gemini to detect click coordinates
       const coordinateResult = await this.geminiService.detectClickCoordinates(
@@ -239,6 +249,13 @@ export class IntelligentElementDiscoveryService {
         viewportDimensions,
         searchContext
       );
+      
+      console.log(`📊 Coordinate Discovery Output:`, {
+        coordinatesFound: coordinateResult.coordinates.length,
+        coordinates: coordinateResult.coordinates,
+        pageAnalysis: coordinateResult.pageAnalysis,
+        recommendations: coordinateResult.recommendations
+      });
       
       const bestMatch = coordinateResult.coordinates.length > 0 
         ? coordinateResult.coordinates.reduce((best, current) => 
