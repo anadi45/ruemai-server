@@ -46,6 +46,23 @@ export class GeminiService {
     });
   }
 
+  /**
+   * Extract JSON content from markdown-wrapped responses
+   * Handles cases where Gemini returns JSON wrapped in ```json ... ``` blocks
+   */
+  private extractJsonFromResponse(response: string): string {
+    // Check if response contains markdown code blocks
+    if (response.includes('```json')) {
+      const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch && jsonMatch[1]) {
+        return jsonMatch[1].trim();
+      }
+    }
+    
+    // If no markdown blocks found, return the original response
+    return response;
+  }
+
   private getApiKeys(): string[] {
     // Support both single key and multiple keys
     const singleKey = process.env.GEMINI_API_KEY;
@@ -1289,7 +1306,8 @@ Focus on high-confidence matches that are likely to be the intended element.
         return await response.text();
       });
       
-      const parsed = JSON.parse(result);
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
       
       return {
         suggestedSelectors: parsed.suggestedSelectors || [],
@@ -1377,7 +1395,8 @@ Focus on describing what you actually see in the screenshot rather than trying t
         return await response.text();
       });
       
-      const parsed = JSON.parse(result);
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
       
       // Convert the visual analysis into selector suggestions
       const suggestedSelectors = this.convertVisualAnalysisToSelectors(parsed, targetDescription);
@@ -1513,7 +1532,8 @@ IMPORTANT:
       });
         console.log("🚀 ~ GeminiService ~ detectClickCoordinates ~ result:", result)
       
-      const parsed = JSON.parse(result);
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
       
       console.log(`📊 Gemini Coordinate Detection Raw Output:`, {
         rawResponse: result,
@@ -1690,7 +1710,8 @@ Return JSON:
         return await response.text();
       });
       
-      const parsed = JSON.parse(result);
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
       
       const bestMatch = parsed.bestMatchIndex >= 0 
         ? availableElements[parsed.bestMatchIndex] 
@@ -1777,7 +1798,8 @@ Return JSON:
         return await response.text();
       });
       
-      return JSON.parse(result);
+      const jsonString = this.extractJsonFromResponse(result);
+      return JSON.parse(jsonString);
     } catch (error) {
       console.error('DOM change analysis failed:', error);
       return {
