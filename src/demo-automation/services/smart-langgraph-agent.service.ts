@@ -2092,45 +2092,62 @@ export class SmartLangGraphAgentService {
    * Generate a selector from action description as a fallback
    */
   private generateSelectorFromDescription(description: string): string {
-    console.log(`🔧 Generating selector from description: "${description}"`);
+    console.log(`🔧 Generating human-readable target from description: "${description}"`);
     
     const desc = description.toLowerCase();
     
-    // Extract key terms
-    const words = desc.split(/\s+/).filter(word => 
-      word.length > 2 && 
-      !['click', 'on', 'the', 'button', 'link', 'element', 'in', 'left', 'right', 'top', 'bottom'].includes(word)
-    );
-    
-    if (words.length === 0) {
-      return 'button'; // Fallback to generic button
-    }
-    
-    const primaryWord = words[0];
-    
-    // Generate selectors based on common patterns
-    const selectors = [
-      `button:contains("${primaryWord}")`,
-      `a:contains("${primaryWord}")`,
-      `[role="button"]:contains("${primaryWord}")`,
-      `*:contains("${primaryWord}")`
-    ];
-    
-    // If it's a navigation element, try more specific patterns
+    // Generate human-readable visual target descriptions
     if (desc.includes('workflow') || desc.includes('workflows')) {
-      selectors.unshift('a[href*="workflow"]', 'button:contains("Workflow")');
+      return 'Click the Workflows menu or link';
     } else if (desc.includes('dashboard')) {
-      selectors.unshift('a[href*="dashboard"]', 'button:contains("Dashboard")');
-    } else if (desc.includes('setting') || desc.includes('settings')) {
-      selectors.unshift('a[href*="setting"]', 'button:contains("Setting")');
+      return 'Click the Dashboard button or link';
+    } else if (desc.includes('settings')) {
+      return 'Click the Settings menu or gear icon';
+    } else if (desc.includes('profile')) {
+      return 'Click the Profile menu or user avatar';
+    } else if (desc.includes('create') || desc.includes('new')) {
+      return 'Click the Create or New button';
+    } else if (desc.includes('save')) {
+      return 'Click the Save button';
+    } else if (desc.includes('submit')) {
+      return 'Click the Submit button';
+    } else if (desc.includes('cancel')) {
+      return 'Click the Cancel button';
+    } else if (desc.includes('delete')) {
+      return 'Click the Delete button';
+    } else if (desc.includes('edit')) {
+      return 'Click the Edit button';
+    } else if (desc.includes('login') || desc.includes('sign in')) {
+      return 'Click the Login or Sign In button';
+    } else if (desc.includes('logout') || desc.includes('sign out')) {
+      return 'Click the Logout or Sign Out button';
+    } else if (desc.includes('menu')) {
+      return 'Click the menu button or hamburger icon';
+    } else if (desc.includes('search')) {
+      return 'Click the Search button or search icon';
+    } else if (desc.includes('filter')) {
+      return 'Click the Filter button or filter icon';
+    } else if (desc.includes('export')) {
+      return 'Click the Export button';
+    } else if (desc.includes('import')) {
+      return 'Click the Import button';
+    } else if (desc.includes('download')) {
+      return 'Click the Download button';
+    } else if (desc.includes('upload')) {
+      return 'Click the Upload button';
+    } else {
+      // Extract key terms for generic description
+      const words = desc.split(/\s+/).filter(word => 
+        word.length > 2 && 
+        !['click', 'on', 'the', 'button', 'link', 'element', 'in', 'left', 'right', 'top', 'bottom'].includes(word)
+      );
+      
+      if (words.length > 0) {
+        const primaryWord = words[0];
+        return `Click the ${primaryWord} button or link`;
+      }
+      
+      return 'Click the target element'; // Generic human-readable fallback
     }
-    
-    // If it's a sidebar/navigation element
-    if (desc.includes('left') || desc.includes('sidebar') || desc.includes('nav')) {
-      selectors.unshift('nav a', '.sidebar a', '.nav a');
-    }
-    
-    console.log(`🔧 Generated selectors: ${selectors.join(', ')}`);
-    return selectors[0]; // Return the first (most specific) selector
   }
 }

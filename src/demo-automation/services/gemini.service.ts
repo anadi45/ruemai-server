@@ -504,12 +504,6 @@ Please analyze the screenshot and provide your assessment in this JSON format:
         return response.text();
       });
 
-      // Log the raw Gemini response for debugging
-      console.log('\n🤖 GEMINI FILE PROCESSING RESPONSE:');
-      console.log('='.repeat(60));
-      console.log('Raw Response:', text);
-      console.log('='.repeat(60));
-
       // Parse the JSON response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -518,16 +512,6 @@ Please analyze the screenshot and provide your assessment in this JSON format:
 
       const parsed = JSON.parse(jsonMatch[0]);
 
-      // Log the parsed structured data
-      console.log('\n📊 PARSED FEATURE DOCUMENTATION:');
-      console.log('='.repeat(60));
-      console.log('Feature Name:', parsed.featureName);
-      console.log('Description:', parsed.description);
-      console.log('Steps:', parsed.steps);
-      console.log('Selectors:', parsed.selectors);
-      console.log('Expected Outcomes:', parsed.expectedOutcomes);
-      console.log('Prerequisites:', parsed.prerequisites);
-      console.log('='.repeat(60));
 
       return {
         featureName: parsed.featureName || featureName || 'Extracted Feature',
@@ -678,12 +662,12 @@ CRITICAL ANALYSIS INSTRUCTIONS:
 4. **Consider the actual user flow** as shown in images vs. documented steps
 5. **Identify potential scraping challenges** like dynamic content, modals, or complex interactions
 
-**SCREENSHOT + COORDINATE EXECUTION APPROACH:**
-- **VISUAL ELEMENT DETECTION**: The automation system will use screenshots to visually identify and locate UI elements
-- **COORDINATE-BASED INTERACTIONS**: Actions will be executed using coordinate-based clicking and interaction
-- **VISUAL HIERARCHY AWARENESS**: Account for nested UI elements, collapsible sections, dropdowns, and expandable menus
-- **LAYERED INTERFACE UNDERSTANDING**: Consider that UI elements may be hidden behind other elements or require scrolling to reveal
-- **DYNAMIC UI STATE CHANGES**: Plan for UI elements that change state (expand/collapse, show/hide) during the interaction flow
+**HUMAN-LIKE VISUAL AUTOMATION APPROACH:**
+- **VISUAL TARGET IDENTIFICATION**: The system simulates human behavior by visually scanning screenshots to find targets
+- **NATURAL INTERACTION PATTERNS**: Actions are executed using human-like clicking patterns and visual cues
+- **VISUAL HIERARCHY UNDERSTANDING**: Focus on what humans naturally see and interact with (buttons, links, text, icons)
+- **USER-CENTRIC NAVIGATION**: Plan actions based on what a human user would naturally do to accomplish tasks
+- **VISUAL STATE AWARENESS**: Account for how UI elements appear and change visually during interactions
 
 **ENHANCED UI STRUCTURE ANALYSIS:**
 1. **COLLAPSIBLE ELEMENTS**: Identify dropdowns, accordions, expandable sections, and nested menus that need to be opened before accessing sub-elements
@@ -734,12 +718,11 @@ Create a comprehensive Puppeteer automation plan that includes:
 - **URL CONSTRUCTION**: Build fallback URLs based on website structure (e.g., /workflows, /dashboard, /settings)
 - **HIERARCHICAL FALLBACKS**: Provide multiple levels of fallback (click → navigate → wait → retry)
 
-**ELEMENT INTERACTION (PRIORITY APPROACH):**
-- **PRIMARY**: Click buttons, links, menu items using generic element descriptions (e.g., "workflows link", "create button", "submit form")
-- **SECONDARY**: Use direct URL navigation only when DOM selectors fail or are unavailable
-- Fill forms and input fields with realistic data
-- Handle dropdowns, checkboxes, radio buttons
-- Manage file uploads if applicable
+**HUMAN-LIKE INTERACTION APPROACH:**
+- **VISUAL TARGET FOCUS**: Describe actions in human terms (e.g., "Click the blue 'Create' button", "Navigate to the 'Settings' menu", "Fill in the 'Name' field")
+- **NATURAL USER FLOW**: Plan actions as a human user would naturally perform them
+- **VISUAL ELEMENT DESCRIPTIONS**: Use descriptive, human-readable names for targets (e.g., "Workflows dropdown menu", "Create New button", "Save form button")
+- **USER INTENT MAPPING**: Focus on what the user wants to accomplish, not technical implementation
 - **AVOID SAVE/SUBMIT ACTIONS**: Do NOT include clicks on save, submit, create, update, delete buttons
 - **STOP BEFORE PERSISTENCE**: End the plan before any action that would save data to the server
 
@@ -775,14 +758,14 @@ Create a comprehensive Puppeteer automation plan that includes:
 - Implement proper waiting strategies (waitForSelector, waitForFunction)
 
 For each action, provide:
-- **Generic element descriptions** (e.g., "workflows link", "create button", "name input field") instead of specific CSS selectors
-- **Fallback actions** for dynamic content
-- **Realistic input data** for forms
-- **Proper waiting conditions** before and after actions
-- **Error handling strategies** for each step
-- **Screenshot capture** at critical points
-- **Data extraction** where applicable
-- **INTELLIGENT FALLBACK ACTIONS**: Meaningful alternatives for each action type
+- **HUMAN-READABLE DESCRIPTIONS**: Use natural language that describes what a human would see and click (e.g., "Click the 'Create Workflow' button", "Navigate to the 'Settings' menu", "Fill in the 'Project Name' field")
+- **VISUAL TARGET FOCUS**: Describe elements by their visual appearance, text, or position rather than technical attributes
+- **NATURAL USER FLOW**: Plan actions as a human would naturally perform them
+- **REALISTIC INPUT DATA**: Use realistic, human-like data for forms
+- **VISUAL WAITING CONDITIONS**: Describe what to wait for in visual terms (e.g., "Wait for the form to load", "Wait for the menu to expand")
+- **VISUAL ERROR HANDLING**: Describe error handling in terms of what a human would see and do
+- **SCREENSHOT CAPTURE**: Take screenshots at key visual milestones
+- **HUMAN-LIKE FALLBACKS**: Provide natural alternatives that a human would try
 
 **SCREENSHOT + COORDINATE EXECUTION SPECIFICATIONS:**
 - **VISUAL ELEMENT IDENTIFICATION**: Use descriptive names that can be visually identified in screenshots (e.g., "Workflows dropdown arrow", "General submenu item", "Create Workflow button")
@@ -838,23 +821,23 @@ Return the plan in this JSON format:
   "actions": [
     {
       "type": "click|type|navigate|wait|scroll|select|extract|evaluate|expand|collapse|hover",
-      "selector": "Generic element description (e.g., 'workflows dropdown', 'general submenu', 'create button', 'name input field')",
+      "selector": "Human-readable visual target description (e.g., 'Click the blue Create Workflow button', 'Navigate to the Settings menu', 'Fill in the Project Name field')",
       "fallbackAction": {
         "type": "navigate|click|wait|retry|expand|collapse",
-        "selector": "Alternative element description or URL",
+        "selector": "Alternative human-readable target or URL",
         "inputText": "Alternative input or URL path",
-        "description": "Fallback action description"
+        "description": "Fallback action description in human terms"
       },
       "inputText": "Text to input (for type actions)",
-      "description": "Detailed description of the Puppeteer action with visual context",
-      "expectedOutcome": "What should happen after this action (including visual state changes)",
-      "waitCondition": "What to wait for before proceeding (visual indicators, element visibility)",
+      "description": "Natural language description of what a human user would do (e.g., 'Click the Create Workflow button in the top navigation', 'Fill in the project name field with a descriptive title')",
+      "expectedOutcome": "What a human user would expect to see after this action (visual changes, page transitions, new elements appearing)",
+      "waitCondition": "What a human would wait for visually (e.g., 'Wait for the form to appear', 'Wait for the menu to expand', 'Wait for the page to load')",
       "extractData": "What data to extract (if applicable)",
       "priority": "high|medium|low",
       "estimatedDuration": number,
-      "errorHandling": "How to handle failures with visual fallbacks",
+      "errorHandling": "How a human would handle failures (e.g., 'Try clicking the alternative button', 'Refresh the page and retry')",
       "prerequisites": ["prerequisite1", "prerequisite2"],
-      "visualContext": "Description of visual elements and UI state for screenshot analysis"
+      "visualContext": "Description of what a human would see on the screen and the visual state for screenshot analysis"
     }
   ],
   "summary": {
@@ -1417,9 +1400,15 @@ Focus on describing what you actually see in the screenshot rather than trying t
       context
     });
     const prompt = `
-You are an expert web automation AI that analyzes screenshots to detect precise click coordinates for target elements.
+You are a human user looking at a web page screenshot. Your task is to identify and click on visual targets that match the user's intent.
 
-TARGET: Find click coordinates for elements that match: "${targetDescription}"
+HUMAN BEHAVIOR SIMULATION:
+- Think like a human user scanning the page visually
+- Look for visual cues, text, buttons, links, and interactive elements
+- Focus on what a human would naturally click on
+- Consider visual hierarchy and user interface patterns
+
+TARGET TO FIND: "${targetDescription}"
 
 CONTEXT:
 ${context}
@@ -1430,16 +1419,22 @@ CURRENT PAGE STATE:
 - Viewport Dimensions: ${viewportDimensions.width}x${viewportDimensions.height}
 - Screenshot: [Image provided below]
 
-CRITICAL REQUIREMENTS:
-1. Analyze the screenshot and identify elements that match the target description
-2. For each matching element, provide the exact pixel coordinates (x, y) where to click
-3. Coordinates should be relative to the screenshot/viewport (0,0 is top-left)
-4. Consider the element's center point or most clickable area
-5. Account for the viewport dimensions: ${viewportDimensions.width}x${viewportDimensions.height}
-6. Provide confidence scores (0-1) for each coordinate suggestion
-7. Explain your reasoning for each coordinate
+HUMAN-LIKE ANALYSIS APPROACH:
+1. **VISUAL SCANNING**: Look at the screenshot as a human would - scan for the target element
+2. **VISUAL IDENTIFICATION**: Identify elements by their visual appearance, text, or position
+3. **NATURAL CLICKING**: Determine where a human would naturally click on the target
+4. **VISUAL HIERARCHY**: Consider the visual importance and prominence of elements
+5. **USER INTENT**: Focus on what the user wants to accomplish, not technical selectors
 
-TASK: Analyze the screenshot and provide click coordinates for target elements.
+COORDINATE DETECTION REQUIREMENTS:
+- Provide exact pixel coordinates (x, y) where a human would click
+- Coordinates should be relative to the screenshot/viewport (0,0 is top-left)
+- Focus on the center or most natural click point of the target element
+- Account for the viewport dimensions: ${viewportDimensions.width}x${viewportDimensions.height}
+- Provide confidence scores (0-1) based on how clearly you can see the target
+- Explain your reasoning from a human perspective
+
+TASK: Analyze the screenshot like a human user and provide click coordinates for the target.
 
 Return JSON with your analysis:
 {

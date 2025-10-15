@@ -637,17 +637,31 @@ export class IntelligentElementDiscoveryService {
     additionalContext?: string
   ): string {
     const context = [
-      `Action: ${action.description}`,
+      `HUMAN-LIKE VISUAL TARGET DISCOVERY:`,
+      `User Intent: ${action.description}`,
       `Expected Outcome: ${action.expectedOutcome}`,
-      `Current URL: ${currentUrl}`,
-      `Page Title: ${pageTitle}`,
-      `Viewport Dimensions: ${viewportDimensions.width}x${viewportDimensions.height}`,
-      `Screenshot: [Image provided for coordinate detection]`,
-      `Task: Find precise click coordinates for target elements`
+      `Current Page: ${pageTitle} (${currentUrl})`,
+      `Screen Size: ${viewportDimensions.width}x${viewportDimensions.height}`,
+      `Screenshot: [Image provided for human-like visual analysis]`,
+      ``,
+      `HUMAN BEHAVIOR SIMULATION:`,
+      `- Think like a human user scanning the page visually`,
+      `- Look for the most prominent and obvious target element`,
+      `- Focus on visual cues: text, buttons, icons, colors, positioning`,
+      `- Consider what a human would naturally click on first`,
+      `- Account for visual hierarchy and user interface patterns`,
+      `- Prioritize elements that are clearly visible and accessible`,
+      ``,
+      `COORDINATE DETECTION APPROACH:`,
+      `- Scan the screenshot like a human would`,
+      `- Identify the target by its visual appearance and context`,
+      `- Determine the natural click point (center of button, middle of text, etc.)`,
+      `- Consider the element's visual prominence and accessibility`,
+      `- Provide coordinates that simulate human clicking behavior`
     ];
 
     if (additionalContext) {
-      context.push(`Additional context: ${additionalContext}`);
+      context.push(`User Context: ${additionalContext}`);
     }
 
     return context.join('\n');

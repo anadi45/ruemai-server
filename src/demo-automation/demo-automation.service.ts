@@ -103,15 +103,6 @@ export class DemoAutomationService {
     const demoId = uuidv4();
     const startTime = Date.now();
 
-    // Debug: Log credentials to help identify undefined values
-    console.log('DemoAutomationService.generateProductTourFromFiles - Received credentials:', {
-      username: credentials?.username,
-      password: credentials?.password ? '[REDACTED]' : 'undefined',
-      credentialsType: typeof credentials,
-      usernameType: typeof credentials?.username,
-      passwordType: typeof credentials?.password
-    });
-
     try {
       // Process files directly with Gemini
       console.log(`Processing ${files.length} files directly with Gemini...`);
@@ -224,72 +215,9 @@ export class DemoAutomationService {
   async generateAndLogActionPlan(featureDocs: ProductDocs, websiteUrl: string): Promise<ActionPlan> {
     try {
       console.log('\n🤖 Generating Puppeteer Action Plan...');
-      console.log('=' .repeat(60));
       
       const actionPlan = await this.geminiService.generateActionPlan(featureDocs, websiteUrl);
-      
-      // Log the action plan in a structured format
-      console.log(`\n📋 PUPPETEER SCRAPING PLAN FOR: ${actionPlan.featureName}`);
-      console.log(`⏱️  Total Estimated Duration: ${actionPlan.estimatedDuration} seconds`);
-      console.log(`📊 Total Actions: ${actionPlan.totalActions}`);
-      console.log(`🎯 Scraping Strategy: ${actionPlan.scrapingStrategy}`);
-      console.log('=' .repeat(60));
-      
-      // Log action summary
-      console.log('\n📈 SCRAPING ACTION SUMMARY:');
-      console.log(`   🖱️  Click Actions: ${actionPlan.summary.clickActions}`);
-      console.log(`   ⌨️  Type Actions: ${actionPlan.summary.typeActions}`);
-      console.log(`   🧭 Navigation Actions: ${actionPlan.summary.navigationActions}`);
-      console.log(`   ⏳ Wait Actions: ${actionPlan.summary.waitActions}`);
-      console.log(`   📊 Extract Actions: ${actionPlan.summary.extractActions}`);
-      console.log(`   🔧 Evaluate Actions: ${actionPlan.summary.evaluateActions}`);
-      
-      // Log detailed action list
-      console.log('\n📝 DETAILED ACTION LIST:');
-      console.log('=' .repeat(60));
-      
-      actionPlan.actions.forEach((action, index) => {
-        const priorityEmoji = action.priority === 'high' ? '🔴' : action.priority === 'medium' ? '🟡' : '🟢';
-        const typeEmoji = this.getActionTypeEmoji(action.type);
-        
-        console.log(`\n${index + 1}. ${typeEmoji} ${action.type.toUpperCase()} - ${priorityEmoji} ${action.priority.toUpperCase()}`);
-        console.log(`   📝 Description: ${action.description}`);
-        console.log(`   🎯 Expected Outcome: ${action.expectedOutcome}`);
-        console.log(`   ⏱️  Duration: ${action.estimatedDuration}s`);
-        
-        if (action.selector) {
-          console.log(`   🎯 Primary Selector: ${action.selector}`);
-        }
-        
-        if (action.fallbackAction) {
-          console.log(`   🔄 Fallback Action: ${action.fallbackAction.type} - ${action.fallbackAction.description}`);
-        }
-        
-        if (action.inputText) {
-          console.log(`   ⌨️  Input Text: "${action.inputText}"`);
-        }
-        
-        if (action.waitCondition) {
-          console.log(`   ⏳ Wait Condition: ${action.waitCondition}`);
-        }
-        
-        if (action.extractData) {
-          console.log(`   📊 Extract Data: ${action.extractData}`);
-        }
-        
-        if (action.errorHandling) {
-          console.log(`   🛡️  Error Handling: ${action.errorHandling}`);
-        }
-        
-        if (action.prerequisites && action.prerequisites.length > 0) {
-          console.log(`   📋 Prerequisites: ${action.prerequisites.join(', ')}`);
-        }
-      });
-      
-      console.log('\n' + '=' .repeat(60));
-      console.log('✅ Action plan generated successfully!');
-      console.log('=' .repeat(60) + '\n');
-      
+
       return actionPlan;
     } catch (error) {
       console.error('❌ Error generating action plan:', error);
