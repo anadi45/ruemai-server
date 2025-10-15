@@ -3,6 +3,7 @@ import { StateGraph, MemorySaver } from '@langchain/langgraph';
 import { GeminiService } from './gemini.service';
 import { PuppeteerWorkerService } from './puppeteer-worker.service';
 import { IntelligentElementDiscoveryService } from './intelligent-element-discovery.service';
+import { ActionLoggerService } from './action-logger.service';
 import { 
   Action, 
   DOMState, 
@@ -37,7 +38,8 @@ export class SmartLangGraphAgentService {
   constructor(
     private geminiService: GeminiService,
     private puppeteerWorker: PuppeteerWorkerService,
-    private elementDiscovery: IntelligentElementDiscoveryService
+    private elementDiscovery: IntelligentElementDiscoveryService,
+    private actionLogger: ActionLoggerService
   ) {
     this.memory = new MemorySaver();
     this.tools = new Map();
@@ -545,6 +547,21 @@ export class SmartLangGraphAgentService {
       console.log(`🎯 Using selector: ${enhancedAction.selector}`);
       console.log(`🔧 Tool params:`, JSON.stringify(toolParams, null, 2));
       
+      // Log action start
+      const actionId = this.actionLogger.logActionStart(
+        enhancedAction,
+        {
+          currentUrl,
+          pageTitle,
+          domState: state.domState
+        },
+        {
+          workflowType: 'smart-agent',
+          retryCount: state.retryCount,
+          maxRetries: state.maxRetries
+        }
+      );
+      
       // Execute the tool with fallback handling
       let result = await tool.execute(toolParams, state);
       
@@ -582,6 +599,14 @@ export class SmartLangGraphAgentService {
             console.log(`🛠️  Executing fallback tool: ${fallbackToolName}`);
             result = await fallbackTool.execute(fallbackParams, state);
             
+            // Log fallback usage
+            this.actionLogger.logFallbackUsed(
+              actionId,
+              fallbackAction,
+              result.success,
+              result.error
+            );
+            
             if (result.success) {
               console.log('✅ Fallback action successful');
             } else {
@@ -601,6 +626,9 @@ export class SmartLangGraphAgentService {
         const screenshot = await this.puppeteerWorker.takeScreenshot();
         const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
         const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+        
+        // Log action completion
+        this.actionLogger.logActionComplete(actionId, true);
         
         // Create tour step
         const tourStep: TourStep = {
@@ -626,6 +654,9 @@ export class SmartLangGraphAgentService {
         };
       } else {
         console.log('❌ Tool execution failed:', result.error);
+        
+        // Log action failure
+        this.actionLogger.logActionComplete(actionId, false, result.error);
         
         // Check if this is a critical action that should stop the agent
         const isCriticalAction = this.isCriticalAction(nextAction, state);
@@ -788,6 +819,14 @@ export class SmartLangGraphAgentService {
         console.log('❌ Action validation failed');
         console.log(`📊 Validation reasoning: ${validationReasoning}`);
         
+        // Log validation failure
+        this.actionLogger.logValidation(
+          `action-${state.currentActionIndex}-${Date.now()}`,
+          false,
+          validationReasoning,
+          this.isCriticalAction(nextAction, state)
+        );
+        
         // Check if this is a critical action
         const isCriticalAction = this.isCriticalAction(nextAction, state);
         
@@ -835,6 +874,14 @@ export class SmartLangGraphAgentService {
         } else {
           console.log('⚠️  Non-critical action validation failed, continuing...');
         }
+      } else {
+        // Log successful validation
+        this.actionLogger.logValidation(
+          `action-${state.currentActionIndex}-${Date.now()}`,
+          true,
+          validationReasoning,
+          this.isCriticalAction(nextAction, state)
+        );
       }
       
         return {

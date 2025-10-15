@@ -6,6 +6,7 @@ import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
 import { SmartLangGraphAgentService } from './services/smart-langgraph-agent.service';
 import { IntelligentElementDiscoveryService } from './services/intelligent-element-discovery.service';
+import { ActionLoggerService } from './services/action-logger.service';
 
 @Module({
   controllers: [DemoAutomationController],
@@ -15,7 +16,8 @@ import { IntelligentElementDiscoveryService } from './services/intelligent-eleme
     PuppeteerWorkerService,
     LangGraphWorkflowService,
     SmartLangGraphAgentService,
-    IntelligentElementDiscoveryService
+    IntelligentElementDiscoveryService,
+    ActionLoggerService
   ],
   exports: [DemoAutomationService],
 })
