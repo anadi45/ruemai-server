@@ -320,7 +320,7 @@ export class SmartLangGraphAgentService {
     this.tools.set('discover_element', {
       name: 'discover_element',
       description: 'Intelligently discover and correlate elements on the page based on action description using visual analysis',
-      parameters: { actionDescription: 'string', actionType: 'string', context: 'string', screenshot: 'string', currentUrl: 'string', pageTitle: 'string' },
+      parameters: { actionDescription: 'string', actionType: 'string', context: 'string', screenshot: 'string', currentUrl: 'string', pageTitle: 'string', viewportDimensions: 'object' },
       execute: async (params, state) => {
         try {
           console.log(`🔍 Intelligent element discovery for: "${params.actionDescription}"`);
@@ -335,7 +335,46 @@ export class SmartLangGraphAgentService {
             prerequisites: []
           };
           
-          // Use intelligent element discovery with screenshot
+          // Try coordinate-based discovery first if viewport dimensions are available
+          let coordinateDiscovery = null;
+          if (params.viewportDimensions) {
+            try {
+              console.log(`🎯 Attempting coordinate-based discovery with viewport: ${params.viewportDimensions.width}x${params.viewportDimensions.height}`);
+              coordinateDiscovery = await this.elementDiscovery.discoverCoordinatesWithScreenshot(
+                mockAction,
+                params.screenshot,
+                params.currentUrl,
+                params.pageTitle,
+                params.viewportDimensions,
+                params.context
+              );
+              
+              if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+                console.log(`✅ Coordinate discovery successful: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y}) with confidence ${coordinateDiscovery.bestMatch.confidence}`);
+                
+                return { 
+                  success: true, 
+                  result: {
+                    discovery: coordinateDiscovery,
+                    recommendedSelector: `coordinates:${coordinateDiscovery.bestMatch.x},${coordinateDiscovery.bestMatch.y}`,
+                    confidence: coordinateDiscovery.bestMatch.confidence,
+                    reasoning: coordinateDiscovery.bestMatch.reasoning,
+                    coordinates: {
+                      x: coordinateDiscovery.bestMatch.x,
+                      y: coordinateDiscovery.bestMatch.y,
+                      confidence: coordinateDiscovery.bestMatch.confidence,
+                      reasoning: coordinateDiscovery.bestMatch.reasoning
+                    },
+                    method: 'coordinates'
+                  }
+                };
+              }
+            } catch (coordinateError) {
+              console.warn('Coordinate discovery failed, falling back to element discovery:', coordinateError);
+            }
+          }
+          
+          // Fallback to traditional element discovery
           const discovery = await this.elementDiscovery.discoverElementWithScreenshot(
             mockAction,
             params.screenshot,
@@ -357,7 +396,8 @@ export class SmartLangGraphAgentService {
               discovery,
               recommendedSelector: discovery.bestMatch?.selector,
               confidence: discovery.bestMatch?.confidence,
-              reasoning: discovery.bestMatch?.reasoning
+              reasoning: discovery.bestMatch?.reasoning,
+              method: 'element'
             }
           };
         } catch (error) {
@@ -895,18 +935,21 @@ export class SmartLangGraphAgentService {
       // INTELLIGENT ELEMENT DISCOVERY - First try to discover the element intelligently using screenshot
       console.log(`🧠 Using intelligent element discovery for: "${nextAction.description}"`);
       
-      // Take screenshot for visual analysis
-      const screenshot = await this.puppeteerWorker.takeScreenshot();
+      // Take screenshot for visual analysis with coordinate detection
+      const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
       const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+      
+      console.log(`📸 Screenshot captured with dimensions: ${screenshotData.dimensions.width}x${screenshotData.dimensions.height}`);
       
       const discoveryResult = await this.tools.get('discover_element')!.execute({
         actionDescription: nextAction.description,
         actionType: nextAction.type,
         context: state.currentContext,
-        screenshot: screenshot,
+        screenshot: screenshotData.screenshot,
         currentUrl: currentUrl,
-        pageTitle: pageTitle
+        pageTitle: pageTitle,
+        viewportDimensions: screenshotData.dimensions
       }, state);
       
       let enhancedAction = { ...nextAction };
@@ -916,11 +959,24 @@ export class SmartLangGraphAgentService {
         console.log(`🎯 Confidence: ${discoveryResult.result.confidence}`);
         console.log(`💭 Reasoning: ${discoveryResult.result.reasoning}`);
         
-        // Update the action with the discovered selector
-        enhancedAction = {
-          ...nextAction,
-          selector: discoveryResult.result.recommendedSelector
-        };
+        // Check if coordinates were discovered
+        if (discoveryResult.result.method === 'coordinates' && discoveryResult.result.coordinates) {
+          console.log(`🎯 Coordinate-based action detected: (${discoveryResult.result.coordinates.x}, ${discoveryResult.result.coordinates.y})`);
+          
+          // Update the action to use coordinate-based execution
+          enhancedAction = {
+            ...nextAction,
+            type: `${nextAction.type}_coordinates` as any,
+            coordinates: discoveryResult.result.coordinates,
+            selector: discoveryResult.result.recommendedSelector
+          };
+        } else {
+          // Update the action with the discovered selector
+          enhancedAction = {
+            ...nextAction,
+            selector: discoveryResult.result.recommendedSelector
+          };
+        }
         
         // Store the discovery result for later use
         state.extractedData = {
@@ -1176,12 +1232,12 @@ export class SmartLangGraphAgentService {
     try {
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
       
-      // Take screenshot for visual validation
-      const screenshot = await this.puppeteerWorker.takeScreenshot();
+      // Take screenshot for visual validation with coordinate data
+      const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
       const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
-      console.log('📸 Screenshot captured for validation analysis');
+      console.log('📸 Screenshot captured for validation analysis with dimensions:', screenshotData.dimensions);
       
       // Use Gemini to validate the action was successful using screenshot
       const validation = await this.geminiService.validateActionSuccessWithScreenshot(
@@ -1189,9 +1245,10 @@ export class SmartLangGraphAgentService {
           type: nextAction.type,
           selector: nextAction.selector,
           inputText: nextAction.inputText,
-          description: nextAction.description
+          description: nextAction.description,
+          coordinates: nextAction.coordinates
         },
-        screenshot,
+        screenshotData.screenshot,
         currentUrl,
         pageTitle,
         nextAction.expectedOutcome
