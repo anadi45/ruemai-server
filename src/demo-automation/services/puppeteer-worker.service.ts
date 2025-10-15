@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import puppeteer, { Browser, Page, ElementHandle } from 'puppeteer';
 import { Action, DOMState, PuppeteerWorkerConfig } from '../types/demo-automation.types';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class PuppeteerWorkerService {
@@ -788,6 +790,8 @@ export class PuppeteerWorkerService {
    */
   async takeScreenshotForCoordinates(): Promise<{
     screenshot: string;
+    screenshotData: { data: string; mimeType: string };
+    screenshotPath: string;
     dimensions: { width: number; height: number };
     viewport: { width: number; height: number };
   }> {
@@ -801,7 +805,17 @@ export class PuppeteerWorkerService {
       throw new Error('Unable to get viewport dimensions');
     }
 
-    // Take screenshot with current viewport
+    // Generate unique filename
+    const timestamp = Date.now();
+    const screenshotPath = path.join(process.cwd(), 'screenshots', `screenshot_${timestamp}.png`);
+
+    // Take screenshot and save as file
+    await this.page.screenshot({ 
+      path: screenshotPath as `${string}.png`,
+      fullPage: false 
+    });
+
+    // Also get base64 for compatibility
     const screenshot = await this.page.screenshot({ 
       encoding: 'base64',
       fullPage: false 
@@ -809,9 +823,37 @@ export class PuppeteerWorkerService {
 
     return {
       screenshot,
+      screenshotData: {
+        data: screenshot,
+        mimeType: 'image/png'
+      },
+      screenshotPath,
       dimensions: { width: viewport.width, height: viewport.height },
       viewport: { width: viewport.width, height: viewport.height }
     };
+  }
+
+  /**
+   * Clean up screenshot file after processing
+   */
+  async cleanupScreenshot(screenshotPath: string): Promise<void> {
+    try {
+      if (fs.existsSync(screenshotPath)) {
+        fs.unlinkSync(screenshotPath);
+        console.log(`🗑️  Cleaned up screenshot: ${screenshotPath}`);
+      }
+    } catch (error) {
+      console.warn(`⚠️  Failed to cleanup screenshot ${screenshotPath}:`, error);
+    }
+  }
+
+  /**
+   * Clean up multiple screenshot files
+   */
+  async cleanupScreenshots(screenshotPaths: string[]): Promise<void> {
+    for (const path of screenshotPaths) {
+      await this.cleanupScreenshot(path);
+    }
   }
 
   /**

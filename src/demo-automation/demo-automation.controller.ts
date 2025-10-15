@@ -35,11 +35,6 @@ export class DemoAutomationController {
         password: body.password
       };
       
-      console.log(`\n🚀 Starting complete demo automation workflow...`);
-      console.log(`📁 Processing ${files.length} document(s)`);
-      console.log(`🌐 Target website: ${body.websiteUrl}`);
-      console.log(`🎯 Feature: ${body.featureName || 'Auto-detected'}`);
-      
       // Generate tour from uploaded documents (includes action planning and console logging)
       const result = await this.demoAutomationService.generateProductTourFromFiles(
         body.websiteUrl,

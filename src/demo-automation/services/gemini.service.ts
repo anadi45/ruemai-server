@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Action, DOMState, GeminiResponse, ProductDocs, ActionPlan, PuppeteerAction, ElementMatch } from '../types/demo-automation.types';
+import * as fs from 'fs';
 
 /**
  * GeminiService with API key rotation support
@@ -378,7 +379,9 @@ RESPONSE FORMAT (JSON):
     screenshot: string,
     currentUrl: string,
     pageTitle: string,
-    expectedOutcome: string
+    expectedOutcome: string,
+    screenshotData?: { data: string; mimeType: string },
+    screenshotPath?: string
   ): Promise<{ success: boolean; reasoning: string }> {
     console.log(`📊 Validation Analysis Input:`, {
       actionType: action.type,
@@ -422,14 +425,31 @@ Please analyze the screenshot and provide your assessment in this JSON format:
 
     try {
       const result = await this.makeRequestWithRetry(async (model) => {
-        const result = await model.generateContent([
-          prompt,
-          {
+        let imageData;
+        
+        // Use file-based approach if screenshotPath is provided
+        if (screenshotPath && fs.existsSync(screenshotPath)) {
+          console.log(`📁 Using file-based screenshot for validation: ${screenshotPath}`);
+          const fileData = fs.readFileSync(screenshotPath);
+          imageData = {
             inlineData: {
+              data: fileData.toString('base64'),
+              mimeType: 'image/png'
+            }
+          };
+        } else {
+          console.log(`📊 Using base64 screenshot data for validation`);
+          imageData = {
+            inlineData: screenshotData || {
               data: screenshot,
               mimeType: 'image/png'
             }
-          }
+          };
+        }
+        
+        const result = await model.generateContent([
+          prompt,
+          imageData
         ]);
         const response = await result.response;
         return response.text();
@@ -1385,7 +1405,9 @@ Focus on describing what you actually see in the screenshot rather than trying t
     currentUrl: string,
     pageTitle: string,
     viewportDimensions: { width: number; height: number },
-    context: string
+    context: string,
+    screenshotData?: { data: string; mimeType: string },
+    screenshotPath?: string
   ): Promise<{
     coordinates: Array<{ x: number; y: number; confidence: number; reasoning: string; elementDescription: string }>;
     recommendations: string[];
@@ -1460,18 +1482,36 @@ IMPORTANT:
 
     try {
       const result = await this.makeRequestWithRetry(async (model) => {
-        const result = await model.generateContent([
-          prompt,
-          {
+        let imageData;
+        
+        // Use file-based approach if screenshotPath is provided
+        if (screenshotPath && fs.existsSync(screenshotPath)) {
+          console.log(`📁 Using file-based screenshot: ${screenshotPath}`);
+          const fileData = fs.readFileSync(screenshotPath);
+          imageData = {
             inlineData: {
+              data: fileData.toString('base64'),
+              mimeType: 'image/png'
+            }
+          };
+        } else {
+          console.log(`📊 Using base64 screenshot data`);
+          imageData = {
+            inlineData: screenshotData || {
               data: screenshot,
               mimeType: 'image/png'
             }
-          }
+          };
+        }
+        
+        const result = await model.generateContent([
+          prompt,
+          imageData
         ]);
         const response = await result.response;
         return await response.text();
       });
+        console.log("🚀 ~ GeminiService ~ detectClickCoordinates ~ result:", result)
       
       const parsed = JSON.parse(result);
       

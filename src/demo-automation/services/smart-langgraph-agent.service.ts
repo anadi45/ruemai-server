@@ -320,7 +320,7 @@ export class SmartLangGraphAgentService {
     this.tools.set('discover_element', {
       name: 'discover_element',
       description: 'Intelligently discover and correlate elements on the page based on action description using visual analysis',
-      parameters: { actionDescription: 'string', actionType: 'string', context: 'string', screenshot: 'string', currentUrl: 'string', pageTitle: 'string', viewportDimensions: 'object' },
+      parameters: { actionDescription: 'string', actionType: 'string', context: 'string', screenshot: 'string', screenshotData: 'object', screenshotPath: 'string', currentUrl: 'string', pageTitle: 'string', viewportDimensions: 'object' },
       execute: async (params, state) => {
         try {
           console.log(`🔍 Intelligent element discovery for: "${params.actionDescription}"`);
@@ -346,7 +346,9 @@ export class SmartLangGraphAgentService {
                 params.currentUrl,
                 params.pageTitle,
                 params.viewportDimensions,
-                params.context
+                params.context,
+                params.screenshotData,
+                params.screenshotPath
               );
               
               if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
@@ -956,6 +958,8 @@ export class SmartLangGraphAgentService {
         actionType: nextAction.type,
         context: state.currentContext,
         screenshot: screenshotData.screenshot,
+        screenshotData: screenshotData.screenshotData,
+        screenshotPath: screenshotData.screenshotPath,
         currentUrl: currentUrl,
         pageTitle: pageTitle,
         viewportDimensions: screenshotData.dimensions
@@ -970,6 +974,15 @@ export class SmartLangGraphAgentService {
         reasoning: discoveryResult.result?.reasoning,
         error: discoveryResult.error
       });
+      
+      // Clean up screenshot file after discovery
+      if (screenshotData.screenshotPath) {
+        try {
+          await this.puppeteerWorker.cleanupScreenshot(screenshotData.screenshotPath);
+        } catch (error) {
+          console.warn('Failed to cleanup screenshot after discovery:', error);
+        }
+      }
       
       let enhancedAction = { ...nextAction };
       
@@ -1283,13 +1296,24 @@ export class SmartLangGraphAgentService {
         screenshotData.screenshot,
         currentUrl,
         pageTitle,
-        nextAction.expectedOutcome
+        nextAction.expectedOutcome,
+        screenshotData.screenshotData,
+        screenshotData.screenshotPath
       );
       
       console.log(`📊 Validation Analysis Output:`, {
         success: validation.success,
         reasoning: validation.reasoning
       });
+      
+      // Clean up screenshot file after processing
+      if (screenshotData.screenshotPath) {
+        try {
+          await this.puppeteerWorker.cleanupScreenshot(screenshotData.screenshotPath);
+        } catch (error) {
+          console.warn('Failed to cleanup screenshot:', error);
+        }
+      }
       
       // Enhanced validation logic using screenshot analysis
       let validationSuccess = validation.success;

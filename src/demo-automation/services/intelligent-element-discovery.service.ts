@@ -222,7 +222,9 @@ export class IntelligentElementDiscoveryService {
     currentUrl: string,
     pageTitle: string,
     viewportDimensions: { width: number; height: number },
-    context?: string
+    context?: string,
+    screenshotData?: { data: string; mimeType: string },
+    screenshotPath?: string
   ): Promise<CoordinateDiscovery> {
     console.log(`🎯 Coordinate discovery with screenshot for: "${action.description}"`);
     
@@ -247,7 +249,9 @@ export class IntelligentElementDiscoveryService {
         currentUrl,
         pageTitle,
         viewportDimensions,
-        searchContext
+        searchContext,
+        screenshotData,
+        screenshotPath
       );
       
       console.log(`📊 Coordinate Discovery Output:`, {
