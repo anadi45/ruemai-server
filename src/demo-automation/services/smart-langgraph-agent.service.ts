@@ -82,10 +82,11 @@ export class SmartLangGraphAgentService {
       parameters: { url: 'string', waitFor: 'string' },
       execute: async (params, state) => {
         try {
+          console.log(`🧭 Navigation tool called with params:`, JSON.stringify(params, null, 2));
           console.log(`🧭 Navigating to: ${params.url}`);
           
-          if (!params.url) {
-            throw new Error('Navigation URL is required but not provided');
+          if (!params.url || params.url === 'undefined') {
+            throw new Error(`Navigation URL is required but not provided. Received: "${params.url}"`);
           }
           
           await this.puppeteerWorker.navigateToUrl(params.url);
@@ -925,6 +926,8 @@ export class SmartLangGraphAgentService {
         console.log(`   State goal: "${state.goal}"`);
         console.log(`   Resolved URL: "${url}"`);
         console.log(`   Action description: "${action.description}"`);
+        console.log(`   Action type: "${action.type}"`);
+        console.log(`   Action selector: "${action.selector}"`);
         
         if (!url) {
           throw new Error('No URL available for navigation action');

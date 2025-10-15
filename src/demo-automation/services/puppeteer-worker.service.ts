@@ -7,6 +7,8 @@ export class PuppeteerWorkerService {
   private browser: Browser | null = null;
   private page: Page | null = null;
   private config: PuppeteerWorkerConfig;
+  private isInitializing: boolean = false;
+  private operationLock: Promise<void> = Promise.resolve();
 
   constructor() {
     this.config = {
@@ -23,6 +25,24 @@ export class PuppeteerWorkerService {
       return;
     }
 
+    if (this.isInitializing) {
+      // Wait for the ongoing initialization to complete
+      await this.operationLock;
+      return;
+    }
+
+    this.isInitializing = true;
+    this.operationLock = this.performInitialization();
+    
+    await this.operationLock;
+    this.isInitializing = false;
+  }
+
+  isInitialized(): boolean {
+    return this.browser !== null && this.page !== null;
+  }
+
+  private async performInitialization(): Promise<void> {
     this.browser = await puppeteer.launch({
       headless: this.config.headless,
       args: [
@@ -86,14 +106,20 @@ export class PuppeteerWorkerService {
       throw new Error('Page not initialized. Call initialize() first.');
     }
 
+    if (!url || url === 'undefined') {
+      throw new Error(`Invalid URL provided: "${url}". URL cannot be undefined or empty.`);
+    }
+
     try {
+      console.log(`🧭 Navigating to: ${url}`);
+      
       // Navigate with multiple wait strategies
       await this.page.goto(url, { 
-        waitUntil: 'domcontentloaded',
+        waitUntil: 'networkidle0',
         timeout: this.config.timeout 
       });
 
-      // Wait for JavaScript to load
+      // Wait for JavaScript to load and execute
       await new Promise(resolve => setTimeout(resolve, 3000));
 
       // Check if JavaScript is working by looking for common indicators
@@ -103,7 +129,7 @@ export class PuppeteerWorkerService {
       });
 
       if (!jsWorking) {
-        throw new Error('JavaScript execution failed - page may not be fully loaded');
+        console.warn('JavaScript execution check failed - page may not be fully loaded');
       }
 
       // Wait for network to be idle
@@ -111,6 +137,14 @@ export class PuppeteerWorkerService {
 
       // Additional wait for dynamic content
       await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify navigation was successful
+      const currentUrl = this.page.url();
+      console.log(`✅ Navigation completed. Current URL: ${currentUrl}`);
+      
+      if (currentUrl === 'about:blank' || currentUrl === 'data:,' || !currentUrl.includes(url.split('/')[2])) {
+        throw new Error(`Navigation failed - URL did not change to expected destination. Current: ${currentUrl}, Expected: ${url}`);
+      }
 
     } catch (error) {
       console.error('Navigation failed:', error);
@@ -323,7 +357,10 @@ export class PuppeteerWorkerService {
           'JavaScript is disabled',
           'Please enable JavaScript',
           'Enable JavaScript',
-          'JavaScript required'
+          'JavaScript required',
+          'JavaScript is not enabled',
+          'Please turn on JavaScript',
+          'This page requires JavaScript'
         ];
         
         // Check for error text in the document
@@ -508,10 +545,6 @@ export class PuppeteerWorkerService {
       await this.browser.close();
       this.browser = null;
     }
-  }
-
-  isInitialized(): boolean {
-    return this.browser !== null && this.page !== null;
   }
 
   getCurrentUrl(): string | null {
