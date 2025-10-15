@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Action, DOMState, GeminiResponse, ProductDocs, ActionPlan, PuppeteerAction } from '../types/demo-automation.types';
+import { Action, DOMState, GeminiResponse, ProductDocs, ActionPlan, PuppeteerAction, ElementMatch } from '../types/demo-automation.types';
+import * as fs from 'fs';
 
 /**
  * GeminiService with API key rotation support
@@ -43,6 +44,117 @@ export class GeminiService {
       this.keyUsageCount.set(index, 0);
       this.keyLastUsed.set(index, 0);
     });
+  }
+
+  /**
+   * Extract JSON content from markdown-wrapped responses
+   * Handles cases where Gemini returns JSON wrapped in ```json ... ``` blocks
+   */
+  private extractJsonFromResponse(response: string): string {
+    // Check if response contains markdown code blocks
+    if (response.includes('```json')) {
+      const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch && jsonMatch[1]) {
+        return jsonMatch[1].trim();
+      }
+    }
+    
+    // If no markdown blocks found, return the original response
+    return response;
+  }
+
+  /**
+   * Analyze action failure and generate improved action using LLM
+   * This enables intelligent retry with learning from failures
+   */
+  async analyzeFailureAndRegenerateAction(
+    failedAction: Action,
+    validationReasoning: string,
+    currentDOMState: DOMState,
+    goal: string,
+    retryAttempt: number
+  ): Promise<{ improvedAction: Action; analysis: string; recommendations: string[] }> {
+    const prompt = `
+You are an intelligent automation agent that learns from failures. Analyze the failed action and generate an improved version.
+
+CONTEXT:
+- Goal: ${goal}
+- Failed Action: ${failedAction.type} - ${failedAction.description}
+- Validation Failure Reason: ${validationReasoning}
+- Retry Attempt: ${retryAttempt}/3
+- Current URL: ${currentDOMState.currentUrl}
+- Page Title: ${currentDOMState.pageTitle}
+
+CURRENT PAGE STATE:
+- Available clickable elements: ${currentDOMState.clickableSelectors.slice(0, 10).join(', ')}
+- Available input elements: ${currentDOMState.inputSelectors.slice(0, 5).join(', ')}
+- Visible text snippets: ${currentDOMState.visibleText.slice(0, 10).join(', ')}
+
+ANALYSIS INSTRUCTIONS:
+1. Analyze WHY the original action failed
+2. Identify what went wrong (selector issues, navigation problems, timing, etc.)
+3. Consider the current page state and available elements
+4. Generate an improved action that addresses the failure
+5. Provide specific recommendations for success
+
+Return JSON with:
+{
+  "analysis": "Detailed analysis of why the action failed and what needs to be improved",
+  "improvedAction": {
+    "type": "click|type|navigate|wait|extract|evaluate",
+    "selector": "Improved selector or navigation target",
+    "inputText": "Text to input (if applicable)",
+    "description": "Clear description of the improved action",
+    "reasoning": "Why this improved action should work"
+  },
+  "recommendations": [
+    "Specific recommendation 1",
+    "Specific recommendation 2"
+  ]
+}
+
+Focus on:
+- Better selectors based on current page state
+- Alternative navigation approaches
+- Timing considerations
+- Element discovery strategies
+- Fallback approaches
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
+
+      console.log(`🧠 LLM Failure Analysis (Attempt ${retryAttempt}):`, {
+        analysis: parsed.analysis,
+        improvedAction: parsed.improvedAction,
+        recommendations: parsed.recommendations
+      });
+
+      return {
+        improvedAction: parsed.improvedAction,
+        analysis: parsed.analysis,
+        recommendations: parsed.recommendations || []
+      };
+    } catch (error) {
+      console.error('Failed to analyze failure and regenerate action:', error);
+      
+      // Fallback: return the original action with basic improvements
+      return {
+        improvedAction: {
+          ...failedAction,
+          description: `${failedAction.description} (Retry ${retryAttempt} - ${validationReasoning})`
+        },
+        analysis: `Unable to analyze failure: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        recommendations: ['Retry with original action', 'Check page state manually']
+      };
+    }
   }
 
   private getApiKeys(): string[] {
@@ -373,6 +485,120 @@ RESPONSE FORMAT (JSON):
     }
   }
 
+  async validateActionSuccessWithScreenshot(
+    action: Action,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    expectedOutcome: string,
+    screenshotData?: { data: string; mimeType: string },
+    screenshotPath?: string
+  ): Promise<{ success: boolean; reasoning: string }> {
+    console.log(`📊 Validation Analysis Input:`, {
+      actionType: action.type,
+      actionDescription: action.description,
+      selector: action.selector,
+      inputText: action.inputText,
+      coordinates: action.coordinates,
+      currentUrl,
+      pageTitle,
+      expectedOutcome,
+      screenshotLength: screenshot.length
+    });
+    const prompt = `
+You are an AI assistant that validates whether an action was successful by looking at a screenshot.
+
+ACTION PERFORMED: ${action.type} - ${action.description}
+EXPECTED OUTCOME: ${expectedOutcome}
+
+CURRENT STATE:
+- URL: ${currentUrl}
+- Title: ${pageTitle}
+- Screenshot: [Image provided below]
+
+QUESTIONS TO ANSWER:
+1. What do you see in the screenshot? Describe the current state of the page.
+2. Does the page look like it's in the expected state after the action?
+3. Are there any visual indicators that the action was successful?
+4. Do you see any errors, loading states, or issues that suggest the action failed?
+5. What evidence in the screenshot supports or contradicts the expected outcome?
+
+Please analyze the screenshot and provide your assessment in this JSON format:
+{
+  "pageState": "Description of what you see in the screenshot",
+  "successIndicators": ["Visual signs that the action succeeded"],
+  "failureIndicators": ["Visual signs that the action failed"],
+  "evidence": "Specific evidence from the screenshot that supports your conclusion",
+  "success": true/false,
+  "reason": "Explanation of why you think it succeeded or failed based on what you see"
+}
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        let imageData;
+        
+        // Use file-based approach if screenshotPath is provided
+        if (screenshotPath && fs.existsSync(screenshotPath)) {
+          console.log(`📁 Using file-based screenshot for validation: ${screenshotPath}`);
+          const fileData = fs.readFileSync(screenshotPath);
+          imageData = {
+            inlineData: {
+              data: fileData.toString('base64'),
+              mimeType: 'image/png'
+            }
+          };
+        } else {
+          console.log(`📊 Using base64 screenshot data for validation`);
+          imageData = {
+            inlineData: screenshotData || {
+              data: screenshot,
+              mimeType: 'image/png'
+            }
+          };
+        }
+        
+        const result = await model.generateContent([
+          prompt,
+          imageData
+        ]);
+        const response = await result.response;
+        return response.text();
+      });
+
+      console.log(`📊 Validation Analysis Raw Output:`, {
+        rawResponse: result
+      });
+      
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const finalResult = {
+          success: parsed.success || false,
+          reasoning: parsed.reason || 'No reason provided'
+        };
+        
+        console.log(`📊 Validation Analysis Final Output:`, {
+          success: finalResult.success,
+          reasoning: finalResult.reasoning,
+          parsedResponse: parsed
+        });
+        
+        return finalResult;
+      }
+
+      console.log(`📊 Validation Analysis Failed to Parse:`, {
+        rawResponse: result,
+        error: 'No JSON match found'
+      });
+
+      return { success: false, reasoning: 'Failed to parse validation response' };
+    } catch (error) {
+      console.error('Error validating action with screenshot:', error);
+      return { success: false, reasoning: 'Error during validation' };
+    }
+  }
+
   async processFilesDirectly(
     files: Express.Multer.File[],
     featureName?: string
@@ -409,12 +635,6 @@ RESPONSE FORMAT (JSON):
         return response.text();
       });
 
-      // Log the raw Gemini response for debugging
-      console.log('\n🤖 GEMINI FILE PROCESSING RESPONSE:');
-      console.log('='.repeat(60));
-      console.log('Raw Response:', text);
-      console.log('='.repeat(60));
-
       // Parse the JSON response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -423,16 +643,6 @@ RESPONSE FORMAT (JSON):
 
       const parsed = JSON.parse(jsonMatch[0]);
 
-      // Log the parsed structured data
-      console.log('\n📊 PARSED FEATURE DOCUMENTATION:');
-      console.log('='.repeat(60));
-      console.log('Feature Name:', parsed.featureName);
-      console.log('Description:', parsed.description);
-      console.log('Steps:', parsed.steps);
-      console.log('Selectors:', parsed.selectors);
-      console.log('Expected Outcomes:', parsed.expectedOutcomes);
-      console.log('Prerequisites:', parsed.prerequisites);
-      console.log('='.repeat(60));
 
       return {
         featureName: parsed.featureName || featureName || 'Extracted Feature',
@@ -556,7 +766,7 @@ Only return valid JSON. Do not include any other text or explanations.
 
   private buildActionPlanningPrompt(featureDocs: ProductDocs, websiteUrl: string): string {
     return `
-You are an expert Puppeteer automation engineer specializing in programmatic web scraping. Your task is to create a detailed, executable action plan for automating web interactions using Puppeteer based on both textual documentation and visual context from images.
+You are an expert Puppeteer automation engineer specializing in programmatic web scraping with screenshot + coordinate based execution. Your task is to create a detailed, executable action plan for automating web interactions using Puppeteer based on both textual documentation and visual context from images.
 
 FEATURE: ${featureDocs.featureName}
 DESCRIPTION: ${featureDocs.description}
@@ -579,9 +789,23 @@ VISUAL CONTEXT (from images):
 CRITICAL ANALYSIS INSTRUCTIONS:
 1. **Carefully analyze BOTH text and image data together** to understand the complete user interface
 2. **Identify UI elements** visible in images that may not be mentioned in text
-3. **Map visual elements to programmatic selectors** for Puppeteer automation
+3. **Use generic element descriptions** instead of specific CSS selectors (e.g., "workflows link" not "a[href='/workflows']")
 4. **Consider the actual user flow** as shown in images vs. documented steps
 5. **Identify potential scraping challenges** like dynamic content, modals, or complex interactions
+
+**HUMAN-LIKE VISUAL AUTOMATION APPROACH:**
+- **VISUAL TARGET IDENTIFICATION**: The system simulates human behavior by visually scanning screenshots to find targets
+- **NATURAL INTERACTION PATTERNS**: Actions are executed using human-like clicking patterns and visual cues
+- **VISUAL HIERARCHY UNDERSTANDING**: Focus on what humans naturally see and interact with (buttons, links, text, icons)
+- **USER-CENTRIC NAVIGATION**: Plan actions based on what a human user would naturally do to accomplish tasks
+- **VISUAL STATE AWARENESS**: Account for how UI elements appear and change visually during interactions
+
+**ENHANCED UI STRUCTURE ANALYSIS:**
+1. **COLLAPSIBLE ELEMENTS**: Identify dropdowns, accordions, expandable sections, and nested menus that need to be opened before accessing sub-elements
+2. **VISUAL HIERARCHY**: Understand parent-child relationships in the UI (e.g., "Workflows" menu that contains "General" submenu)
+3. **PROGRESSIVE DISCLOSURE**: Account for UI patterns where information is revealed progressively (tabs, steps, wizards)
+4. **CONTEXTUAL ELEMENTS**: Identify elements that only appear after certain actions (conditional UI, dynamic content)
+5. **NAVIGATION PATTERNS**: Understand breadcrumbs, back buttons, and multi-level navigation structures
 
 **MANDATORY STEP-BY-STEP ANALYSIS:**
 - **GO THROUGH EACH DOCUMENTED STEP**: For every step in the feature documentation, create a corresponding action in the plan
@@ -614,16 +838,32 @@ Create a comprehensive Puppeteer automation plan that includes:
 - **DETECT AUTHENTICATION STATE**: Check if redirected to login page and handle accordingly
 - **PREFER DOM SELECTOR INTERACTIONS**: Use click actions on navigation elements (buttons, links, menu items) rather than direct URL navigation
 - **URL NAVIGATION AS FALLBACK**: Only use direct URL navigation when DOM selectors are not available or when navigating to external pages
+- **INTELLIGENT FALLBACK ACTIONS**: Every navigation action must have a meaningful fallback
 - Set up proper viewport and user agent
 
-**ELEMENT INTERACTION (PRIORITY APPROACH):**
-- **PRIMARY**: Click buttons, links, menu items with robust selectors to navigate
-- **SECONDARY**: Use direct URL navigation only when DOM selectors fail or are unavailable
-- Fill forms and input fields with realistic data
-- Handle dropdowns, checkboxes, radio buttons
-- Manage file uploads if applicable
+**INTELLIGENT FALLBACK STRATEGY:**
+- **NAVIGATION ACTIONS**: If clicking a link fails, fallback to direct URL navigation
+- **CLICK ACTIONS**: If clicking an element fails, consider alternative selectors or navigation
+- **FORM ACTIONS**: If form interaction fails, try alternative form fields or navigation
+- **WAIT ACTIONS**: If waiting for an element fails, try waiting for alternative elements or navigation
+- **URL CONSTRUCTION**: Build fallback URLs based on website structure (e.g., /workflows, /dashboard, /settings)
+- **HIERARCHICAL FALLBACKS**: Provide multiple levels of fallback (click → navigate → wait → retry)
+
+**HUMAN-LIKE INTERACTION APPROACH:**
+- **VISUAL TARGET FOCUS**: Describe actions in human terms (e.g., "Click the blue 'Create' button", "Navigate to the 'Settings' menu", "Fill in the 'Name' field")
+- **NATURAL USER FLOW**: Plan actions as a human user would naturally perform them
+- **VISUAL ELEMENT DESCRIPTIONS**: Use descriptive, human-readable names for targets (e.g., "Workflows dropdown menu", "Create New button", "Save form button")
+- **USER INTENT MAPPING**: Focus on what the user wants to accomplish, not technical implementation
 - **AVOID SAVE/SUBMIT ACTIONS**: Do NOT include clicks on save, submit, create, update, delete buttons
 - **STOP BEFORE PERSISTENCE**: End the plan before any action that would save data to the server
+
+**COLLAPSIBLE UI ELEMENT HANDLING:**
+- **IDENTIFY EXPANDABLE ELEMENTS**: Look for dropdowns, accordions, collapsible sections, and nested menus in the UI
+- **PROGRESSIVE EXPANSION**: Plan to expand/collapse elements in the correct order to reveal nested options
+- **PARENT-CHILD RELATIONSHIPS**: Account for hierarchical UI structures (e.g., "Workflows" → "General" → specific workflow options)
+- **STATE-DEPENDENT ELEMENTS**: Plan for elements that only become available after expanding parent elements
+- **VISUAL INDICATORS**: Consider UI indicators like arrows, chevrons, or plus/minus icons that suggest expandable content
+- **NESTED NAVIGATION**: Plan for multi-level navigation where each level must be expanded before accessing the next level
 
 **DYNAMIC CONTENT HANDLING:**
 - Wait for AJAX requests and dynamic content loading
@@ -649,40 +889,86 @@ Create a comprehensive Puppeteer automation plan that includes:
 - Implement proper waiting strategies (waitForSelector, waitForFunction)
 
 For each action, provide:
-- **Robust selectors** (prefer data attributes, IDs, or stable classes)
-- **Fallback selectors** for dynamic content
-- **Realistic input data** for forms
-- **Proper waiting conditions** before and after actions
-- **Error handling strategies** for each step
-- **Screenshot capture** at critical points
-- **Data extraction** where applicable
+- **HUMAN-READABLE DESCRIPTIONS**: Use natural language that describes what a human would see and click (e.g., "Click the 'Create Workflow' button", "Navigate to the 'Settings' menu", "Fill in the 'Project Name' field")
+- **VISUAL TARGET FOCUS**: Describe elements by their visual appearance, text, or position rather than technical attributes
+- **NATURAL USER FLOW**: Plan actions as a human would naturally perform them
+- **REALISTIC INPUT DATA**: Use realistic, human-like data for forms
+- **VISUAL WAITING CONDITIONS**: Describe what to wait for in visual terms (e.g., "Wait for the form to load", "Wait for the menu to expand")
+- **VISUAL ERROR HANDLING**: Describe error handling in terms of what a human would see and do
+- **SCREENSHOT CAPTURE**: Take screenshots at key visual milestones
+- **HUMAN-LIKE FALLBACKS**: Provide natural alternatives that a human would try
+
+**SCREENSHOT + COORDINATE EXECUTION SPECIFICATIONS:**
+- **VISUAL ELEMENT IDENTIFICATION**: Use descriptive names that can be visually identified in screenshots (e.g., "Workflows dropdown arrow", "General submenu item", "Create Workflow button")
+- **COORDINATE-BASED CLICKING**: Plan for precise coordinate-based interactions with UI elements
+- **VISUAL HIERARCHY MAPPING**: Map out the visual structure of collapsible elements and nested menus
+- **EXPANSION SEQUENCE**: Plan the correct sequence of expanding/collapsing UI elements to reach target functionality
+- **VISUAL STATE CHANGES**: Account for how UI elements change appearance when expanded/collapsed
+- **SCREENSHOT ANALYSIS**: Plan for taking screenshots at key points to verify UI state changes
+
+**FALLBACK ACTION REQUIREMENTS:**
+- **Navigation Actions**: Must have fallback to direct URL navigation (e.g., click "Workflows" → navigate to "/workflows")
+- **Click Actions**: Must have fallback to alternative selectors or navigation
+- **Form Actions**: Must have fallback to alternative form fields or navigation
+- **Wait Actions**: Must have fallback to alternative elements or navigation
+- **URL Construction**: Build logical fallback URLs based on website structure
+- **Hierarchical Fallbacks**: Provide multiple levels of fallback strategies
+
+**INTELLIGENT FALLBACK EXAMPLES:**
+- **Click "Workflows" link** → Fallback: navigate to "/workflows"
+- **Click "Dashboard" button** → Fallback: navigate to "/dashboard"
+- **Click "Settings" menu** → Fallback: navigate to "/settings"
+- **Click "Create" button** → Fallback: navigate to "/create" or "/new"
+- **Click "Login" button** → Fallback: navigate to "/login"
+- **Click "Profile" link** → Fallback: navigate to "/profile" or "/account"
+- **Click "Help" link** → Fallback: navigate to "/help" or "/support"
+- **Click "Home" link** → Fallback: navigate to "/" or "/home"
+- **Click "Back" button** → Fallback: navigate to previous page or parent URL
+- **Click "Next" button** → Fallback: navigate to next page or increment URL
+- **Click "Save" button** → Fallback: navigate to "/save" or "/submit"
+- **Click "Cancel" button** → Fallback: navigate to previous page or "/cancel"
+- **Click "Submit" button** → Fallback: navigate to "/submit" or "/confirm"
+- **Click "Delete" button** → Fallback: navigate to "/delete" or "/remove"
+- **Click "Edit" button** → Fallback: navigate to "/edit" or "/modify"
+- **Click "View" button** → Fallback: navigate to "/view" or "/show"
+- **Click "Search" button** → Fallback: navigate to "/search" or "/find"
+- **Click "Filter" button** → Fallback: navigate to "/filter" or "/sort"
+- **Click "Export" button** → Fallback: navigate to "/export" or "/download"
+- **Click "Import" button** → Fallback: navigate to "/import" or "/upload"
 
 **SELECTOR INTERACTION PRIORITY:**
-1. **FIRST CHOICE**: Use DOM selectors to click navigation elements (buttons, links, menu items)
-2. **SECOND CHOICE**: Use DOM selectors to interact with forms and inputs
+1. **FIRST CHOICE**: Use generic element descriptions to click navigation elements (buttons, links, menu items)
+2. **SECOND CHOICE**: Use generic element descriptions to interact with forms and inputs
 3. **FALLBACK ONLY**: Use direct URL navigation when DOM selectors are unavailable or fail
 4. **AVOID**: Direct URL navigation for internal page transitions - always prefer clicking UI elements
+5. **IMPORTANT**: Use descriptive element names like "workflows link", "create button", "name input field" instead of CSS selectors like "a[href='/workflows']", "button[data-testid='create-workflow-button']"
 
 Return the plan in this JSON format:
 {
   "featureName": "string",
   "totalActions": number,
   "estimatedDuration": number,
-  "scrapingStrategy": "Brief description of the overall scraping approach",
+  "scrapingStrategy": "Brief description of the overall scraping approach with screenshot + coordinate execution",
   "actions": [
     {
-      "type": "click|type|navigate|wait|scroll|select|extract|evaluate",
-      "selector": "Primary CSS selector",
-      "fallbackAction": "Alternative action with different type if needed (e.g., click -> navigate)",
+      "type": "click|type|navigate|wait|scroll|select|extract|evaluate|expand|collapse|hover",
+      "selector": "Human-readable visual target description (e.g., 'Click the blue Create Workflow button', 'Navigate to the Settings menu', 'Fill in the Project Name field')",
+      "fallbackAction": {
+        "type": "navigate|click|wait|retry|expand|collapse",
+        "selector": "Alternative human-readable target or URL",
+        "inputText": "Alternative input or URL path",
+        "description": "Fallback action description in human terms"
+      },
       "inputText": "Text to input (for type actions)",
-      "description": "Detailed description of the Puppeteer action",
-      "expectedOutcome": "What should happen after this action",
-      "waitCondition": "What to wait for before proceeding",
+      "description": "Natural language description of what a human user would do (e.g., 'Click the Create Workflow button in the top navigation', 'Fill in the project name field with a descriptive title')",
+      "expectedOutcome": "What a human user would expect to see after this action (visual changes, page transitions, new elements appearing)",
+      "waitCondition": "What a human would wait for visually (e.g., 'Wait for the form to appear', 'Wait for the menu to expand', 'Wait for the page to load')",
       "extractData": "What data to extract (if applicable)",
       "priority": "high|medium|low",
       "estimatedDuration": number,
-      "errorHandling": "How to handle failures",
-      "prerequisites": ["prerequisite1", "prerequisite2"]
+      "errorHandling": "How a human would handle failures (e.g., 'Try clicking the alternative button', 'Refresh the page and retry')",
+      "prerequisites": ["prerequisite1", "prerequisite2"],
+      "visualContext": "Description of what a human would see on the screen and the visual state for screenshot analysis"
     }
   ],
   "summary": {
@@ -698,7 +984,7 @@ Return the plan in this JSON format:
 FOCUS ON PROGRAMMATIC SCRAPING:
 - **PRIORITIZE DOM INTERACTIONS**: Always prefer clicking UI elements over direct URL navigation
 - Create executable Puppeteer code patterns that mimic real user behavior
-- Use robust, maintainable selectors for all interactions
+- **USE GENERIC ELEMENT DESCRIPTIONS**: Use descriptive names like "workflows link", "create button", "name input field" instead of specific CSS selectors
 - Handle real-world web application challenges through DOM manipulation
 - Implement proper error handling and retries
 - Consider performance and reliability
@@ -730,7 +1016,14 @@ Before generating the final plan, you MUST verify:
 7. **NO GAPS**: No logical gaps exist between actions
 8. **REALISTIC FLOW**: The plan represents a realistic user journey through the feature
 
-**CRITICAL REMINDER**: This plan will be executed by an automation system. Missing steps or incorrect sequences will cause the automation to fail. Be extremely thorough and methodical in your analysis.
+**SPECIFIC UI PATTERN EXAMPLES:**
+- **DROPDOWN MENUS**: If you see "Workflows" in documentation, plan to first click "Workflows" to expand the dropdown, then click "General" submenu item
+- **NESTED NAVIGATION**: Plan for multi-level menu structures where each level must be expanded before accessing the next level
+- **COLLAPSIBLE SECTIONS**: Account for accordion-style interfaces where sections need to be expanded to reveal content
+- **TAB INTERFACES**: Plan for tab-based navigation where content changes based on selected tabs
+- **MODAL DIALOGS**: Plan for popup windows or overlays that may appear during the interaction flow
+
+**CRITICAL REMINDER**: This plan will be executed by an automation system using screenshot + coordinate based execution. Missing steps or incorrect sequences will cause the automation to fail. Be extremely thorough and methodical in your analysis, paying special attention to collapsible UI elements and visual hierarchy.
 `;
   }
 
@@ -840,6 +1133,51 @@ Before generating the final plan, you MUST verify:
     }
   }
 
+  async analyzeCurrentStateWithScreenshot(
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    nextAction: PuppeteerAction,
+    featureDocs: ProductDocs,
+    history: Action[],
+    currentContext: string
+  ): Promise<{ context: string; reasoning: string; shouldProceed: boolean }> {
+    const prompt = this.buildScreenshotAnalysisPrompt(
+      screenshot,
+      currentUrl,
+      pageTitle,
+      nextAction,
+      featureDocs,
+      history,
+      currentContext
+    );
+
+    try {
+      const text = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: screenshot,
+              mimeType: 'image/png'
+            }
+          }
+        ]);
+        const response = await result.response;
+        return response.text();
+      });
+
+      return this.parseAnalysisResponse(text);
+    } catch (error) {
+      console.error('Error analyzing current state with screenshot:', error);
+      return {
+        context: currentContext,
+        reasoning: 'Error analyzing current state with screenshot',
+        shouldProceed: false
+      };
+    }
+  }
+
   private buildAnalysisPrompt(
     domState: DOMState,
     nextAction: PuppeteerAction,
@@ -896,6 +1234,64 @@ RESPONSE FORMAT (JSON):
 `;
   }
 
+  private buildScreenshotAnalysisPrompt(
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    nextAction: PuppeteerAction,
+    featureDocs: ProductDocs,
+    history: Action[],
+    currentContext: string
+  ): string {
+    const historyText = history.length > 0
+      ? history.map((action, index) =>
+        `${index + 1}. ${action.type} on "${action.selector}" - ${action.description}`
+      ).join('\n')
+      : 'No previous actions';
+
+    return `
+You are an AI assistant analyzing a screenshot of a web page to help with automation decisions.
+
+CURRENT PAGE STATE:
+- URL: ${currentUrl}
+- Title: ${pageTitle}
+- Screenshot: [Image provided below]
+
+NEXT PLANNED ACTION:
+- Type: ${nextAction.type}
+- Description: ${nextAction.description}
+- Expected Outcome: ${nextAction.expectedOutcome}
+
+FEATURE CONTEXT:
+- Feature: ${featureDocs.featureName}
+- Description: ${featureDocs.description}
+
+PREVIOUS ACTIONS (${history.length}):
+${historyText}
+
+CURRENT CONTEXT: ${currentContext}
+
+QUESTIONS TO ANSWER:
+1. What do you see in the screenshot? Describe the main elements and layout.
+2. Can you see any elements that might match the target action: "${nextAction.description}"?
+3. What is the current state of the page? Is it ready for the next action?
+4. Are there any errors, loading states, or issues visible in the screenshot?
+5. What would be the best way to proceed based on what you see?
+
+Please provide your analysis in this JSON format:
+{
+  "pageDescription": "What you see in the screenshot",
+  "targetElements": ["Elements that might match the target action"],
+  "pageState": "Current state of the page (ready, loading, error, etc.)",
+  "issues": ["Any problems or issues visible"],
+  "recommendations": ["What should be done next"],
+  "context": "Updated context based on visual analysis",
+  "reasoning": "Why you made this decision based on the screenshot",
+  "shouldProceed": true/false
+}
+`;
+  }
+
   private parseAnalysisResponse(text: string): { context: string; reasoning: string; shouldProceed: boolean } {
     try {
       const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -945,5 +1341,566 @@ RESPONSE FORMAT (JSON):
       this.keyLastUsed.set(index, 0);
     });
     console.log('🔄 API key usage counters reset');
+  }
+
+  /**
+   * Analyze page content to find elements that match the target description
+   * This is the core AI-powered element discovery method
+   */
+  async analyzePageForElement(
+    targetDescription: string,
+    domState: DOMState,
+    context: string
+  ): Promise<{
+    suggestedSelectors: Array<{ selector: string; confidence: number; reasoning: string }>;
+    recommendations: string[];
+  }> {
+    const prompt = `
+You are an expert web automation AI that finds DOM elements based on user intent.
+
+TARGET: Find elements that match: "${targetDescription}"
+
+CONTEXT:
+${context}
+
+CURRENT PAGE STATE:
+- URL: ${domState.currentUrl}
+- Title: ${domState.pageTitle}
+- Available clickable elements: ${domState.clickableSelectors.slice(0, 20).join(', ')}
+- Available input elements: ${domState.inputSelectors.slice(0, 10).join(', ')}
+- Visible text samples: ${domState.visibleText.slice(0, 15).join(', ')}
+
+TASK: Analyze the page and suggest CSS selectors that could match the target element.
+Consider:
+1. Text content matching
+2. Element attributes (id, class, data-*)
+3. Element hierarchy and context
+4. Common UI patterns
+5. Accessibility attributes
+
+Return JSON with suggested selectors and confidence scores:
+{
+  "suggestedSelectors": [
+    {
+      "selector": "string",
+      "confidence": number (0-1),
+      "reasoning": "string"
+    }
+  ],
+  "recommendations": ["string"]
+}
+
+Focus on high-confidence matches that are likely to be the intended element.
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
+      
+      return {
+        suggestedSelectors: parsed.suggestedSelectors || [],
+        recommendations: parsed.recommendations || []
+      };
+    } catch (error) {
+      console.error('Element analysis failed:', error);
+      return {
+        suggestedSelectors: [],
+        recommendations: ['AI analysis failed - using fallback strategies']
+      };
+    }
+  }
+
+  /**
+   * Analyze page screenshot to find elements that match the target description
+   * This method uses visual analysis to understand what's on the page and find target elements
+   */
+  async analyzePageForElementWithScreenshot(
+    targetDescription: string,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    context: string
+  ): Promise<{
+    suggestedSelectors: Array<{ selector: string; confidence: number; reasoning: string }>;
+    recommendations: string[];
+  }> {
+    const prompt = `
+You are an expert web automation AI that analyzes screenshots to help with element discovery.
+
+TARGET: Find elements that match: "${targetDescription}"
+
+CONTEXT:
+${context}
+
+CURRENT PAGE STATE:
+- URL: ${currentUrl}
+- Title: ${pageTitle}
+- Screenshot: [Image provided below]
+
+TASK: Look at the screenshot and help identify elements that match the target description.
+
+Based on what you see in the screenshot, provide:
+1. A description of what elements you can see that might match the target
+2. Any text content that could help identify the target element
+3. Visual characteristics that could be used to locate the element
+4. Suggestions for how to interact with the page
+
+Return JSON with your analysis:
+{
+  "visibleElements": [
+    {
+      "description": "string - what you see in the screenshot",
+      "text": "string - any visible text",
+      "type": "string - button, link, input, etc.",
+      "location": "string - where it appears on screen"
+    }
+  ],
+  "targetMatches": [
+    {
+      "description": "string - elements that might match the target",
+      "confidence": number (0-1),
+      "reasoning": "string - why this might be the target"
+    }
+  ],
+  "recommendations": ["string - suggestions for next steps"]
+}
+
+Focus on describing what you actually see in the screenshot rather than trying to generate CSS selectors.
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: screenshot,
+              mimeType: 'image/png'
+            }
+          }
+        ]);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
+      
+      // Convert the visual analysis into selector suggestions
+      const suggestedSelectors = this.convertVisualAnalysisToSelectors(parsed, targetDescription);
+      
+      return {
+        suggestedSelectors,
+        recommendations: parsed.recommendations || []
+      };
+    } catch (error) {
+      console.error('Screenshot element analysis failed:', error);
+      return {
+        suggestedSelectors: [],
+        recommendations: ['Screenshot analysis failed - using fallback strategies']
+      };
+    }
+  }
+
+  /**
+   * NEW: Analyze screenshot to detect click coordinates for target elements
+   * This is the core method for coordinate-based automation
+   */
+  async detectClickCoordinates(
+    targetDescription: string,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    viewportDimensions: { width: number; height: number },
+    context: string,
+    screenshotData?: { data: string; mimeType: string },
+    screenshotPath?: string
+  ): Promise<{
+    coordinates: Array<{ x: number; y: number; confidence: number; reasoning: string; elementDescription: string }>;
+    recommendations: string[];
+    pageAnalysis: string;
+  }> {
+    console.log(`📊 Gemini Coordinate Detection Input:`, {
+      targetDescription,
+      currentUrl,
+      pageTitle,
+      viewportDimensions,
+      screenshotLength: screenshot.length,
+      context
+    });
+    const prompt = `
+You are a human user looking at a web page screenshot. Your task is to identify and click on visual targets that match the user's intent.
+
+HUMAN BEHAVIOR SIMULATION:
+- Think like a human user scanning the page visually
+- Look for visual cues, text, buttons, links, and interactive elements
+- Focus on what a human would naturally click on
+- Consider visual hierarchy and user interface patterns
+
+TARGET TO FIND: "${targetDescription}"
+
+CONTEXT:
+${context}
+
+CURRENT PAGE STATE:
+- URL: ${currentUrl}
+- Title: ${pageTitle}
+- Viewport Dimensions: ${viewportDimensions.width}x${viewportDimensions.height}
+- Screenshot: [Image provided below]
+
+HUMAN-LIKE ANALYSIS APPROACH:
+1. **VISUAL SCANNING**: Look at the screenshot as a human would - scan for the target element
+2. **VISUAL IDENTIFICATION**: Identify elements by their visual appearance, text, or position
+3. **NATURAL CLICKING**: Determine where a human would naturally click on the target
+4. **VISUAL HIERARCHY**: Consider the visual importance and prominence of elements
+5. **USER INTENT**: Focus on what the user wants to accomplish, not technical selectors
+
+COORDINATE DETECTION REQUIREMENTS:
+- Provide exact pixel coordinates (x, y) where a human would click
+- Coordinates should be relative to the screenshot/viewport (0,0 is top-left)
+- Focus on the center or most natural click point of the target element
+- Account for the viewport dimensions: ${viewportDimensions.width}x${viewportDimensions.height}
+- Provide confidence scores (0-1) based on how clearly you can see the target
+- Explain your reasoning from a human perspective
+
+TASK: Analyze the screenshot like a human user and provide click coordinates for the target.
+
+Return JSON with your analysis:
+{
+  "pageAnalysis": "string - overall description of what you see in the screenshot",
+  "coordinates": [
+    {
+      "x": number,
+      "y": number,
+      "confidence": number (0-1),
+      "reasoning": "string - why you chose these coordinates",
+      "elementDescription": "string - description of the element at these coordinates"
+    }
+  ],
+  "recommendations": ["string - suggestions for automation"]
+}
+
+IMPORTANT: 
+- Coordinates must be within the viewport bounds (0 to ${viewportDimensions.width} for x, 0 to ${viewportDimensions.height} for y)
+- Focus on the center of clickable elements (buttons, links, etc.)
+- Consider visual hierarchy and user interaction patterns
+- Provide multiple coordinate options if you see multiple potential targets
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        let imageData;
+        
+        // Use file-based approach if screenshotPath is provided
+        if (screenshotPath && fs.existsSync(screenshotPath)) {
+          console.log(`📁 Using file-based screenshot: ${screenshotPath}`);
+          const fileData = fs.readFileSync(screenshotPath);
+          imageData = {
+            inlineData: {
+              data: fileData.toString('base64'),
+              mimeType: 'image/png'
+            }
+          };
+        } else {
+          console.log(`📊 Using base64 screenshot data`);
+          imageData = {
+            inlineData: screenshotData || {
+              data: screenshot,
+              mimeType: 'image/png'
+            }
+          };
+        }
+        
+        const result = await model.generateContent([
+          prompt,
+          imageData
+        ]);
+        const response = await result.response;
+        return await response.text();
+      });
+        console.log("🚀 ~ GeminiService ~ detectClickCoordinates ~ result:", result)
+      
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
+      
+      console.log(`📊 Gemini Coordinate Detection Raw Output:`, {
+        rawResponse: result,
+        parsedResponse: parsed
+      });
+      
+      // Validate coordinates are within viewport bounds
+      const validatedCoordinates = parsed.coordinates?.map((coord: any) => ({
+        ...coord,
+        x: Math.max(0, Math.min(coord.x, viewportDimensions.width)),
+        y: Math.max(0, Math.min(coord.y, viewportDimensions.height))
+      })) || [];
+      
+      const finalResult = {
+        coordinates: validatedCoordinates,
+        recommendations: parsed.recommendations || [],
+        pageAnalysis: parsed.pageAnalysis || 'Screenshot analysis completed'
+      };
+      
+      console.log(`📊 Gemini Coordinate Detection Final Output:`, {
+        coordinatesFound: finalResult.coordinates.length,
+        coordinates: finalResult.coordinates,
+        recommendations: finalResult.recommendations,
+        pageAnalysis: finalResult.pageAnalysis
+      });
+      
+      return finalResult;
+    } catch (error) {
+      console.error('Coordinate detection failed:', error);
+      return {
+        coordinates: [],
+        recommendations: ['Coordinate detection failed - using fallback strategies'],
+        pageAnalysis: 'Failed to analyze screenshot for coordinates'
+      };
+    }
+  }
+
+  /**
+   * Convert visual analysis results into CSS selector suggestions
+   */
+  private convertVisualAnalysisToSelectors(
+    analysis: any,
+    targetDescription: string
+  ): Array<{ selector: string; confidence: number; reasoning: string }> {
+    const selectors: Array<{ selector: string; confidence: number; reasoning: string }> = [];
+    
+    if (analysis.targetMatches && analysis.targetMatches.length > 0) {
+      for (const match of analysis.targetMatches) {
+        // Generate common selectors based on the visual analysis
+        const textBasedSelectors = this.generateTextBasedSelectors(match.description, match.text);
+        const typeBasedSelectors = this.generateTypeBasedSelectors(match.type);
+        
+        selectors.push(...textBasedSelectors.map(selector => ({
+          selector,
+          confidence: match.confidence * 0.8, // Slightly lower confidence for generated selectors
+          reasoning: `Visual analysis: ${match.reasoning}`
+        })));
+        
+        selectors.push(...typeBasedSelectors.map(selector => ({
+          selector,
+          confidence: match.confidence * 0.6,
+          reasoning: `Type-based from visual analysis: ${match.reasoning}`
+        })));
+      }
+    }
+    
+    return selectors;
+  }
+
+  /**
+   * Generate text-based selectors from visual analysis
+   */
+  private generateTextBasedSelectors(description: string, text: string): string[] {
+    const selectors: string[] = [];
+    
+    if (text) {
+      // Button with text
+      selectors.push(`button:contains("${text}")`);
+      selectors.push(`input[value="${text}"]`);
+      selectors.push(`a:contains("${text}")`);
+      
+      // Generic text-based selectors
+      selectors.push(`*:contains("${text}")`);
+    }
+    
+    return selectors;
+  }
+
+  /**
+   * Generate type-based selectors from visual analysis
+   */
+  private generateTypeBasedSelectors(type: string): string[] {
+    const selectors: string[] = [];
+    
+    switch (type?.toLowerCase()) {
+      case 'button':
+        selectors.push('button');
+        selectors.push('input[type="button"]');
+        selectors.push('input[type="submit"]');
+        selectors.push('[role="button"]');
+        break;
+      case 'link':
+        selectors.push('a');
+        selectors.push('[role="link"]');
+        break;
+      case 'input':
+        selectors.push('input');
+        selectors.push('textarea');
+        selectors.push('select');
+        break;
+      case 'form':
+        selectors.push('form');
+        selectors.push('[role="form"]');
+        break;
+    }
+    
+    return selectors;
+  }
+
+  /**
+   * Enhanced element discovery using semantic understanding
+   */
+  async discoverElementSemantically(
+    action: PuppeteerAction,
+    domState: DOMState,
+    availableElements: ElementMatch[]
+  ): Promise<{
+    bestMatch: ElementMatch | null;
+    reasoning: string;
+    confidence: number;
+  }> {
+    const prompt = `
+You are an expert web automation AI that understands user intent and matches it to DOM elements.
+
+ACTION INTENT: ${action.description}
+EXPECTED OUTCOME: ${action.expectedOutcome}
+ACTION TYPE: ${action.type}
+
+AVAILABLE ELEMENTS:
+${availableElements.map((el, i) => `
+${i + 1}. Selector: ${el.selector}
+   Text: "${el.textContent || 'N/A'}"
+   Type: ${el.elementType}
+   Visible: ${el.isVisible}
+   Clickable: ${el.isClickable}
+   Attributes: ${JSON.stringify(el.attributes || {})}
+`).join('\n')}
+
+PAGE CONTEXT:
+- URL: ${domState.currentUrl}
+- Title: ${domState.pageTitle}
+- Available clickable elements: ${domState.clickableSelectors.slice(0, 10).join(', ')}
+
+TASK: Analyze the user's intent and select the best matching element from the available options.
+Consider:
+1. Semantic meaning of the action description
+2. Element text content relevance
+3. Element type appropriateness for the action
+4. Element visibility and interactivity
+5. Context clues from the page
+
+Return JSON:
+{
+  "bestMatchIndex": number (index of best match, or -1 if none suitable),
+  "reasoning": "string",
+  "confidence": number (0-1)
+}
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      const jsonString = this.extractJsonFromResponse(result);
+      const parsed = JSON.parse(jsonString);
+      
+      const bestMatch = parsed.bestMatchIndex >= 0 
+        ? availableElements[parsed.bestMatchIndex] 
+        : null;
+      
+      return {
+        bestMatch,
+        reasoning: parsed.reasoning || 'No suitable match found',
+        confidence: parsed.confidence || 0
+      };
+    } catch (error) {
+      console.error('Semantic element discovery failed:', error);
+      return {
+        bestMatch: null,
+        reasoning: 'Semantic analysis failed',
+        confidence: 0
+      };
+    }
+  }
+
+  /**
+   * Generate content from a prompt using the AI model
+   * This is a public method that can be used by other services
+   */
+  async generateContentFromPrompt(prompt: string): Promise<string> {
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      return result;
+    } catch (error) {
+      console.error('Content generation failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Analyze DOM changes to understand what happened after an action
+   */
+  async analyzeDOMChanges(
+    previousState: DOMState,
+    currentState: DOMState,
+    action: PuppeteerAction
+  ): Promise<{
+    actionImpact: string;
+    newElements: string[];
+    recommendations: string[];
+  }> {
+    const prompt = `
+You are an expert web automation AI that analyzes DOM changes to understand action impact.
+
+ACTION PERFORMED: ${action.type} - ${action.description}
+EXPECTED OUTCOME: ${action.expectedOutcome}
+
+PREVIOUS STATE:
+- URL: ${previousState.currentUrl}
+- Title: ${previousState.pageTitle}
+- Clickable elements: ${previousState.clickableSelectors.slice(0, 10).join(', ')}
+
+CURRENT STATE:
+- URL: ${currentState.currentUrl}
+- Title: ${currentState.pageTitle}
+- Clickable elements: ${currentState.clickableSelectors.slice(0, 10).join(', ')}
+
+NEW ELEMENTS: ${currentState.clickableSelectors.filter(s => !previousState.clickableSelectors.includes(s)).join(', ')}
+
+TASK: Analyze what changed and provide insights about the action's impact.
+
+Return JSON:
+{
+  "actionImpact": "string describing what happened",
+  "newElements": ["array of new element selectors"],
+  "recommendations": ["array of next steps or suggestions"]
+}
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      const jsonString = this.extractJsonFromResponse(result);
+      return JSON.parse(jsonString);
+    } catch (error) {
+      console.error('DOM change analysis failed:', error);
+      return {
+        actionImpact: 'Unable to analyze changes',
+        newElements: [],
+        recommendations: ['Continue with next action']
+      };
+    }
   }
 }

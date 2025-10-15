@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { StateGraph, MemorySaver } from '@langchain/langgraph';
 import { GeminiService } from './gemini.service';
 import { PuppeteerWorkerService } from './puppeteer-worker.service';
+import { ActionLoggerService } from './action-logger.service';
 import { 
   Action, 
   DOMState, 
@@ -19,7 +20,8 @@ export class LangGraphWorkflowService {
 
   constructor(
     private geminiService: GeminiService,
-    private puppeteerWorker: PuppeteerWorkerService
+    private puppeteerWorker: PuppeteerWorkerService,
+    private actionLogger: ActionLoggerService
   ) {
     this.memory = new MemorySaver();
     this.workflow = this.createWorkflow();
@@ -153,12 +155,34 @@ export class LangGraphWorkflowService {
         throw new Error('No action to execute');
       }
 
+      // Log action start
+      const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+      const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+      const actionId = this.actionLogger.logActionStart(
+        action,
+        {
+          currentUrl,
+          pageTitle,
+          domState: state.domState
+        },
+        {
+          workflowType: 'langgraph',
+          retryCount: 0,
+          maxRetries: 3
+        }
+      );
+
       // Execute the action
       const result = await this.puppeteerWorker.executeAction(action);
       
       if (!result.success) {
+        // Log action failure
+        this.actionLogger.logActionComplete(actionId, false, result.error);
         throw new Error(result.error || 'Action execution failed');
       }
+
+      // Log successful action completion
+      this.actionLogger.logActionComplete(actionId, true);
 
       // Get element position for tooltip placement
       const position = await this.puppeteerWorker.getElementPosition(action.selector!);

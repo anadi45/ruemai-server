@@ -1,11 +1,17 @@
 export interface Action {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate' | 'click_coordinates' | 'hover_coordinates' | 'type_coordinates' | 'scroll_coordinates' | 'select_coordinates';
   selector?: string;
   inputText?: string;
   description: string;
   position?: {
     x: number;
     y: number;
+  };
+  coordinates?: {
+    x: number;
+    y: number;
+    confidence: number;
+    reasoning: string;
   };
   metadata?: Record<string, any>;
 }
@@ -19,6 +25,64 @@ export interface DOMState {
   currentUrl: string;
   pageTitle: string;
   timestamp: number;
+}
+
+export interface DOMAnalysis {
+  urlChanged: boolean;
+  titleChanged: boolean;
+  newElements: string[];
+  removedElements: string[];
+  newClickableElements: string[];
+  newInputElements: string[];
+  pageLoadComplete: boolean;
+  hasErrors: boolean;
+  errorMessages: string[];
+  newContent: string[];
+  actionImpact: string;
+  nextActionRecommendations: string[];
+}
+
+export interface ElementMatch {
+  selector: string;
+  confidence: number;
+  reasoning: string;
+  elementType: 'button' | 'input' | 'link' | 'dropdown' | 'text' | 'container' | 'coordinates';
+  textContent?: string;
+  attributes?: Record<string, string>;
+  position?: { x: number; y: number };
+  isVisible: boolean;
+  isClickable: boolean;
+}
+
+export interface IntelligentElementDiscovery {
+  targetDescription: string;
+  foundElements: ElementMatch[];
+  bestMatch: ElementMatch | null;
+  searchStrategy: 'text_match' | 'attribute_match' | 'semantic_match' | 'fallback' | 'screenshot-analysis' | 'screenshot-fallback' | 'coordinate-detection' | 'coordinate-discovery';
+  searchContext: string;
+  recommendations: string[];
+}
+
+export interface CoordinateDiscovery {
+  targetDescription: string;
+  coordinates: Array<{
+    x: number;
+    y: number;
+    confidence: number;
+    reasoning: string;
+    elementDescription: string;
+  }>;
+  pageAnalysis: string;
+  searchStrategy: 'coordinate-detection' | 'coordinate-fallback';
+  searchContext: string;
+  recommendations: string[];
+  bestMatch: {
+    x: number;
+    y: number;
+    confidence: number;
+    reasoning: string;
+    elementDescription: string;
+  } | null;
 }
 
 export interface TourStep {
@@ -88,7 +152,7 @@ export interface ProductDocs {
 }
 
 export interface PuppeteerAction {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate' | 'click_coordinates' | 'hover_coordinates' | 'type_coordinates' | 'scroll_coordinates' | 'select_coordinates';
   selector?: string;
   fallbackAction?: PuppeteerAction; // Alternative action (different type)
   inputText?: string;
@@ -100,6 +164,12 @@ export interface PuppeteerAction {
   priority: 'high' | 'medium' | 'low';
   estimatedDuration: number; // in seconds
   prerequisites?: string[];
+  coordinates?: {
+    x: number;
+    y: number;
+    confidence: number;
+    reasoning: string;
+  };
 }
 
 export interface ActionPlan {
@@ -116,6 +186,33 @@ export interface ActionPlan {
     extractActions: number;
     evaluateActions: number;
   };
+}
+
+export interface SmartAgentState {
+  currentActionIndex: number;
+  actionPlan: ActionPlan;
+  domState?: DOMState;
+  domAnalysis?: DOMAnalysis;
+  completedActions: number[];
+  failedActions: number[];
+  retryCount: number;
+  maxRetries: number;
+  tourSteps: TourStep[];
+  extractedData: Record<string, any>;
+  featureDocs: ProductDocs;
+  goal: string;
+  currentContext: string;
+  reasoning: string;
+  isComplete: boolean;
+  success: boolean;
+  error?: string;
+  startTime: number;
+  endTime?: number;
+  // Additional properties for compatibility
+  currentStep?: number;
+  totalSteps?: number;
+  history?: Action[];
+  adaptationStrategy?: 'strict' | 'flexible' | 'adaptive';
 }
 
 export interface DemoAutomationResult {

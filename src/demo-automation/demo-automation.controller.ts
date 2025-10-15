@@ -1,11 +1,13 @@
-import { Controller, Post, Body, UseInterceptors, UploadedFiles, Req } from '@nestjs/common';
+import { Controller, Post, Body, UseInterceptors, UploadedFiles, Req, Get, Query } from '@nestjs/common';
 import { FilesInterceptor, AnyFilesInterceptor } from '@nestjs/platform-express';
 import { DemoAutomationService } from './demo-automation.service';
 import { CreateDemoResponseDto, CreateDemoWithFileRequestDto } from './demo-automation.dto';
 
 @Controller('demo')
 export class DemoAutomationController {
-  constructor(private readonly demoAutomationService: DemoAutomationService) {}
+  constructor(
+    private readonly demoAutomationService: DemoAutomationService
+  ) {}
 
   @Post('create-demo')
   @UseInterceptors(FilesInterceptor('featureDocs', 10)) // Allow up to 10 files
@@ -32,11 +34,6 @@ export class DemoAutomationController {
         username: body.username,
         password: body.password
       };
-      
-      console.log(`\n🚀 Starting complete demo automation workflow...`);
-      console.log(`📁 Processing ${files.length} document(s)`);
-      console.log(`🌐 Target website: ${body.websiteUrl}`);
-      console.log(`🎯 Feature: ${body.featureName || 'Auto-detected'}`);
       
       // Generate tour from uploaded documents (includes action planning and console logging)
       const result = await this.demoAutomationService.generateProductTourFromFiles(
@@ -77,4 +74,5 @@ export class DemoAutomationController {
       throw error;
     }
   }
+
 }
