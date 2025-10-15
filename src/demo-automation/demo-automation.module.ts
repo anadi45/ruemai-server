@@ -5,6 +5,8 @@ import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
 import { SmartLangGraphAgentService } from './services/smart-langgraph-agent.service';
+import { IntelligentElementDiscoveryService } from './services/intelligent-element-discovery.service';
+import { IntelligentScrapingService } from './services/intelligent-scraping.service';
 
 @Module({
   controllers: [DemoAutomationController],
@@ -13,8 +15,10 @@ import { SmartLangGraphAgentService } from './services/smart-langgraph-agent.ser
     GeminiService,
     PuppeteerWorkerService,
     LangGraphWorkflowService,
-    SmartLangGraphAgentService
+    SmartLangGraphAgentService,
+    IntelligentElementDiscoveryService,
+    IntelligentScrapingService
   ],
-  exports: [DemoAutomationService],
+  exports: [DemoAutomationService, IntelligentScrapingService],
 })
 export class DemoAutomationModule {}

@@ -21,6 +21,42 @@ export interface DOMState {
   timestamp: number;
 }
 
+export interface DOMAnalysis {
+  urlChanged: boolean;
+  titleChanged: boolean;
+  newElements: string[];
+  removedElements: string[];
+  newClickableElements: string[];
+  newInputElements: string[];
+  pageLoadComplete: boolean;
+  hasErrors: boolean;
+  errorMessages: string[];
+  newContent: string[];
+  actionImpact: string;
+  nextActionRecommendations: string[];
+}
+
+export interface ElementMatch {
+  selector: string;
+  confidence: number;
+  reasoning: string;
+  elementType: 'button' | 'input' | 'link' | 'dropdown' | 'text' | 'container';
+  textContent?: string;
+  attributes?: Record<string, string>;
+  position?: { x: number; y: number };
+  isVisible: boolean;
+  isClickable: boolean;
+}
+
+export interface IntelligentElementDiscovery {
+  targetDescription: string;
+  foundElements: ElementMatch[];
+  bestMatch: ElementMatch | null;
+  searchStrategy: 'text_match' | 'attribute_match' | 'semantic_match' | 'fallback';
+  searchContext: string;
+  recommendations: string[];
+}
+
 export interface TourStep {
   order: number;
   action: Action;
@@ -116,6 +152,33 @@ export interface ActionPlan {
     extractActions: number;
     evaluateActions: number;
   };
+}
+
+export interface SmartAgentState {
+  currentActionIndex: number;
+  actionPlan: ActionPlan;
+  domState?: DOMState;
+  domAnalysis?: DOMAnalysis;
+  completedActions: number[];
+  failedActions: number[];
+  retryCount: number;
+  maxRetries: number;
+  tourSteps: TourStep[];
+  extractedData: Record<string, any>;
+  featureDocs: ProductDocs;
+  goal: string;
+  currentContext: string;
+  reasoning: string;
+  isComplete: boolean;
+  success: boolean;
+  error?: string;
+  startTime: number;
+  endTime?: number;
+  // Additional properties for compatibility
+  currentStep?: number;
+  totalSteps?: number;
+  history?: Action[];
+  adaptationStrategy?: 'strict' | 'flexible' | 'adaptive';
 }
 
 export interface DemoAutomationResult {

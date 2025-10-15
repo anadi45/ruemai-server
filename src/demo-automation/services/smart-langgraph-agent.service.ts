@@ -2,53 +2,23 @@ import { Injectable } from '@nestjs/common';
 import { StateGraph, MemorySaver } from '@langchain/langgraph';
 import { GeminiService } from './gemini.service';
 import { PuppeteerWorkerService } from './puppeteer-worker.service';
+import { IntelligentElementDiscoveryService } from './intelligent-element-discovery.service';
 import { 
   Action, 
   DOMState, 
+  DOMAnalysis,
+  SmartAgentState,
   TourStep, 
   TourConfig, 
   ProductDocs,
   DemoAutomationResult,
   ActionPlan,
-  PuppeteerAction
+  PuppeteerAction,
+  IntelligentElementDiscovery
 } from '../types/demo-automation.types';
 
 // Enhanced agent state for intelligent plan following
-export interface SmartAgentState {
-  // Plan tracking
-  actionPlan: ActionPlan;
-  currentActionIndex: number;
-  completedActions: number[];
-  failedActions: number[];
-  
-  // Current state
-  currentStep: number;
-  totalSteps: number;
-  domState: DOMState | null;
-  tourSteps: TourStep[];
-  history: Action[];
-  
-  // Context and reasoning
-  goal: string;
-  featureDocs: ProductDocs;
-  currentContext: string;
-  reasoning: string;
-  
-  // Status
-  isComplete: boolean;
-  success: boolean;
-  error?: string;
-  startTime: number;
-  endTime?: number;
-  
-  // Evidence and data
-  extractedData: Record<string, any>;
-  
-  // Retry and adaptation
-  retryCount: number;
-  maxRetries: number;
-  adaptationStrategy: 'strict' | 'flexible' | 'adaptive';
-}
+// SmartAgentState is now imported from types
 
 // Tool definitions for the agent
 export interface AgentTool {
@@ -66,7 +36,8 @@ export class SmartLangGraphAgentService {
 
   constructor(
     private geminiService: GeminiService,
-    private puppeteerWorker: PuppeteerWorkerService
+    private puppeteerWorker: PuppeteerWorkerService,
+    private elementDiscovery: IntelligentElementDiscoveryService
   ) {
     this.memory = new MemorySaver();
     this.tools = new Map();
@@ -284,6 +255,58 @@ export class SmartLangGraphAgentService {
         }
       }
     });
+
+    // Intelligent Element Discovery Tool
+    this.tools.set('discover_element', {
+      name: 'discover_element',
+      description: 'Intelligently discover and correlate elements on the page based on action description',
+      parameters: { actionDescription: 'string', actionType: 'string', context: 'string' },
+      execute: async (params, state) => {
+        try {
+          console.log(`🔍 Intelligent element discovery for: "${params.actionDescription}"`);
+          
+          // Get current DOM state
+          const currentDomState = await this.puppeteerWorker.getDOMState();
+          
+          // Create a mock action for discovery
+          const mockAction: PuppeteerAction = {
+            type: params.actionType as any,
+            description: params.actionDescription,
+            expectedOutcome: 'Element found and ready for interaction',
+            priority: 'high',
+            estimatedDuration: 5,
+            prerequisites: []
+          };
+          
+          // Use intelligent element discovery
+          const discovery = await this.elementDiscovery.discoverElement(
+            mockAction,
+            currentDomState,
+            params.context
+          );
+          
+          console.log(`🎯 Discovery result:`, {
+            strategy: discovery.searchStrategy,
+            foundElements: discovery.foundElements.length,
+            bestMatch: discovery.bestMatch?.selector,
+            confidence: discovery.bestMatch?.confidence
+          });
+          
+          return { 
+            success: discovery.bestMatch !== null, 
+            result: {
+              discovery,
+              recommendedSelector: discovery.bestMatch?.selector,
+              confidence: discovery.bestMatch?.confidence,
+              reasoning: discovery.bestMatch?.reasoning
+            }
+          };
+        } catch (error) {
+          console.error('Element discovery failed:', error);
+          return { success: false, error: error instanceof Error ? error.message : 'Element discovery failed' };
+        }
+      }
+    });
   }
 
   private createSmartWorkflow(): any {
@@ -402,19 +425,54 @@ export class SmartLangGraphAgentService {
         };
       }
       
+      // Analyze DOM changes if we have previous state
+      let domAnalysis: DOMAnalysis | undefined;
+      if (state.domState) {
+        domAnalysis = await this.analyzeDOMChanges(state.domState, currentDomState, nextAction);
+        console.log('📊 DOM Analysis for planning:', {
+          urlChanged: domAnalysis.urlChanged,
+          newClickableElements: domAnalysis.newClickableElements.length,
+          hasErrors: domAnalysis.hasErrors,
+          actionImpact: domAnalysis.actionImpact
+        });
+      }
+      
+      // Build enhanced context with DOM analysis
+      let enhancedContext = state.currentContext;
+      if (domAnalysis) {
+        enhancedContext += `\n\nDOM Analysis Results:\n`;
+        enhancedContext += `- Action Impact: ${domAnalysis.actionImpact}\n`;
+        if (domAnalysis.urlChanged) {
+          enhancedContext += `- Navigation occurred: ${state.domState?.currentUrl} → ${currentDomState.currentUrl}\n`;
+        }
+        if (domAnalysis.newClickableElements.length > 0) {
+          enhancedContext += `- New clickable elements available: ${domAnalysis.newClickableElements.slice(0, 3).join(', ')}\n`;
+        }
+        if (domAnalysis.newInputElements.length > 0) {
+          enhancedContext += `- New input elements available: ${domAnalysis.newInputElements.slice(0, 3).join(', ')}\n`;
+        }
+        if (domAnalysis.hasErrors) {
+          enhancedContext += `- Errors detected: ${domAnalysis.errorMessages.join(', ')}\n`;
+        }
+        if (domAnalysis.nextActionRecommendations.length > 0) {
+          enhancedContext += `- Recommendations: ${domAnalysis.nextActionRecommendations.join(', ')}\n`;
+        }
+      }
+      
       // Use Gemini to analyze the current state and determine if we should proceed
       const analysis = await this.geminiService.analyzeCurrentState(
         currentDomState,
         nextAction,
         state.featureDocs,
         state.history,
-        state.currentContext
+        enhancedContext
       );
       
       return {
         ...state,
         domState: currentDomState,
-        currentContext: analysis.context,
+        domAnalysis: domAnalysis,
+        currentContext: enhancedContext,
         reasoning: analysis.reasoning,
         // Store the next action for execution
         ...analysis
@@ -449,26 +507,111 @@ export class SmartLangGraphAgentService {
         };
       }
       
+      // INTELLIGENT ELEMENT DISCOVERY - First try to discover the element intelligently
+      console.log(`🧠 Using intelligent element discovery for: "${nextAction.description}"`);
+      
+      const discoveryResult = await this.tools.get('discover_element')!.execute({
+        actionDescription: nextAction.description,
+        actionType: nextAction.type,
+        context: state.currentContext
+      }, state);
+      
+      let enhancedAction = { ...nextAction };
+      
+      if (discoveryResult.success && discoveryResult.result?.recommendedSelector) {
+        console.log(`✅ Intelligent discovery found element: ${discoveryResult.result.recommendedSelector}`);
+        console.log(`🎯 Confidence: ${discoveryResult.result.confidence}`);
+        console.log(`💭 Reasoning: ${discoveryResult.result.reasoning}`);
+        
+        // Update the action with the discovered selector
+        enhancedAction = {
+          ...nextAction,
+          selector: discoveryResult.result.recommendedSelector
+        };
+        
+        // Store the discovery result for later use
+        state.extractedData = {
+          ...state.extractedData,
+          lastElementDiscovery: discoveryResult.result
+        };
+      } else {
+        console.log(`⚠️  Intelligent discovery failed, using original selector: ${nextAction.selector}`);
+      }
+      
       // Map action type to tool
-      const toolName = this.mapActionToTool(nextAction.type);
+      const toolName = this.mapActionToTool(enhancedAction.type);
       const tool = this.tools.get(toolName);
       
       if (!tool) {
-        throw new Error(`No tool available for action type: ${nextAction.type}`);
+        throw new Error(`No tool available for action type: ${enhancedAction.type}`);
       }
       
-      // Prepare tool parameters
-      const toolParams = this.prepareToolParameters(nextAction, state);
+      // Prepare tool parameters with the enhanced action
+      const toolParams = this.prepareToolParameters(enhancedAction, state);
       
       console.log(`🛠️  Executing tool: ${toolName}`);
-      console.log(`📋 Action: ${nextAction.type} - ${nextAction.description}`);
+      console.log(`📋 Action: ${enhancedAction.type} - ${enhancedAction.description}`);
+      console.log(`🎯 Using selector: ${enhancedAction.selector}`);
       console.log(`🔧 Tool params:`, JSON.stringify(toolParams, null, 2));
       
-      // Execute the tool
-      const result = await tool.execute(toolParams, state);
+      // Execute the tool with fallback handling
+      let result = await tool.execute(toolParams, state);
+      
+      // If primary action fails, try fallback or create intelligent fallback
+      if (!result.success) {
+        let fallbackAction = nextAction.fallbackAction;
+        
+        // If no fallback exists, create an intelligent one
+        if (!fallbackAction) {
+          console.log('🧠 No fallback action provided, creating intelligent fallback...');
+          fallbackAction = this.createIntelligentFallback(nextAction, state);
+        }
+        
+        if (fallbackAction) {
+          console.log(`🔄 Primary action failed, trying fallback: ${fallbackAction.type}`);
+          console.log(`📋 Fallback action: ${fallbackAction.description}`);
+          
+          // If fallback is navigate and no URL provided, construct intelligent URL
+          if (fallbackAction.type === 'navigate' && !fallbackAction.inputText) {
+            const currentUrl = this.puppeteerWorker.getCurrentUrl() || state.goal;
+            const intelligentUrl = this.constructFallbackUrl(nextAction, currentUrl);
+            fallbackAction.inputText = intelligentUrl;
+            console.log(`🔗 Constructed intelligent fallback URL: ${intelligentUrl}`);
+          }
+          
+          // Prepare fallback tool parameters
+          const fallbackParams = this.prepareToolParameters(fallbackAction, state);
+          console.log(`🔧 Fallback params:`, JSON.stringify(fallbackParams, null, 2));
+        
+          // Map fallback action type to tool
+          const fallbackToolName = this.mapActionToTool(fallbackAction.type);
+          const fallbackTool = this.tools.get(fallbackToolName);
+          
+          if (fallbackTool) {
+            console.log(`🛠️  Executing fallback tool: ${fallbackToolName}`);
+            result = await fallbackTool.execute(fallbackParams, state);
+            
+            if (result.success) {
+              console.log('✅ Fallback action successful');
+            } else {
+              console.log('❌ Fallback action also failed:', result.error);
+            }
+          } else {
+            console.log(`❌ No fallback tool available for: ${fallbackAction.type}`);
+          }
+        }
+      }
       
       if (result.success) {
         console.log('✅ Tool execution successful');
+        
+        // Extract current DOM state after successful tool execution
+        console.log('🔍 Extracting current DOM state for next action context...');
+        const currentDomState = await this.puppeteerWorker.getDOMState();
+        
+        // Analyze the DOM state to understand what changed
+        const domAnalysis = await this.analyzeDOMChanges(state.domState, currentDomState, nextAction);
+        console.log('📊 DOM Analysis:', domAnalysis);
         
         // Create tour step
         const tourStep: TourStep = {
@@ -490,7 +633,9 @@ export class SmartLangGraphAgentService {
           ...state,
           completedActions: [...state.completedActions, state.currentActionIndex],
           tourSteps: [...state.tourSteps, tourStep],
-          extractedData: { ...state.extractedData, ...result.result }
+          extractedData: { ...state.extractedData, ...result.result },
+          domState: currentDomState,
+          domAnalysis: domAnalysis
         };
       } else {
         console.log('❌ Tool execution failed:', result.error);
@@ -608,6 +753,14 @@ export class SmartLangGraphAgentService {
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
       const currentDomState = await this.puppeteerWorker.getDOMState();
       
+      // Perform DOM analysis for validation context
+      const domAnalysis = await this.analyzeDOMChanges(state.domState, currentDomState, nextAction);
+      console.log('📊 DOM Analysis for validation:', {
+        urlChanged: domAnalysis.urlChanged,
+        hasErrors: domAnalysis.hasErrors,
+        actionImpact: domAnalysis.actionImpact
+      });
+      
       // Use Gemini to validate the action was successful
       const validation = await this.geminiService.validateActionSuccess(
         {
@@ -621,8 +774,43 @@ export class SmartLangGraphAgentService {
         nextAction.expectedOutcome
       );
       
-      if (!validation.success) {
+      // Enhanced validation logic using DOM analysis
+      let validationSuccess = validation.success;
+      let validationReasoning = validation.reasoning;
+      
+      // Override validation based on DOM analysis
+      if (domAnalysis.hasErrors) {
+        validationSuccess = false;
+        validationReasoning = `DOM analysis detected errors: ${domAnalysis.errorMessages.join(', ')}`;
+      } else if (nextAction.type === 'navigate' && !domAnalysis.urlChanged) {
+        // For navigation actions, check if we're already on the target URL
+        const targetUrl = nextAction.inputText || nextAction.selector;
+        const currentUrl = currentDomState.currentUrl;
+        
+        console.log(`🔍 Navigation validation details:`);
+        console.log(`   Target URL: "${targetUrl}"`);
+        console.log(`   Current URL: "${currentUrl}"`);
+        console.log(`   URL Changed: ${domAnalysis.urlChanged}`);
+        
+        if (targetUrl && currentUrl && currentUrl.includes(targetUrl.split('/')[2])) {
+          // We're on the same domain, navigation might be successful even if URL didn't change
+          validationSuccess = true;
+          validationReasoning = 'Navigation successful - already on target domain';
+          console.log(`✅ Navigation validation: Same domain detected`);
+        } else {
+          validationSuccess = false;
+          validationReasoning = 'Navigation action did not result in URL change';
+          console.log(`❌ Navigation validation: URL change required but not detected`);
+        }
+      } else if (nextAction.type === 'click' && domAnalysis.newClickableElements.length === 0 && !domAnalysis.urlChanged) {
+        // Click action should either reveal new elements or navigate
+        validationSuccess = false;
+        validationReasoning = 'Click action did not reveal new elements or navigate';
+      }
+      
+      if (!validationSuccess) {
         console.log('❌ Action validation failed');
+        console.log(`📊 DOM Analysis: ${domAnalysis.actionImpact}`);
         
         // Check if this is a critical action
         const isCriticalAction = this.isCriticalAction(nextAction, state);
@@ -631,7 +819,7 @@ export class SmartLangGraphAgentService {
           console.log(`🚨 CRITICAL ACTION VALIDATION DETECTED: ${nextAction.type} - ${nextAction.description}`);
           console.error('💥 CRITICAL ACTION VALIDATION FAILED - STOPPING AGENT EXECUTION');
           console.error(`Critical action validation failed: ${nextAction.type} - ${nextAction.description}`);
-          console.error(`Validation reason: ${validation.reasoning}`);
+          console.error(`Validation reason: ${validationReasoning}`);
           
           const tourStep: TourStep = {
             order: state.currentActionIndex + 1,
@@ -646,7 +834,7 @@ export class SmartLangGraphAgentService {
             tooltip: 'Critical action validation failed - stopping execution',
             timestamp: Date.now(),
             success: false,
-            errorMessage: `CRITICAL VALIDATION FAILURE (STOPPING): ${validation.reasoning}`
+            errorMessage: `CRITICAL VALIDATION FAILURE (STOPPING): ${validationReasoning}`
           };
           
           return {
@@ -673,11 +861,12 @@ export class SmartLangGraphAgentService {
         }
       }
       
-      return {
-        ...state,
-        domState: currentDomState,
-        reasoning: validation.reasoning
-      };
+        return {
+          ...state,
+          domState: currentDomState,
+          domAnalysis: domAnalysis,
+          reasoning: validationReasoning
+        };
     } catch (error) {
       console.error('Validation failed:', error);
       
@@ -906,8 +1095,8 @@ export class SmartLangGraphAgentService {
     
     switch (action.type) {
       case 'navigate':
-        // For navigation, use the goal URL from state or action inputText
-        let url = action.inputText || state.goal;
+        // For navigation, use the goal URL from state, action inputText, or action selector
+        let url = action.inputText || action.selector || state.goal;
         
         // If still no URL, try to extract from the action description or use a default
         if (!url) {
@@ -923,11 +1112,11 @@ export class SmartLangGraphAgentService {
         
         console.log(`🧭 Navigation URL resolution:`);
         console.log(`   Action inputText: "${action.inputText}"`);
+        console.log(`   Action selector: "${action.selector}"`);
         console.log(`   State goal: "${state.goal}"`);
         console.log(`   Resolved URL: "${url}"`);
         console.log(`   Action description: "${action.description}"`);
         console.log(`   Action type: "${action.type}"`);
-        console.log(`   Action selector: "${action.selector}"`);
         
         if (!url) {
           throw new Error('No URL available for navigation action');
@@ -1054,6 +1243,288 @@ export class SmartLangGraphAgentService {
         }
       };
     }
+  }
+
+  private createIntelligentFallback(action: PuppeteerAction, state: SmartAgentState): PuppeteerAction | null {
+    console.log('🧠 Creating intelligent fallback action...');
+    
+    // Determine fallback type based on action type
+    let fallbackType: 'navigate' | 'click' | 'wait' | 'type' | 'retry' = 'navigate';
+    let fallbackDescription = '';
+    let fallbackSelector = '';
+    let fallbackInputText = '';
+    
+    switch (action.type) {
+      case 'click':
+        // If clicking a navigation element, fallback to direct navigation
+        if (action.description.toLowerCase().includes('workflow') || 
+            action.description.toLowerCase().includes('dashboard') ||
+            action.description.toLowerCase().includes('setting') ||
+            action.description.toLowerCase().includes('profile') ||
+            action.description.toLowerCase().includes('help') ||
+            action.description.toLowerCase().includes('home') ||
+            action.description.toLowerCase().includes('login')) {
+          fallbackType = 'navigate';
+          const currentUrl = this.puppeteerWorker.getCurrentUrl() || state.goal;
+          fallbackInputText = this.constructFallbackUrl(action, currentUrl);
+          fallbackDescription = `Navigate directly to ${fallbackInputText}`;
+        } else {
+          // For other clicks, try alternative selector
+          fallbackType = 'click';
+          fallbackSelector = action.selector?.replace(/\[.*?\]/, '') || action.selector || '';
+          fallbackDescription = `Try alternative selector for ${action.description}`;
+        }
+        break;
+        
+      case 'navigate':
+        // If navigation fails, try alternative URL
+        fallbackType = 'navigate';
+        const currentUrl = this.puppeteerWorker.getCurrentUrl() || state.goal;
+        fallbackInputText = this.constructFallbackUrl(action, currentUrl);
+        fallbackDescription = `Try alternative URL: ${fallbackInputText}`;
+        break;
+        
+      case 'wait':
+        // If waiting fails, try shorter wait or different element
+        fallbackType = 'wait';
+        fallbackSelector = action.selector || 'body';
+        fallbackDescription = `Wait for alternative element: ${fallbackSelector}`;
+        break;
+        
+      case 'type':
+        // If typing fails, try alternative input field
+        fallbackType = 'type';
+        fallbackSelector = action.selector?.replace(/\[.*?\]/, '') || action.selector || '';
+        fallbackInputText = action.inputText || '';
+        fallbackDescription = `Try alternative input field for ${action.description}`;
+        break;
+        
+      default:
+        // Default to retry
+        fallbackType = 'retry';
+        fallbackDescription = `Retry ${action.type} action`;
+        break;
+    }
+    
+    if (fallbackType === 'retry') {
+      return null; // No meaningful fallback for retry
+    }
+    
+    return {
+      type: fallbackType,
+      selector: fallbackSelector || undefined,
+      inputText: fallbackInputText || undefined,
+      description: fallbackDescription,
+      expectedOutcome: `Fallback: ${action.expectedOutcome}`,
+      priority: 'medium',
+      estimatedDuration: action.estimatedDuration,
+      prerequisites: []
+    };
+  }
+
+  private constructFallbackUrl(action: PuppeteerAction, currentUrl: string): string {
+    console.log('🔗 Constructing intelligent fallback URL...');
+    
+    // Extract base URL from current URL
+    const url = new URL(currentUrl);
+    const baseUrl = `${url.protocol}//${url.host}`;
+    
+    // Intelligent URL construction based on action description and common patterns
+    const description = action.description.toLowerCase();
+    
+    // Navigation patterns
+    if (description.includes('workflow') || description.includes('workflows')) {
+      return `${baseUrl}/workflows`;
+    } else if (description.includes('dashboard')) {
+      return `${baseUrl}/dashboard`;
+    } else if (description.includes('setting') || description.includes('settings')) {
+      return `${baseUrl}/settings`;
+    } else if (description.includes('profile') || description.includes('account')) {
+      return `${baseUrl}/profile`;
+    } else if (description.includes('help') || description.includes('support')) {
+      return `${baseUrl}/help`;
+    } else if (description.includes('home')) {
+      return `${baseUrl}/home`;
+    } else if (description.includes('login') || description.includes('sign in')) {
+      return `${baseUrl}/login`;
+    } else if (description.includes('create') || description.includes('new')) {
+      return `${baseUrl}/create`;
+    } else if (description.includes('edit') || description.includes('modify')) {
+      return `${baseUrl}/edit`;
+    } else if (description.includes('view') || description.includes('show')) {
+      return `${baseUrl}/view`;
+    } else if (description.includes('search') || description.includes('find')) {
+      return `${baseUrl}/search`;
+    } else if (description.includes('export') || description.includes('download')) {
+      return `${baseUrl}/export`;
+    } else if (description.includes('import') || description.includes('upload')) {
+      return `${baseUrl}/import`;
+    } else if (description.includes('save') || description.includes('submit')) {
+      return `${baseUrl}/save`;
+    } else if (description.includes('cancel')) {
+      return `${baseUrl}/cancel`;
+    } else if (description.includes('delete') || description.includes('remove')) {
+      return `${baseUrl}/delete`;
+    } else if (description.includes('filter') || description.includes('sort')) {
+      return `${baseUrl}/filter`;
+    } else if (description.includes('back') || description.includes('previous')) {
+      // Try to go back to parent directory
+      const pathParts = url.pathname.split('/').filter(part => part);
+      if (pathParts.length > 1) {
+        pathParts.pop(); // Remove last segment
+        return `${baseUrl}/${pathParts.join('/')}`;
+      }
+      return `${baseUrl}/`;
+    } else if (description.includes('next') || description.includes('continue')) {
+      // Try to increment or go to next page
+      return `${baseUrl}/next`;
+    }
+    
+    // Default fallback - try to construct from action description
+    const words = description.split(' ').filter(word => 
+      word.length > 2 && 
+      !['the', 'and', 'or', 'but', 'for', 'with', 'from', 'to', 'in', 'on', 'at', 'by'].includes(word)
+    );
+    
+    if (words.length > 0) {
+      const primaryWord = words[0];
+      return `${baseUrl}/${primaryWord}`;
+    }
+    
+    // Ultimate fallback
+    return `${baseUrl}/`;
+  }
+
+  private async analyzeDOMChanges(
+    previousState: DOMState | undefined,
+    currentState: DOMState,
+    action: PuppeteerAction
+  ): Promise<DOMAnalysis> {
+    console.log('🔍 Analyzing DOM changes after action execution...');
+    
+    const analysis: DOMAnalysis = {
+      urlChanged: false,
+      titleChanged: false,
+      newElements: [],
+      removedElements: [],
+      newClickableElements: [],
+      newInputElements: [],
+      pageLoadComplete: true,
+      hasErrors: false,
+      errorMessages: [],
+      newContent: [],
+      actionImpact: '',
+      nextActionRecommendations: []
+    };
+
+    if (!previousState) {
+      analysis.actionImpact = 'Initial page load';
+      analysis.nextActionRecommendations = ['Wait for page to fully load', 'Identify main navigation elements'];
+      return analysis;
+    }
+
+    // Check URL changes
+    analysis.urlChanged = previousState.currentUrl !== currentState.currentUrl;
+    analysis.titleChanged = previousState.pageTitle !== currentState.pageTitle;
+
+    // Analyze new and removed elements
+    const previousClickable = new Set(previousState.clickableSelectors);
+    const currentClickable = new Set(currentState.clickableSelectors);
+    
+    const previousInput = new Set(previousState.inputSelectors);
+    const currentInput = new Set(currentState.inputSelectors);
+
+    // Find new clickable elements
+    for (const selector of currentClickable) {
+      if (!previousClickable.has(selector)) {
+        analysis.newClickableElements.push(selector);
+      }
+    }
+
+    // Find new input elements
+    for (const selector of currentInput) {
+      if (!previousInput.has(selector)) {
+        analysis.newInputElements.push(selector);
+      }
+    }
+
+    // Find removed elements
+    for (const selector of previousClickable) {
+      if (!currentClickable.has(selector)) {
+        analysis.removedElements.push(selector);
+      }
+    }
+
+    // Analyze new content
+    const previousText = new Set(previousState.visibleText);
+    const currentText = new Set(currentState.visibleText);
+    
+    for (const text of currentText) {
+      if (!previousText.has(text)) {
+        analysis.newContent.push(text);
+      }
+    }
+
+    // Check for error messages
+    const errorIndicators = [
+      'error', 'Error', 'ERROR',
+      'failed', 'Failed', 'FAILED',
+      'invalid', 'Invalid', 'INVALID',
+      'not found', 'Not Found', 'NOT FOUND',
+      'unauthorized', 'Unauthorized', 'UNAUTHORIZED',
+      'forbidden', 'Forbidden', 'FORBIDDEN',
+      'timeout', 'Timeout', 'TIMEOUT'
+    ];
+
+    for (const text of currentState.visibleText) {
+      for (const indicator of errorIndicators) {
+        if (text.includes(indicator)) {
+          analysis.hasErrors = true;
+          analysis.errorMessages.push(text);
+          break;
+        }
+      }
+    }
+
+    // Determine action impact
+    if (analysis.urlChanged) {
+      analysis.actionImpact = `Navigation successful - moved from ${previousState.currentUrl} to ${currentState.currentUrl}`;
+    } else if (action.type === 'click' && analysis.newClickableElements.length > 0) {
+      analysis.actionImpact = 'Click action revealed new interactive elements';
+    } else if (action.type === 'type' && analysis.newInputElements.length > 0) {
+      analysis.actionImpact = 'Type action revealed new input fields';
+    } else if (analysis.newContent.length > 0) {
+      analysis.actionImpact = 'Action revealed new content on the page';
+    } else {
+      analysis.actionImpact = 'Action completed but no significant changes detected';
+    }
+
+    // Generate next action recommendations
+    if (analysis.hasErrors) {
+      analysis.nextActionRecommendations.push('Handle error messages before proceeding');
+    }
+    
+    if (analysis.urlChanged) {
+      analysis.nextActionRecommendations.push('Wait for new page to load completely');
+    }
+    
+    if (analysis.newClickableElements.length > 0) {
+      analysis.nextActionRecommendations.push('Consider clicking on newly available elements');
+    }
+    
+    if (analysis.newInputElements.length > 0) {
+      analysis.nextActionRecommendations.push('Consider filling newly available input fields');
+    }
+
+    console.log('📊 DOM Analysis completed:', {
+      urlChanged: analysis.urlChanged,
+      newClickableElements: analysis.newClickableElements.length,
+      newInputElements: analysis.newInputElements.length,
+      hasErrors: analysis.hasErrors,
+      actionImpact: analysis.actionImpact
+    });
+
+    return analysis;
   }
 
   async stopAgent(): Promise<void> {

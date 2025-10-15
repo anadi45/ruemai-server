@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Action, DOMState, GeminiResponse, ProductDocs, ActionPlan, PuppeteerAction } from '../types/demo-automation.types';
+import { Action, DOMState, GeminiResponse, ProductDocs, ActionPlan, PuppeteerAction, ElementMatch } from '../types/demo-automation.types';
 
 /**
  * GeminiService with API key rotation support
@@ -614,7 +614,16 @@ Create a comprehensive Puppeteer automation plan that includes:
 - **DETECT AUTHENTICATION STATE**: Check if redirected to login page and handle accordingly
 - **PREFER DOM SELECTOR INTERACTIONS**: Use click actions on navigation elements (buttons, links, menu items) rather than direct URL navigation
 - **URL NAVIGATION AS FALLBACK**: Only use direct URL navigation when DOM selectors are not available or when navigating to external pages
+- **INTELLIGENT FALLBACK ACTIONS**: Every navigation action must have a meaningful fallback
 - Set up proper viewport and user agent
+
+**INTELLIGENT FALLBACK STRATEGY:**
+- **NAVIGATION ACTIONS**: If clicking a link fails, fallback to direct URL navigation
+- **CLICK ACTIONS**: If clicking an element fails, consider alternative selectors or navigation
+- **FORM ACTIONS**: If form interaction fails, try alternative form fields or navigation
+- **WAIT ACTIONS**: If waiting for an element fails, try waiting for alternative elements or navigation
+- **URL CONSTRUCTION**: Build fallback URLs based on website structure (e.g., /workflows, /dashboard, /settings)
+- **HIERARCHICAL FALLBACKS**: Provide multiple levels of fallback (click → navigate → wait → retry)
 
 **ELEMENT INTERACTION (PRIORITY APPROACH):**
 - **PRIMARY**: Click buttons, links, menu items with robust selectors to navigate
@@ -656,6 +665,37 @@ For each action, provide:
 - **Error handling strategies** for each step
 - **Screenshot capture** at critical points
 - **Data extraction** where applicable
+- **INTELLIGENT FALLBACK ACTIONS**: Meaningful alternatives for each action type
+
+**FALLBACK ACTION REQUIREMENTS:**
+- **Navigation Actions**: Must have fallback to direct URL navigation (e.g., click "Workflows" → navigate to "/workflows")
+- **Click Actions**: Must have fallback to alternative selectors or navigation
+- **Form Actions**: Must have fallback to alternative form fields or navigation
+- **Wait Actions**: Must have fallback to alternative elements or navigation
+- **URL Construction**: Build logical fallback URLs based on website structure
+- **Hierarchical Fallbacks**: Provide multiple levels of fallback strategies
+
+**INTELLIGENT FALLBACK EXAMPLES:**
+- **Click "Workflows" link** → Fallback: navigate to "/workflows"
+- **Click "Dashboard" button** → Fallback: navigate to "/dashboard"
+- **Click "Settings" menu** → Fallback: navigate to "/settings"
+- **Click "Create" button** → Fallback: navigate to "/create" or "/new"
+- **Click "Login" button** → Fallback: navigate to "/login"
+- **Click "Profile" link** → Fallback: navigate to "/profile" or "/account"
+- **Click "Help" link** → Fallback: navigate to "/help" or "/support"
+- **Click "Home" link** → Fallback: navigate to "/" or "/home"
+- **Click "Back" button** → Fallback: navigate to previous page or parent URL
+- **Click "Next" button** → Fallback: navigate to next page or increment URL
+- **Click "Save" button** → Fallback: navigate to "/save" or "/submit"
+- **Click "Cancel" button** → Fallback: navigate to previous page or "/cancel"
+- **Click "Submit" button** → Fallback: navigate to "/submit" or "/confirm"
+- **Click "Delete" button** → Fallback: navigate to "/delete" or "/remove"
+- **Click "Edit" button** → Fallback: navigate to "/edit" or "/modify"
+- **Click "View" button** → Fallback: navigate to "/view" or "/show"
+- **Click "Search" button** → Fallback: navigate to "/search" or "/find"
+- **Click "Filter" button** → Fallback: navigate to "/filter" or "/sort"
+- **Click "Export" button** → Fallback: navigate to "/export" or "/download"
+- **Click "Import" button** → Fallback: navigate to "/import" or "/upload"
 
 **SELECTOR INTERACTION PRIORITY:**
 1. **FIRST CHOICE**: Use DOM selectors to click navigation elements (buttons, links, menu items)
@@ -673,7 +713,12 @@ Return the plan in this JSON format:
     {
       "type": "click|type|navigate|wait|scroll|select|extract|evaluate",
       "selector": "Primary CSS selector",
-      "fallbackAction": "Alternative action with different type if needed (e.g., click -> navigate)",
+      "fallbackAction": {
+        "type": "navigate|click|wait|retry",
+        "selector": "Alternative selector or URL",
+        "inputText": "Alternative input or URL path",
+        "description": "Fallback action description"
+      },
       "inputText": "Text to input (for type actions)",
       "description": "Detailed description of the Puppeteer action",
       "expectedOutcome": "What should happen after this action",
@@ -945,5 +990,232 @@ RESPONSE FORMAT (JSON):
       this.keyLastUsed.set(index, 0);
     });
     console.log('🔄 API key usage counters reset');
+  }
+
+  /**
+   * Analyze page content to find elements that match the target description
+   * This is the core AI-powered element discovery method
+   */
+  async analyzePageForElement(
+    targetDescription: string,
+    domState: DOMState,
+    context: string
+  ): Promise<{
+    suggestedSelectors: Array<{ selector: string; confidence: number; reasoning: string }>;
+    recommendations: string[];
+  }> {
+    const prompt = `
+You are an expert web automation AI that finds DOM elements based on user intent.
+
+TARGET: Find elements that match: "${targetDescription}"
+
+CONTEXT:
+${context}
+
+CURRENT PAGE STATE:
+- URL: ${domState.currentUrl}
+- Title: ${domState.pageTitle}
+- Available clickable elements: ${domState.clickableSelectors.slice(0, 20).join(', ')}
+- Available input elements: ${domState.inputSelectors.slice(0, 10).join(', ')}
+- Visible text samples: ${domState.visibleText.slice(0, 15).join(', ')}
+
+TASK: Analyze the page and suggest CSS selectors that could match the target element.
+Consider:
+1. Text content matching
+2. Element attributes (id, class, data-*)
+3. Element hierarchy and context
+4. Common UI patterns
+5. Accessibility attributes
+
+Return JSON with suggested selectors and confidence scores:
+{
+  "suggestedSelectors": [
+    {
+      "selector": "string",
+      "confidence": number (0-1),
+      "reasoning": "string"
+    }
+  ],
+  "recommendations": ["string"]
+}
+
+Focus on high-confidence matches that are likely to be the intended element.
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      const parsed = JSON.parse(result);
+      
+      return {
+        suggestedSelectors: parsed.suggestedSelectors || [],
+        recommendations: parsed.recommendations || []
+      };
+    } catch (error) {
+      console.error('Element analysis failed:', error);
+      return {
+        suggestedSelectors: [],
+        recommendations: ['AI analysis failed - using fallback strategies']
+      };
+    }
+  }
+
+  /**
+   * Enhanced element discovery using semantic understanding
+   */
+  async discoverElementSemantically(
+    action: PuppeteerAction,
+    domState: DOMState,
+    availableElements: ElementMatch[]
+  ): Promise<{
+    bestMatch: ElementMatch | null;
+    reasoning: string;
+    confidence: number;
+  }> {
+    const prompt = `
+You are an expert web automation AI that understands user intent and matches it to DOM elements.
+
+ACTION INTENT: ${action.description}
+EXPECTED OUTCOME: ${action.expectedOutcome}
+ACTION TYPE: ${action.type}
+
+AVAILABLE ELEMENTS:
+${availableElements.map((el, i) => `
+${i + 1}. Selector: ${el.selector}
+   Text: "${el.textContent || 'N/A'}"
+   Type: ${el.elementType}
+   Visible: ${el.isVisible}
+   Clickable: ${el.isClickable}
+   Attributes: ${JSON.stringify(el.attributes || {})}
+`).join('\n')}
+
+PAGE CONTEXT:
+- URL: ${domState.currentUrl}
+- Title: ${domState.pageTitle}
+- Available clickable elements: ${domState.clickableSelectors.slice(0, 10).join(', ')}
+
+TASK: Analyze the user's intent and select the best matching element from the available options.
+Consider:
+1. Semantic meaning of the action description
+2. Element text content relevance
+3. Element type appropriateness for the action
+4. Element visibility and interactivity
+5. Context clues from the page
+
+Return JSON:
+{
+  "bestMatchIndex": number (index of best match, or -1 if none suitable),
+  "reasoning": "string",
+  "confidence": number (0-1)
+}
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      const parsed = JSON.parse(result);
+      
+      const bestMatch = parsed.bestMatchIndex >= 0 
+        ? availableElements[parsed.bestMatchIndex] 
+        : null;
+      
+      return {
+        bestMatch,
+        reasoning: parsed.reasoning || 'No suitable match found',
+        confidence: parsed.confidence || 0
+      };
+    } catch (error) {
+      console.error('Semantic element discovery failed:', error);
+      return {
+        bestMatch: null,
+        reasoning: 'Semantic analysis failed',
+        confidence: 0
+      };
+    }
+  }
+
+  /**
+   * Generate content from a prompt using the AI model
+   * This is a public method that can be used by other services
+   */
+  async generateContentFromPrompt(prompt: string): Promise<string> {
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      return result;
+    } catch (error) {
+      console.error('Content generation failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Analyze DOM changes to understand what happened after an action
+   */
+  async analyzeDOMChanges(
+    previousState: DOMState,
+    currentState: DOMState,
+    action: PuppeteerAction
+  ): Promise<{
+    actionImpact: string;
+    newElements: string[];
+    recommendations: string[];
+  }> {
+    const prompt = `
+You are an expert web automation AI that analyzes DOM changes to understand action impact.
+
+ACTION PERFORMED: ${action.type} - ${action.description}
+EXPECTED OUTCOME: ${action.expectedOutcome}
+
+PREVIOUS STATE:
+- URL: ${previousState.currentUrl}
+- Title: ${previousState.pageTitle}
+- Clickable elements: ${previousState.clickableSelectors.slice(0, 10).join(', ')}
+
+CURRENT STATE:
+- URL: ${currentState.currentUrl}
+- Title: ${currentState.pageTitle}
+- Clickable elements: ${currentState.clickableSelectors.slice(0, 10).join(', ')}
+
+NEW ELEMENTS: ${currentState.clickableSelectors.filter(s => !previousState.clickableSelectors.includes(s)).join(', ')}
+
+TASK: Analyze what changed and provide insights about the action's impact.
+
+Return JSON:
+{
+  "actionImpact": "string describing what happened",
+  "newElements": ["array of new element selectors"],
+  "recommendations": ["array of next steps or suggestions"]
+}
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('DOM change analysis failed:', error);
+      return {
+        actionImpact: 'Unable to analyze changes',
+        newElements: [],
+        recommendations: ['Continue with next action']
+      };
+    }
   }
 }
