@@ -6,7 +6,6 @@ import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
 import { SmartLangGraphAgentService } from './services/smart-langgraph-agent.service';
 import { IntelligentElementDiscoveryService } from './services/intelligent-element-discovery.service';
-import { IntelligentScrapingService } from './services/intelligent-scraping.service';
 
 @Module({
   controllers: [DemoAutomationController],
@@ -16,9 +15,8 @@ import { IntelligentScrapingService } from './services/intelligent-scraping.serv
     PuppeteerWorkerService,
     LangGraphWorkflowService,
     SmartLangGraphAgentService,
-    IntelligentElementDiscoveryService,
-    IntelligentScrapingService
+    IntelligentElementDiscoveryService
   ],
-  exports: [DemoAutomationService, IntelligentScrapingService],
+  exports: [DemoAutomationService],
 })
 export class DemoAutomationModule {}

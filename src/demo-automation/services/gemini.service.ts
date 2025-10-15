@@ -579,7 +579,7 @@ VISUAL CONTEXT (from images):
 CRITICAL ANALYSIS INSTRUCTIONS:
 1. **Carefully analyze BOTH text and image data together** to understand the complete user interface
 2. **Identify UI elements** visible in images that may not be mentioned in text
-3. **Map visual elements to programmatic selectors** for Puppeteer automation
+3. **Use generic element descriptions** instead of specific CSS selectors (e.g., "workflows link" not "a[href='/workflows']")
 4. **Consider the actual user flow** as shown in images vs. documented steps
 5. **Identify potential scraping challenges** like dynamic content, modals, or complex interactions
 
@@ -626,7 +626,7 @@ Create a comprehensive Puppeteer automation plan that includes:
 - **HIERARCHICAL FALLBACKS**: Provide multiple levels of fallback (click → navigate → wait → retry)
 
 **ELEMENT INTERACTION (PRIORITY APPROACH):**
-- **PRIMARY**: Click buttons, links, menu items with robust selectors to navigate
+- **PRIMARY**: Click buttons, links, menu items using generic element descriptions (e.g., "workflows link", "create button", "submit form")
 - **SECONDARY**: Use direct URL navigation only when DOM selectors fail or are unavailable
 - Fill forms and input fields with realistic data
 - Handle dropdowns, checkboxes, radio buttons
@@ -658,8 +658,8 @@ Create a comprehensive Puppeteer automation plan that includes:
 - Implement proper waiting strategies (waitForSelector, waitForFunction)
 
 For each action, provide:
-- **Robust selectors** (prefer data attributes, IDs, or stable classes)
-- **Fallback selectors** for dynamic content
+- **Generic element descriptions** (e.g., "workflows link", "create button", "name input field") instead of specific CSS selectors
+- **Fallback actions** for dynamic content
 - **Realistic input data** for forms
 - **Proper waiting conditions** before and after actions
 - **Error handling strategies** for each step
@@ -698,10 +698,11 @@ For each action, provide:
 - **Click "Import" button** → Fallback: navigate to "/import" or "/upload"
 
 **SELECTOR INTERACTION PRIORITY:**
-1. **FIRST CHOICE**: Use DOM selectors to click navigation elements (buttons, links, menu items)
-2. **SECOND CHOICE**: Use DOM selectors to interact with forms and inputs
+1. **FIRST CHOICE**: Use generic element descriptions to click navigation elements (buttons, links, menu items)
+2. **SECOND CHOICE**: Use generic element descriptions to interact with forms and inputs
 3. **FALLBACK ONLY**: Use direct URL navigation when DOM selectors are unavailable or fail
 4. **AVOID**: Direct URL navigation for internal page transitions - always prefer clicking UI elements
+5. **IMPORTANT**: Use descriptive element names like "workflows link", "create button", "name input field" instead of CSS selectors like "a[href='/workflows']", "button[data-testid='create-workflow-button']"
 
 Return the plan in this JSON format:
 {
@@ -712,10 +713,10 @@ Return the plan in this JSON format:
   "actions": [
     {
       "type": "click|type|navigate|wait|scroll|select|extract|evaluate",
-      "selector": "Primary CSS selector",
+      "selector": "Generic element description (e.g., 'workflows link', 'create button', 'name input field')",
       "fallbackAction": {
         "type": "navigate|click|wait|retry",
-        "selector": "Alternative selector or URL",
+        "selector": "Alternative element description or URL",
         "inputText": "Alternative input or URL path",
         "description": "Fallback action description"
       },
@@ -743,7 +744,7 @@ Return the plan in this JSON format:
 FOCUS ON PROGRAMMATIC SCRAPING:
 - **PRIORITIZE DOM INTERACTIONS**: Always prefer clicking UI elements over direct URL navigation
 - Create executable Puppeteer code patterns that mimic real user behavior
-- Use robust, maintainable selectors for all interactions
+- **USE GENERIC ELEMENT DESCRIPTIONS**: Use descriptive names like "workflows link", "create button", "name input field" instead of specific CSS selectors
 - Handle real-world web application challenges through DOM manipulation
 - Implement proper error handling and retries
 - Consider performance and reliability

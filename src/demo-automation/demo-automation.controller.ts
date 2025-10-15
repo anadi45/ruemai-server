@@ -1,14 +1,12 @@
 import { Controller, Post, Body, UseInterceptors, UploadedFiles, Req, Get, Query } from '@nestjs/common';
 import { FilesInterceptor, AnyFilesInterceptor } from '@nestjs/platform-express';
 import { DemoAutomationService } from './demo-automation.service';
-import { IntelligentScrapingService } from './services/intelligent-scraping.service';
 import { CreateDemoResponseDto, CreateDemoWithFileRequestDto } from './demo-automation.dto';
 
 @Controller('demo')
 export class DemoAutomationController {
   constructor(
-    private readonly demoAutomationService: DemoAutomationService,
-    private readonly intelligentScrapingService: IntelligentScrapingService
+    private readonly demoAutomationService: DemoAutomationService
   ) {}
 
   @Post('create-demo')
@@ -82,163 +80,4 @@ export class DemoAutomationController {
     }
   }
 
-  /**
-   * Demonstrate intelligent element discovery
-   * This endpoint shows how the AI correlates plan actions with actual DOM elements
-   */
-  @Post('intelligent-discovery')
-  async demonstrateIntelligentDiscovery(
-    @Body() body: {
-      actionDescription: string;
-      actionType: string;
-      context?: string;
-    }
-  ): Promise<{
-    discovery: any;
-    demonstration: string;
-    success: boolean;
-  }> {
-    try {
-      console.log('🔍 Demonstrating intelligent element discovery...');
-      console.log(`📝 Action: "${body.actionDescription}"`);
-      console.log(`🎯 Type: ${body.actionType}`);
-
-      const result = await this.intelligentScrapingService.demonstrateElementDiscovery(
-        body.actionDescription,
-        body.actionType,
-        body.context
-      );
-
-      return {
-        discovery: result.discovery,
-        demonstration: result.demonstration,
-        success: true
-      };
-    } catch (error) {
-      console.error('Intelligent discovery demonstration failed:', error);
-      return {
-        discovery: null,
-        demonstration: `❌ Discovery failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        success: false
-      };
-    }
-  }
-
-  /**
-   * Create an intelligent action plan from high-level descriptions
-   * This shows how the system converts human instructions into executable plans
-   */
-  @Post('create-intelligent-plan')
-  async createIntelligentPlan(
-    @Body() body: {
-      featureName: string;
-      highLevelSteps: string[];
-      targetUrl: string;
-    }
-  ): Promise<{
-    actionPlan: any;
-    success: boolean;
-    message: string;
-  }> {
-    try {
-      console.log('🧠 Creating intelligent action plan...');
-      console.log(`📋 Feature: ${body.featureName}`);
-      console.log(`📝 Steps: ${body.highLevelSteps.length}`);
-
-      const actionPlan = await this.intelligentScrapingService.createIntelligentActionPlan(
-        body.featureName,
-        body.highLevelSteps,
-        body.targetUrl
-      );
-
-      return {
-        actionPlan,
-        success: true,
-        message: `Intelligent action plan created with ${actionPlan.totalActions} actions`
-      };
-    } catch (error) {
-      console.error('Failed to create intelligent plan:', error);
-      return {
-        actionPlan: null,
-        success: false,
-        message: `Failed to create plan: ${error instanceof Error ? error.message : 'Unknown error'}`
-      };
-    }
-  }
-
-  /**
-   * Execute intelligent scraping with plan correlation
-   * This is the main endpoint that demonstrates the intelligent scraping workflow
-   */
-  @Post('intelligent-scraping')
-  async executeIntelligentScraping(
-    @Body() body: {
-      actionPlan: any;
-      tourConfig: any;
-      featureDocs: any;
-      credentials?: { username: string; password: string };
-    }
-  ): Promise<{
-    result: any;
-    success: boolean;
-    message: string;
-  }> {
-    try {
-      console.log('🧠 Starting intelligent scraping...');
-      console.log(`📋 Plan: ${body.actionPlan.featureName}`);
-      console.log(`🎯 Goal: ${body.tourConfig.goal}`);
-
-      const result = await this.intelligentScrapingService.executeIntelligentScraping(
-        body.actionPlan,
-        body.tourConfig,
-        body.featureDocs,
-        body.credentials
-      );
-
-      return {
-        result,
-        success: result.success,
-        message: `Intelligent scraping completed with ${result.totalSteps} steps`
-      };
-    } catch (error) {
-      console.error('Intelligent scraping failed:', error);
-      return {
-        result: null,
-        success: false,
-        message: `Scraping failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      };
-    }
-  }
-
-  /**
-   * Analyze scraping effectiveness
-   */
-  @Post('analyze-effectiveness')
-  async analyzeEffectiveness(
-    @Body() body: {
-      result: any;
-      originalPlan: any;
-    }
-  ): Promise<{
-    analysis: any;
-    success: boolean;
-  }> {
-    try {
-      const analysis = await this.intelligentScrapingService.analyzeScrapingEffectiveness(
-        body.result,
-        body.originalPlan
-      );
-
-      return {
-        analysis,
-        success: true
-      };
-    } catch (error) {
-      console.error('Effectiveness analysis failed:', error);
-      return {
-        analysis: null,
-        success: false
-      };
-    }
-  }
 }
