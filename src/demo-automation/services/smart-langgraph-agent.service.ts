@@ -78,40 +78,90 @@ export class SmartLangGraphAgentService {
       }
     });
 
-    // Click Tool
+    // Click Tool (Updated to use coordinate-based approach with fallback)
     this.tools.set('click', {
       name: 'click',
-      description: 'Click on an element using selector',
-      parameters: { selector: 'string', fallbackAction: 'object', waitAfter: 'number' },
+      description: 'Click on an element using coordinate-based detection with DOM fallback',
+      parameters: { selector: 'string', fallbackAction: 'object', waitAfter: 'number', useCoordinates: 'boolean' },
       execute: async (params, state) => {
         try {
           let success = false;
           let selector = params.selector;
           let usedFallback = false;
+          let usedCoordinates = false;
           
-          // Try primary selector first
-          try {
-            await this.puppeteerWorker.executeAction({
-              type: 'click',
-              selector: params.selector,
-              description: `Click on ${params.selector}`
-            });
-            success = true;
-          } catch (error) {
-            // Try fallback action if provided
-            if (params.fallbackAction) {
-              try {
-                await this.puppeteerWorker.executeAction({
-                  type: params.fallbackAction.type,
-                  selector: params.fallbackAction.selector,
-                  inputText: params.fallbackAction.inputText,
-                  description: params.fallbackAction.description
-                });
-                success = true;
-                selector = params.fallbackAction.selector;
-                usedFallback = true;
-              } catch (fallbackActionError) {
-                // Fallback action failed
+          // NEW: Try coordinate-based approach first if enabled
+          if (params.useCoordinates !== false) {
+            try {
+              console.log('🎯 Attempting coordinate-based click...');
+              
+              // Take screenshot for coordinate detection
+              const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
+              const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+              const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+              
+              // Use intelligent coordinate discovery
+              const coordinateDiscovery = await this.elementDiscovery.discoverCoordinatesWithScreenshot(
+                {
+                  type: 'click_coordinates',
+                  description: params.description || `Click on ${params.selector}`,
+                  expectedOutcome: 'Element clicked successfully',
+                  priority: 'high',
+                  estimatedDuration: 2,
+                  prerequisites: []
+                },
+                screenshotData.screenshot,
+                currentUrl,
+                pageTitle,
+                screenshotData.viewport,
+                state.currentContext
+              );
+              
+              if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+                console.log(`✅ Coordinate-based click: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y})`);
+                
+                const clickResult = await this.puppeteerWorker.clickAtCoordinates(
+                  coordinateDiscovery.bestMatch.x,
+                  coordinateDiscovery.bestMatch.y
+                );
+                
+                if (clickResult.success) {
+                  success = true;
+                  usedCoordinates = true;
+                  console.log('✅ Coordinate-based click successful');
+                }
+              }
+            } catch (coordinateError) {
+              console.warn('Coordinate-based click failed, falling back to DOM approach:', coordinateError);
+            }
+          }
+          
+          // Fallback to DOM-based approach if coordinate approach failed
+          if (!success) {
+            try {
+              console.log('🔄 Falling back to DOM-based click...');
+              await this.puppeteerWorker.executeAction({
+                type: 'click',
+                selector: params.selector,
+                description: `Click on ${params.selector}`
+              });
+              success = true;
+            } catch (error) {
+              // Try fallback action if provided
+              if (params.fallbackAction) {
+                try {
+                  await this.puppeteerWorker.executeAction({
+                    type: params.fallbackAction.type,
+                    selector: params.fallbackAction.selector,
+                    inputText: params.fallbackAction.inputText,
+                    description: params.fallbackAction.description
+                  });
+                  success = true;
+                  selector = params.fallbackAction.selector;
+                  usedFallback = true;
+                } catch (fallbackActionError) {
+                  // Fallback action failed
+                }
               }
             }
           }
@@ -120,7 +170,15 @@ export class SmartLangGraphAgentService {
             await new Promise(resolve => setTimeout(resolve, params.waitAfter));
           }
           
-          return { success, result: { selector, usedFallback } };
+          return { 
+            success, 
+            result: { 
+              selector, 
+              usedFallback, 
+              usedCoordinates,
+              method: usedCoordinates ? 'coordinates' : (usedFallback ? 'fallback' : 'dom')
+            } 
+          };
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Click failed' };
         }
@@ -305,6 +363,125 @@ export class SmartLangGraphAgentService {
         } catch (error) {
           console.error('Element discovery failed:', error);
           return { success: false, error: error instanceof Error ? error.message : 'Element discovery failed' };
+        }
+      }
+    });
+
+    // NEW: Coordinate-based Click Tool
+    this.tools.set('click_coordinates', {
+      name: 'click_coordinates',
+      description: 'Click at specific coordinates using screenshot-based coordinate detection',
+      parameters: { actionDescription: 'string', context: 'string', fallbackAction: 'object', waitAfter: 'number' },
+      execute: async (params, state) => {
+        try {
+          console.log(`🎯 Coordinate-based click for: "${params.actionDescription}"`);
+          
+          // Take screenshot for coordinate detection
+          const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
+          const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+          const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+          
+          // Use intelligent coordinate discovery
+          const coordinateDiscovery = await this.elementDiscovery.discoverCoordinatesWithScreenshot(
+            {
+              type: 'click_coordinates',
+              description: params.actionDescription,
+              expectedOutcome: 'Element clicked successfully',
+              priority: 'high',
+              estimatedDuration: 2,
+              prerequisites: []
+            },
+            screenshotData.screenshot,
+            currentUrl,
+            pageTitle,
+            screenshotData.viewport,
+            params.context || state.currentContext
+          );
+          
+          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+            console.log(`✅ Coordinates found: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y}) with confidence ${coordinateDiscovery.bestMatch.confidence}`);
+            
+            const clickResult = await this.puppeteerWorker.clickAtCoordinates(
+              coordinateDiscovery.bestMatch.x,
+              coordinateDiscovery.bestMatch.y
+            );
+            
+            if (clickResult.success) {
+              console.log('✅ Coordinate-based click successful');
+              
+              if (params.waitAfter) {
+                await new Promise(resolve => setTimeout(resolve, params.waitAfter));
+              }
+              
+              return { 
+                success: true, 
+                result: {
+                  coordinates: { x: coordinateDiscovery.bestMatch.x, y: coordinateDiscovery.bestMatch.y },
+                  confidence: coordinateDiscovery.bestMatch.confidence,
+                  reasoning: coordinateDiscovery.bestMatch.reasoning,
+                  method: 'coordinates'
+                }
+              };
+            } else {
+              console.error('❌ Coordinate click failed:', clickResult.error);
+              
+              // Try fallback action if provided
+              if (params.fallbackAction) {
+                console.log('🔄 Trying fallback action...');
+                try {
+                  await this.puppeteerWorker.executeAction({
+                    type: params.fallbackAction.type,
+                    selector: params.fallbackAction.selector,
+                    inputText: params.fallbackAction.inputText,
+                    description: params.fallbackAction.description
+                  });
+                  
+                  return { 
+                    success: true, 
+                    result: {
+                      method: 'fallback',
+                      fallbackAction: params.fallbackAction
+                    }
+                  };
+                } catch (fallbackError) {
+                  console.error('❌ Fallback action also failed:', fallbackError);
+                }
+              }
+            }
+          } else {
+            console.warn('⚠️  No suitable coordinates found or confidence too low');
+            
+            // Try fallback action if provided
+            if (params.fallbackAction) {
+              console.log('🔄 Trying fallback action...');
+              try {
+                await this.puppeteerWorker.executeAction({
+                  type: params.fallbackAction.type,
+                  selector: params.fallbackAction.selector,
+                  inputText: params.fallbackAction.inputText,
+                  description: params.fallbackAction.description
+                });
+                
+                return { 
+                  success: true, 
+                  result: {
+                    method: 'fallback',
+                    fallbackAction: params.fallbackAction
+                  }
+                };
+              } catch (fallbackError) {
+                console.error('❌ Fallback action failed:', fallbackError);
+              }
+            }
+          }
+          
+          return { 
+            success: false, 
+            error: 'No suitable coordinates found and no fallback available' 
+          };
+        } catch (error) {
+          console.error('Coordinate-based click failed:', error);
+          return { success: false, error: error instanceof Error ? error.message : 'Coordinate-based click failed' };
         }
       }
     });
@@ -1014,13 +1191,14 @@ export class SmartLangGraphAgentService {
 
   private mapActionToTool(actionType: string): string {
     const mapping: Record<string, string> = {
-      'click': 'click',
+      'click': 'click', // Uses coordinate-based approach with DOM fallback
+      'click_coordinates': 'click_coordinates', // Pure coordinate-based approach
       'type': 'type',
       'navigate': 'navigate',
       'wait': 'wait',
       'scroll': 'wait', // Map scroll to wait for now
-      'select': 'click', // Map select to click
-      'hover': 'click', // Map hover to click
+      'select': 'click', // Map select to click (coordinate-based)
+      'hover': 'click', // Map hover to click (coordinate-based)
       'extract': 'extract',
       'evaluate': 'evaluate'
     };
@@ -1131,6 +1309,14 @@ export class SmartLangGraphAgentService {
           }
         }
         
+        // Ensure URL has proper protocol
+        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+          // If it looks like a domain, add https://
+          if (url.includes('.') && !url.includes(' ')) {
+            url = `https://${url}`;
+          }
+        }
+        
         console.log(`🧭 Navigation URL resolution:`);
         console.log(`   Action inputText: "${action.inputText}"`);
         console.log(`   Action selector: "${action.selector}"`);
@@ -1151,6 +1337,16 @@ export class SmartLangGraphAgentService {
       case 'click':
         return {
           selector: action.selector,
+          fallbackAction: action.fallbackAction,
+          waitAfter: action.estimatedDuration * 1000,
+          useCoordinates: true, // Enable coordinate-based approach by default
+          description: action.description
+        };
+      
+      case 'click_coordinates':
+        return {
+          actionDescription: action.description,
+          context: state.currentContext,
           fallbackAction: action.fallbackAction,
           waitAfter: action.estimatedDuration * 1000
         };
@@ -1346,9 +1542,17 @@ export class SmartLangGraphAgentService {
   private constructFallbackUrl(action: PuppeteerAction, currentUrl: string): string {
     console.log('🔗 Constructing intelligent fallback URL...');
     
-    // Extract base URL from current URL
-    const url = new URL(currentUrl);
-    const baseUrl = `${url.protocol}//${url.host}`;
+    let baseUrl: string;
+    
+    try {
+      // Extract base URL from current URL
+      const url = new URL(currentUrl);
+      baseUrl = `${url.protocol}//${url.host}`;
+    } catch (error) {
+      // If current URL is invalid, use a default base URL
+      console.warn('Invalid current URL, using default base URL:', currentUrl);
+      baseUrl = 'https://app.gorattle.com';
+    }
     
     // Intelligent URL construction based on action description and common patterns
     const description = action.description.toLowerCase();
@@ -1390,10 +1594,15 @@ export class SmartLangGraphAgentService {
       return `${baseUrl}/filter`;
     } else if (description.includes('back') || description.includes('previous')) {
       // Try to go back to parent directory
-      const pathParts = url.pathname.split('/').filter(part => part);
-      if (pathParts.length > 1) {
-        pathParts.pop(); // Remove last segment
-        return `${baseUrl}/${pathParts.join('/')}`;
+      try {
+        const currentUrlObj = new URL(currentUrl);
+        const pathParts = currentUrlObj.pathname.split('/').filter(part => part);
+        if (pathParts.length > 1) {
+          pathParts.pop(); // Remove last segment
+          return `${baseUrl}/${pathParts.join('/')}`;
+        }
+      } catch (error) {
+        // If URL parsing fails, just go to root
       }
       return `${baseUrl}/`;
     } else if (description.includes('next') || description.includes('continue')) {

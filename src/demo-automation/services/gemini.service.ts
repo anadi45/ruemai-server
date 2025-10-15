@@ -1327,6 +1327,108 @@ Focus on describing what you actually see in the screenshot rather than trying t
   }
 
   /**
+   * NEW: Analyze screenshot to detect click coordinates for target elements
+   * This is the core method for coordinate-based automation
+   */
+  async detectClickCoordinates(
+    targetDescription: string,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    viewportDimensions: { width: number; height: number },
+    context: string
+  ): Promise<{
+    coordinates: Array<{ x: number; y: number; confidence: number; reasoning: string; elementDescription: string }>;
+    recommendations: string[];
+    pageAnalysis: string;
+  }> {
+    const prompt = `
+You are an expert web automation AI that analyzes screenshots to detect precise click coordinates for target elements.
+
+TARGET: Find click coordinates for elements that match: "${targetDescription}"
+
+CONTEXT:
+${context}
+
+CURRENT PAGE STATE:
+- URL: ${currentUrl}
+- Title: ${pageTitle}
+- Viewport Dimensions: ${viewportDimensions.width}x${viewportDimensions.height}
+- Screenshot: [Image provided below]
+
+CRITICAL REQUIREMENTS:
+1. Analyze the screenshot and identify elements that match the target description
+2. For each matching element, provide the exact pixel coordinates (x, y) where to click
+3. Coordinates should be relative to the screenshot/viewport (0,0 is top-left)
+4. Consider the element's center point or most clickable area
+5. Account for the viewport dimensions: ${viewportDimensions.width}x${viewportDimensions.height}
+6. Provide confidence scores (0-1) for each coordinate suggestion
+7. Explain your reasoning for each coordinate
+
+TASK: Analyze the screenshot and provide click coordinates for target elements.
+
+Return JSON with your analysis:
+{
+  "pageAnalysis": "string - overall description of what you see in the screenshot",
+  "coordinates": [
+    {
+      "x": number,
+      "y": number,
+      "confidence": number (0-1),
+      "reasoning": "string - why you chose these coordinates",
+      "elementDescription": "string - description of the element at these coordinates"
+    }
+  ],
+  "recommendations": ["string - suggestions for automation"]
+}
+
+IMPORTANT: 
+- Coordinates must be within the viewport bounds (0 to ${viewportDimensions.width} for x, 0 to ${viewportDimensions.height} for y)
+- Focus on the center of clickable elements (buttons, links, etc.)
+- Consider visual hierarchy and user interaction patterns
+- Provide multiple coordinate options if you see multiple potential targets
+`;
+
+    try {
+      const result = await this.makeRequestWithRetry(async (model) => {
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: screenshot,
+              mimeType: 'image/png'
+            }
+          }
+        ]);
+        const response = await result.response;
+        return await response.text();
+      });
+      
+      const parsed = JSON.parse(result);
+      
+      // Validate coordinates are within viewport bounds
+      const validatedCoordinates = parsed.coordinates?.map((coord: any) => ({
+        ...coord,
+        x: Math.max(0, Math.min(coord.x, viewportDimensions.width)),
+        y: Math.max(0, Math.min(coord.y, viewportDimensions.height))
+      })) || [];
+      
+      return {
+        coordinates: validatedCoordinates,
+        recommendations: parsed.recommendations || [],
+        pageAnalysis: parsed.pageAnalysis || 'Screenshot analysis completed'
+      };
+    } catch (error) {
+      console.error('Coordinate detection failed:', error);
+      return {
+        coordinates: [],
+        recommendations: ['Coordinate detection failed - using fallback strategies'],
+        pageAnalysis: 'Failed to analyze screenshot for coordinates'
+      };
+    }
+  }
+
+  /**
    * Convert visual analysis results into CSS selector suggestions
    */
   private convertVisualAnalysisToSelectors(

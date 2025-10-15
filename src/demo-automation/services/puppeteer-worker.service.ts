@@ -110,11 +110,23 @@ export class PuppeteerWorkerService {
       throw new Error(`Invalid URL provided: "${url}". URL cannot be undefined or empty.`);
     }
 
+    // Validate and fix URL format
+    let validUrl = url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      // If it looks like a domain, add https://
+      if (url.includes('.') && !url.includes(' ')) {
+        validUrl = `https://${url}`;
+        console.log(`🔧 Fixed URL format: ${url} -> ${validUrl}`);
+      } else {
+        throw new Error(`Invalid URL format: "${url}". URL must include protocol (http:// or https://) or be a valid domain.`);
+      }
+    }
+
     try {
-      console.log(`🧭 Navigating to: ${url}`);
+      console.log(`🧭 Navigating to: ${validUrl}`);
       
       // Navigate with multiple wait strategies
-      await this.page.goto(url, { 
+      await this.page.goto(validUrl, { 
         waitUntil: 'networkidle0',
         timeout: this.config.timeout 
       });
@@ -749,6 +761,91 @@ export class PuppeteerWorkerService {
       encoding: 'base64',
       fullPage: false 
     });
+  }
+
+  /**
+   * NEW: Take screenshot with specific dimensions for coordinate-based automation
+   */
+  async takeScreenshotForCoordinates(): Promise<{
+    screenshot: string;
+    dimensions: { width: number; height: number };
+    viewport: { width: number; height: number };
+  }> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    // Get current viewport dimensions
+    const viewport = this.page.viewport();
+    if (!viewport) {
+      throw new Error('Unable to get viewport dimensions');
+    }
+
+    // Take screenshot with current viewport
+    const screenshot = await this.page.screenshot({ 
+      encoding: 'base64',
+      fullPage: false 
+    });
+
+    return {
+      screenshot,
+      dimensions: { width: viewport.width, height: viewport.height },
+      viewport: { width: viewport.width, height: viewport.height }
+    };
+  }
+
+  /**
+   * NEW: Click at specific coordinates
+   */
+  async clickAtCoordinates(x: number, y: number): Promise<{ success: boolean; error?: string }> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    try {
+      console.log(`🎯 Clicking at coordinates: (${x}, ${y})`);
+      
+      // Ensure coordinates are within viewport bounds
+      const viewport = this.page.viewport();
+      if (!viewport) {
+        throw new Error('Unable to get viewport dimensions');
+      }
+
+      const clampedX = Math.max(0, Math.min(x, viewport.width));
+      const clampedY = Math.max(0, Math.min(y, viewport.height));
+
+      if (clampedX !== x || clampedY !== y) {
+        console.warn(`⚠️  Coordinates clamped from (${x}, ${y}) to (${clampedX}, ${clampedY})`);
+      }
+
+      // Click at the specified coordinates
+      await this.page.mouse.click(clampedX, clampedY);
+      
+      console.log(`✅ Click successful at coordinates: (${clampedX}, ${clampedY})`);
+      return { success: true };
+    } catch (error) {
+      console.error(`❌ Click failed at coordinates (${x}, ${y}):`, error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Coordinate click failed' 
+      };
+    }
+  }
+
+  /**
+   * NEW: Get current viewport dimensions
+   */
+  async getViewportDimensions(): Promise<{ width: number; height: number }> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    const viewport = this.page.viewport();
+    if (!viewport) {
+      throw new Error('Unable to get viewport dimensions');
+    }
+
+    return { width: viewport.width, height: viewport.height };
   }
 
   async waitForElement(selector: string, timeout: number = 5000): Promise<boolean> {

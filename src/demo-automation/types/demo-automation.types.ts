@@ -1,11 +1,17 @@
 export interface Action {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate' | 'click_coordinates';
   selector?: string;
   inputText?: string;
   description: string;
   position?: {
     x: number;
     y: number;
+  };
+  coordinates?: {
+    x: number;
+    y: number;
+    confidence: number;
+    reasoning: string;
   };
   metadata?: Record<string, any>;
 }
@@ -52,9 +58,31 @@ export interface IntelligentElementDiscovery {
   targetDescription: string;
   foundElements: ElementMatch[];
   bestMatch: ElementMatch | null;
-  searchStrategy: 'text_match' | 'attribute_match' | 'semantic_match' | 'fallback' | 'screenshot-analysis' | 'screenshot-fallback';
+  searchStrategy: 'text_match' | 'attribute_match' | 'semantic_match' | 'fallback' | 'screenshot-analysis' | 'screenshot-fallback' | 'coordinate-detection';
   searchContext: string;
   recommendations: string[];
+}
+
+export interface CoordinateDiscovery {
+  targetDescription: string;
+  coordinates: Array<{
+    x: number;
+    y: number;
+    confidence: number;
+    reasoning: string;
+    elementDescription: string;
+  }>;
+  pageAnalysis: string;
+  searchStrategy: 'coordinate-detection' | 'coordinate-fallback';
+  searchContext: string;
+  recommendations: string[];
+  bestMatch: {
+    x: number;
+    y: number;
+    confidence: number;
+    reasoning: string;
+    elementDescription: string;
+  } | null;
 }
 
 export interface TourStep {
@@ -124,7 +152,7 @@ export interface ProductDocs {
 }
 
 export interface PuppeteerAction {
-  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate';
+  type: 'click' | 'type' | 'hover' | 'select' | 'navigate' | 'wait' | 'scroll' | 'extract' | 'evaluate' | 'click_coordinates';
   selector?: string;
   fallbackAction?: PuppeteerAction; // Alternative action (different type)
   inputText?: string;
@@ -136,6 +164,12 @@ export interface PuppeteerAction {
   priority: 'high' | 'medium' | 'low';
   estimatedDuration: number; // in seconds
   prerequisites?: string[];
+  coordinates?: {
+    x: number;
+    y: number;
+    confidence: number;
+    reasoning: string;
+  };
 }
 
 export interface ActionPlan {

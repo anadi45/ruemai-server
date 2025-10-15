@@ -4,6 +4,7 @@ import { GeminiService } from './gemini.service';
 import { 
   ElementMatch, 
   IntelligentElementDiscovery, 
+  CoordinateDiscovery,
   DOMState, 
   PuppeteerAction 
 } from '../types/demo-automation.types';
@@ -104,6 +105,69 @@ export class IntelligentElementDiscoveryService {
         searchStrategy: 'screenshot-fallback',
         searchContext,
         recommendations: ['Screenshot analysis failed. Consider using DOM-based discovery or checking if the page has loaded correctly.']
+      };
+    }
+  }
+
+  /**
+   * NEW: Discover click coordinates using screenshot analysis
+   * This is the primary method for coordinate-based automation
+   */
+  async discoverCoordinatesWithScreenshot(
+    action: PuppeteerAction,
+    screenshot: string,
+    currentUrl: string,
+    pageTitle: string,
+    viewportDimensions: { width: number; height: number },
+    context?: string
+  ): Promise<CoordinateDiscovery> {
+    console.log(`🎯 Coordinate discovery with screenshot for: "${action.description}"`);
+    
+    const targetDescription = this.extractTargetDescription(action);
+    const searchContext = this.buildCoordinateSearchContext(action, currentUrl, pageTitle, viewportDimensions, context);
+    
+    try {
+      // Use Gemini to detect click coordinates
+      const coordinateResult = await this.geminiService.detectClickCoordinates(
+        targetDescription,
+        screenshot,
+        currentUrl,
+        pageTitle,
+        viewportDimensions,
+        searchContext
+      );
+      
+      const bestMatch = coordinateResult.coordinates.length > 0 
+        ? coordinateResult.coordinates.reduce((best, current) => 
+            current.confidence > best.confidence ? current : best
+          )
+        : null;
+      
+      if (bestMatch && bestMatch.confidence > 0.3) {
+        console.log(`✅ Coordinates found: (${bestMatch.x}, ${bestMatch.y}) with confidence ${bestMatch.confidence}`);
+      }
+      
+      return {
+        targetDescription,
+        coordinates: coordinateResult.coordinates,
+        pageAnalysis: coordinateResult.pageAnalysis,
+        searchStrategy: 'coordinate-detection',
+        searchContext,
+        recommendations: coordinateResult.recommendations,
+        bestMatch
+      };
+    } catch (error) {
+      console.warn(`Coordinate discovery failed:`, error);
+      
+      // Fallback to basic coordinate discovery
+      return {
+        targetDescription,
+        coordinates: [],
+        pageAnalysis: 'Coordinate discovery failed',
+        searchStrategy: 'coordinate-fallback',
+        searchContext,
+        recommendations: ['Coordinate discovery failed. Consider using DOM-based discovery or checking if the page has loaded correctly.'],
+        bestMatch: null
       };
     }
   }
@@ -433,6 +497,33 @@ export class IntelligentElementDiscoveryService {
       `Current URL: ${currentUrl}`,
       `Page Title: ${pageTitle}`,
       `Screenshot: [Image provided for visual analysis]`
+    ];
+
+    if (additionalContext) {
+      context.push(`Additional context: ${additionalContext}`);
+    }
+
+    return context.join('\n');
+  }
+
+  /**
+   * NEW: Build search context for coordinate-based AI analysis
+   */
+  private buildCoordinateSearchContext(
+    action: PuppeteerAction,
+    currentUrl: string,
+    pageTitle: string,
+    viewportDimensions: { width: number; height: number },
+    additionalContext?: string
+  ): string {
+    const context = [
+      `Action: ${action.description}`,
+      `Expected Outcome: ${action.expectedOutcome}`,
+      `Current URL: ${currentUrl}`,
+      `Page Title: ${pageTitle}`,
+      `Viewport Dimensions: ${viewportDimensions.width}x${viewportDimensions.height}`,
+      `Screenshot: [Image provided for coordinate detection]`,
+      `Task: Find precise click coordinates for target elements`
     ];
 
     if (additionalContext) {
