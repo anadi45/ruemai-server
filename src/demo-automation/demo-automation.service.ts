@@ -225,21 +225,6 @@ export class DemoAutomationService {
     }
   }
 
-  private getActionTypeEmoji(actionType: string): string {
-    const emojiMap: Record<string, string> = {
-      'click': '🖱️',
-      'type': '⌨️',
-      'navigate': '🧭',
-      'wait': '⏳',
-      'scroll': '📜',
-      'select': '📋',
-      'hover': '👆',
-      'extract': '📊',
-      'evaluate': '🔧'
-    };
-    return emojiMap[actionType] || '🔧';
-  }
-
   async stopAllAutomation(): Promise<void> {
     await this.puppeteerWorker.cleanup();
     await this.langGraphWorkflow.stopWorkflow();

@@ -1,4 +1,4 @@
-import { IsString, IsUrl, IsOptional, IsObject, IsNumber, IsBoolean, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsUrl, IsOptional, IsObject, IsNumber, IsBoolean, IsArray, ValidateNested, IsNotEmpty, MinLength, NotEquals, registerDecorator, ValidationOptions, ValidationArguments } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class TourStepDto {
@@ -32,78 +32,14 @@ export class TourStepDto {
   errorMessage?: string;
 }
 
-export class TourConfigDto {
-  @IsString()
-  goal: string;
-
-  @IsString()
-  featureName: string;
-
-  @IsNumber()
-  maxSteps: number;
-
-  @IsNumber()
-  timeout: number;
-
-  @IsBoolean()
-  includeScreenshots: boolean;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  targetSelectors?: string[];
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  excludeSelectors?: string[];
-}
-
-export class ProductDocsDto {
-  @IsString()
-  featureName: string;
-
-  @IsString()
-  description: string;
-
-  @IsArray()
-  @IsString({ each: true })
-  steps: string[];
-
-  @IsObject()
-  selectors: Record<string, string>;
-
-  @IsArray()
-  @IsString({ each: true })
-  expectedOutcomes: string[];
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  prerequisites?: string[];
-
-}
-
 export class CreateDemoRequestDto {
   @IsUrl()
   websiteUrl: string;
 
-  @IsObject()
-  credentials: {
-    username: string;
-    password: string;
-  };
-
-  @ValidateNested()
-  @Type(() => ProductDocsDto)
-  featureDocs: ProductDocsDto;
-}
-
-export class CreateDemoWithFileRequestDto {
-  @IsUrl()
-  websiteUrl: string;
-
   @IsString()
+  @IsNotEmpty({ message: 'Username is required' })
+  @NotEquals('undefined', { message: 'Username cannot be undefined' })
+  @MinLength(1, { message: 'Username cannot be empty' })
   username: string;
 
   @IsOptional()
@@ -111,6 +47,9 @@ export class CreateDemoWithFileRequestDto {
   email?: string;
 
   @IsString()
+  @IsNotEmpty({ message: 'Password is required' })
+  @NotEquals('undefined', { message: 'Password cannot be undefined' })
+  @MinLength(1, { message: 'Password cannot be empty' })
   password: string;
 
   @IsOptional()
@@ -197,23 +136,20 @@ export class CreateDemoResponseDto {
   };
 }
 
-export class GenerateTourRequestDto {
-  @IsUrl()
-  websiteUrl: string;
-
-  @IsObject()
-  credentials: {
-    username: string;
-    password: string;
+// Custom validator for file validation
+export function IsFilesPresent(validationOptions?: ValidationOptions) {
+  return function (object: Object, propertyName: string) {
+    registerDecorator({
+      name: 'isFilesPresent',
+      target: object.constructor,
+      propertyName: propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: any, args: ValidationArguments) {
+          // This validator will be used in the controller, not in the DTO
+          return true;
+        },
+      },
+    });
   };
-
-  @IsString()
-  featureName: string;
-
-  @IsString()
-  goal: string;
-
-  @IsOptional()
-  @IsNumber()
-  maxSteps?: number;
 }

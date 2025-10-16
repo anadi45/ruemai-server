@@ -1,7 +1,7 @@
-import { Controller, Post, Body, UseInterceptors, UploadedFiles, Req, Get, Query } from '@nestjs/common';
-import { FilesInterceptor, AnyFilesInterceptor } from '@nestjs/platform-express';
+import { Controller, Post, Body, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { DemoAutomationService } from './demo-automation.service';
-import { CreateDemoResponseDto, CreateDemoWithFileRequestDto } from './demo-automation.dto';
+import { CreateDemoRequestDto } from './demo-automation.dto';
 
 @Controller('demo')
 export class DemoAutomationController {
@@ -12,19 +12,11 @@ export class DemoAutomationController {
   @Post('create-demo')
   @UseInterceptors(FilesInterceptor('featureDocs', 10)) // Allow up to 10 files
   async createDemo(
-    @Body() body: CreateDemoWithFileRequestDto,
+    @Body() body: CreateDemoRequestDto,
     @UploadedFiles() files: Express.Multer.File[],
   ): Promise<any> {
     try {
-      // Validate credentials
-      if (!body.username || !body.password) {
-        throw new Error('Invalid credentials: username and password are required');
-      }
-
-      if (body.username === 'undefined' || body.password === 'undefined') {
-        throw new Error('Invalid credentials: username and password cannot be undefined');
-      }
-      
+      // Validate files (this validation cannot be done at DTO level for multipart/form-data)
       if (!files || files.length === 0) {
         throw new Error('No files received. Please ensure you are sending files with the field name "featureDocs" and using multipart/form-data content type.');
       }
