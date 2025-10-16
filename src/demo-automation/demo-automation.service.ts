@@ -3,7 +3,7 @@ import { CreateDemoResponseDto } from './demo-automation.dto';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
-import { WebAutomationAgentService } from './services/web-automation-agent.service';
+import { WebAutomationAgentService } from '../agents/web-automation/web-automation-agent.service';
 import { writePlanToFile } from './utils/plan-writer';
 import { 
   TourConfig, 

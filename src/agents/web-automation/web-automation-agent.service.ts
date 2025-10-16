@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { StateGraph, MemorySaver, START, END } from '@langchain/langgraph';
-import { GeminiService } from './gemini.service';
-import { PuppeteerWorkerService } from './puppeteer-worker.service';
-import { IntelligentElementDiscoveryService } from './intelligent-element-discovery.service';
-import { ActionLoggerService } from './action-logger.service';
+import { GeminiService } from '../../demo-automation/services/gemini.service';
+import { PuppeteerWorkerService } from '../../demo-automation/services/puppeteer-worker.service';
+import { IntelligentElementDiscoveryService } from '../../demo-automation/services/intelligent-element-discovery.service';
+import { ActionLoggerService } from '../../demo-automation/services/action-logger.service';
 import { 
   Action, 
   DOMState, 
@@ -16,7 +16,7 @@ import {
   ActionPlan,
   PuppeteerAction,
   IntelligentElementDiscovery
-} from '../types/demo-automation.types';
+} from '../../demo-automation/types/demo-automation.types';
 
 // Enhanced automation agent state for intelligent plan following
 // SmartAgentState is now imported from types

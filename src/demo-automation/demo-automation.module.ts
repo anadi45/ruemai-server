@@ -4,7 +4,7 @@ import { DemoAutomationService } from './demo-automation.service';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
-import { WebAutomationAgentService } from './services/web-automation-agent.service';
+import { WebAutomationAgentService } from '../agents/web-automation/web-automation-agent.service';
 import { IntelligentElementDiscoveryService } from './services/intelligent-element-discovery.service';
 import { ActionLoggerService } from './services/action-logger.service';
 
