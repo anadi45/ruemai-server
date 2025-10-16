@@ -316,6 +316,186 @@ export class SmartLangGraphAgentService {
       }
     });
 
+    // Intelligent Navigation Tool
+    this.tools.set('intelligent_navigate', {
+      name: 'intelligent_navigate',
+      description: 'Intelligently navigate to a feature or section based on visual analysis and goal description',
+      parameters: { goal: 'string', featureName: 'string', context: 'string', screenshot: 'string', currentUrl: 'string', pageTitle: 'string' },
+      execute: async (params, state) => {
+        try {
+          console.log(`🧭 Intelligent navigation to: "${params.goal}" for feature: "${params.featureName}"`);
+          
+          // Take screenshot for visual analysis
+          const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
+          const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+          const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+          
+          // Use intelligent navigation discovery
+          const navigationDiscovery = await this.elementDiscovery.discoverElementWithScreenshot(
+            {
+              type: 'navigate',
+              description: params.goal,
+              expectedOutcome: `Successfully navigated to ${params.featureName}`,
+              priority: 'high',
+              estimatedDuration: 5,
+              prerequisites: []
+            },
+            screenshotData.screenshot,
+            currentUrl,
+            pageTitle,
+            params.context || state.currentContext
+          );
+          
+          if (navigationDiscovery.bestMatch && navigationDiscovery.bestMatch.confidence > 0.3) {
+            console.log(`✅ Navigation target found: ${navigationDiscovery.bestMatch.selector} with confidence ${navigationDiscovery.bestMatch.confidence}`);
+            
+            // Try to click the navigation element
+            if (navigationDiscovery.bestMatch.position) {
+              const clickResult = await this.puppeteerWorker.clickAtCoordinates(
+                navigationDiscovery.bestMatch.position.x,
+                navigationDiscovery.bestMatch.position.y
+              );
+              
+              if (clickResult.success) {
+                return { 
+                  success: true, 
+                  result: {
+                    method: 'coordinates',
+                    coordinates: { x: navigationDiscovery.bestMatch.position.x, y: navigationDiscovery.bestMatch.position.y },
+                    confidence: navigationDiscovery.bestMatch.confidence,
+                    reasoning: navigationDiscovery.bestMatch.reasoning
+                  }
+                };
+              }
+            } else {
+              // Try DOM-based navigation
+              const navResult = await this.puppeteerWorker.executeAction({
+                type: 'click',
+                selector: navigationDiscovery.bestMatch.selector,
+                description: params.goal
+              });
+              
+              if (navResult.success) {
+                return { 
+                  success: true, 
+                  result: {
+                    method: 'dom',
+                    selector: navigationDiscovery.bestMatch.selector,
+                    confidence: navigationDiscovery.bestMatch.confidence,
+                    reasoning: navigationDiscovery.bestMatch.reasoning
+                  }
+                };
+              }
+            }
+          }
+          
+          // Fallback to URL-based navigation
+          console.log('🔄 Trying URL-based navigation fallback...');
+          const fallbackUrl = this.constructIntelligentUrl(params.goal, params.featureName, currentUrl);
+          await this.puppeteerWorker.navigateToUrl(fallbackUrl);
+          
+          return { 
+            success: true, 
+            result: {
+              method: 'url',
+              url: fallbackUrl,
+              reasoning: 'Used URL-based navigation fallback'
+            }
+          };
+        } catch (error) {
+          console.error('Intelligent navigation failed:', error);
+          return { success: false, error: error instanceof Error ? error.message : 'Intelligent navigation failed' };
+        }
+      }
+    });
+
+    // Intelligent Feature Discovery Tool
+    this.tools.set('intelligent_discover_feature', {
+      name: 'intelligent_discover_feature',
+      description: 'Intelligently discover and access a specific feature based on visual analysis',
+      parameters: { featureName: 'string', goal: 'string', context: 'string', screenshot: 'string', currentUrl: 'string', pageTitle: 'string' },
+      execute: async (params, state) => {
+        try {
+          console.log(`🔍 Intelligent feature discovery for: "${params.featureName}"`);
+          console.log(`🎯 Goal: ${params.goal}`);
+          
+          // Take screenshot for visual analysis
+          const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
+          const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
+          const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+          
+          // Use intelligent feature discovery
+          const featureDiscovery = await this.elementDiscovery.discoverElementWithScreenshot(
+            {
+              type: 'click',
+              description: params.goal,
+              expectedOutcome: `Successfully accessed ${params.featureName}`,
+              priority: 'high',
+              estimatedDuration: 5,
+              prerequisites: []
+            },
+            screenshotData.screenshot,
+            currentUrl,
+            pageTitle,
+            params.context || state.currentContext
+          );
+          
+          if (featureDiscovery.bestMatch && featureDiscovery.bestMatch.confidence > 0.3) {
+            console.log(`✅ Feature access point found: ${featureDiscovery.bestMatch.selector} with confidence ${featureDiscovery.bestMatch.confidence}`);
+            
+            // Try to access the feature
+            if (featureDiscovery.bestMatch.position) {
+              const clickResult = await this.puppeteerWorker.clickAtCoordinates(
+                featureDiscovery.bestMatch.position.x,
+                featureDiscovery.bestMatch.position.y
+              );
+              
+              if (clickResult.success) {
+                return { 
+                  success: true, 
+                  result: {
+                    method: 'coordinates',
+                    coordinates: { x: featureDiscovery.bestMatch.position.x, y: featureDiscovery.bestMatch.position.y },
+                    confidence: featureDiscovery.bestMatch.confidence,
+                    reasoning: featureDiscovery.bestMatch.reasoning,
+                    feature: params.featureName
+                  }
+                };
+              }
+            } else {
+              // Try DOM-based feature access
+              const featureResult = await this.puppeteerWorker.executeAction({
+                type: 'click',
+                selector: featureDiscovery.bestMatch.selector,
+                description: params.goal
+              });
+              
+              if (featureResult.success) {
+                return { 
+                  success: true, 
+                  result: {
+                    method: 'dom',
+                    selector: featureDiscovery.bestMatch.selector,
+                    confidence: featureDiscovery.bestMatch.confidence,
+                    reasoning: featureDiscovery.bestMatch.reasoning,
+                    feature: params.featureName
+                  }
+                };
+              }
+            }
+          }
+          
+          return { 
+            success: false, 
+            error: `Could not find access point for ${params.featureName} feature` 
+          };
+        } catch (error) {
+          console.error('Intelligent feature discovery failed:', error);
+          return { success: false, error: error instanceof Error ? error.message : 'Intelligent feature discovery failed' };
+        }
+      }
+    });
+
     // Intelligent Element Discovery Tool
     this.tools.set('discover_element', {
       name: 'discover_element',
@@ -928,7 +1108,7 @@ export class SmartLangGraphAgentService {
   }
 
   private async selectAndExecuteTool(state: SmartAgentState): Promise<SmartAgentState> {
-    console.log('🔧 Intelligently selecting and executing tool...');
+    console.log('🔧 Intelligently selecting and executing tool based on roadmap goals...');
     
     try {
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
@@ -947,21 +1127,20 @@ export class SmartLangGraphAgentService {
         };
       }
       
-      // INTELLIGENT ELEMENT DISCOVERY - Use intelligent visual analysis to find the best elements
-      console.log(`🧠 Using intelligent visual analysis for: "${nextAction.description}"`);
-      console.log(`🎯 Plan guidance: ${nextAction.description}`);
-      console.log(`🎯 Feature goal: ${state.featureDocs.featureName}`);
+      // INTELLIGENT GOAL-BASED EXECUTION - Use roadmap goals to determine the best approach
+      console.log(`🧠 Using intelligent goal-based execution for: "${nextAction.description}"`);
+      console.log(`🎯 Roadmap goal: ${nextAction.description}`);
+      console.log(`🎯 Feature: ${state.featureDocs.featureName}`);
       
-      // Take screenshot for intelligent visual analysis with coordinate detection
+      // Take screenshot for intelligent visual analysis
       const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
       const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
       console.log(`📸 Screenshot captured with dimensions: ${screenshotData.dimensions.width}x${screenshotData.dimensions.height}`);
-      console.log(`📊 Intelligent Analysis Input:`, {
-        planGuidance: nextAction.description,
-        actionType: nextAction.type,
-        featureGoal: state.featureDocs.featureName,
+      console.log(`📊 Goal-Based Analysis Input:`, {
+        roadmapGoal: nextAction.description,
+        featureName: state.featureDocs.featureName,
         currentUrl: currentUrl,
         pageTitle: pageTitle,
         viewportDimensions: screenshotData.dimensions,
@@ -969,176 +1148,84 @@ export class SmartLangGraphAgentService {
         context: state.currentContext
       });
       
-      const discoveryResult = await this.tools.get('discover_element')!.execute({
-        actionDescription: nextAction.description,
-        actionType: nextAction.type,
-        context: state.currentContext,
-        screenshot: screenshotData.screenshot,
-        screenshotData: screenshotData.screenshotData,
-        screenshotPath: screenshotData.screenshotPath,
-        currentUrl: currentUrl,
-        pageTitle: pageTitle,
-        viewportDimensions: screenshotData.dimensions
-      }, state);
+      // Determine the best tool based on the goal type
+      let toolName: string;
+      let toolParams: any;
       
-      console.log(`📊 Intelligent Analysis Output:`, {
-        success: discoveryResult.success,
-        method: discoveryResult.result?.method,
-        recommendedSelector: discoveryResult.result?.recommendedSelector,
-        confidence: discoveryResult.result?.confidence,
-        coordinates: discoveryResult.result?.coordinates,
-        reasoning: discoveryResult.result?.reasoning,
-        error: discoveryResult.error
+      if (nextAction.description.toLowerCase().includes('navigate') || 
+          nextAction.description.toLowerCase().includes('go to') ||
+          nextAction.description.toLowerCase().includes('reach')) {
+        // Use intelligent navigation
+        toolName = 'intelligent_navigate';
+        toolParams = {
+          goal: nextAction.description,
+          featureName: state.featureDocs.featureName,
+          context: state.currentContext,
+          screenshot: screenshotData.screenshot,
+          currentUrl: currentUrl,
+          pageTitle: pageTitle
+        };
+      } else if (nextAction.description.toLowerCase().includes('access') ||
+                 nextAction.description.toLowerCase().includes('use') ||
+                 nextAction.description.toLowerCase().includes('demonstrate')) {
+        // Use intelligent feature discovery
+        toolName = 'intelligent_discover_feature';
+        toolParams = {
+          featureName: state.featureDocs.featureName,
+          goal: nextAction.description,
+          context: state.currentContext,
+          screenshot: screenshotData.screenshot,
+          currentUrl: currentUrl,
+          pageTitle: pageTitle
+        };
+      } else {
+        // Use intelligent element discovery for other goals
+        toolName = 'discover_element';
+        toolParams = {
+          actionDescription: nextAction.description,
+          actionType: nextAction.type,
+          context: state.currentContext,
+          screenshot: screenshotData.screenshot,
+          screenshotData: screenshotData.screenshotData,
+          screenshotPath: screenshotData.screenshotPath,
+          currentUrl: currentUrl,
+          pageTitle: pageTitle,
+          viewportDimensions: screenshotData.dimensions
+        };
+      }
+      
+      console.log(`🛠️  Selected intelligent tool: ${toolName}`);
+      console.log(`🎯 Goal: ${nextAction.description}`);
+      
+      const tool = this.tools.get(toolName);
+      if (!tool) {
+        throw new Error(`No intelligent tool available for: ${toolName}`);
+      }
+      
+      // Execute the intelligent tool
+      const result = await tool.execute(toolParams, state);
+      
+      console.log(`📊 Goal-Based Execution Output:`, {
+        success: result.success,
+        method: result.result?.method,
+        reasoning: result.result?.reasoning,
+        error: result.error
       });
       
-      // Clean up screenshot file after discovery
+      // Clean up screenshot file after execution
       if (screenshotData.screenshotPath) {
         try {
           await this.puppeteerWorker.cleanupScreenshot(screenshotData.screenshotPath);
         } catch (error) {
-          console.warn('Failed to cleanup screenshot after discovery:', error);
-        }
-      }
-      
-      let enhancedAction = { ...nextAction };
-      
-      if (discoveryResult.success && discoveryResult.result?.recommendedSelector) {
-        console.log(`✅ Intelligent discovery found element: ${discoveryResult.result.recommendedSelector}`);
-        console.log(`🎯 Confidence: ${discoveryResult.result.confidence}`);
-        console.log(`💭 Reasoning: ${discoveryResult.result.reasoning}`);
-        
-        // Check if coordinates were discovered
-        if (discoveryResult.result.method === 'coordinates' && discoveryResult.result.coordinates) {
-          console.log(`🎯 Coordinate-based action detected: (${discoveryResult.result.coordinates.x}, ${discoveryResult.result.coordinates.y})`);
-          
-          // Update the action to use coordinate-based execution
-          enhancedAction = {
-            ...nextAction,
-            type: `${nextAction.type}_coordinates` as any,
-            coordinates: discoveryResult.result.coordinates,
-            selector: discoveryResult.result.recommendedSelector
-          };
-        } else {
-          // Update the action with the discovered selector
-          enhancedAction = {
-            ...nextAction,
-            selector: discoveryResult.result.recommendedSelector
-          };
-        }
-        
-        // Store the discovery result for later use
-        state.extractedData = {
-          ...state.extractedData,
-          lastElementDiscovery: discoveryResult.result
-        };
-      } else {
-        console.log(`⚠️  Intelligent discovery failed, using plan guidance: ${nextAction.description}`);
-        
-        // If no selector is available, try to generate one from the description
-        if (!enhancedAction.selector) {
-          console.log(`🔧 No selector available, generating from plan guidance: "${nextAction.description}"`);
-          enhancedAction.selector = this.generateSelectorFromDescription(nextAction.description);
-        }
-      }
-      
-      // Map action type to tool
-      const toolName = this.mapActionToTool(enhancedAction.type);
-      const tool = this.tools.get(toolName);
-      
-      if (!tool) {
-        throw new Error(`No tool available for action type: ${enhancedAction.type}`);
-      }
-      
-      // Prepare tool parameters with the enhanced action
-      const toolParams = this.prepareToolParameters(enhancedAction, state);
-      
-      console.log(`🛠️  Executing tool: ${toolName}`);
-      console.log(`📋 Action: ${enhancedAction.type} - ${enhancedAction.description}`);
-      console.log(`🎯 Using selector: ${enhancedAction.selector}`);
-      console.log(`🔧 Tool params:`, JSON.stringify(toolParams, null, 2));
-      
-      // Log action start
-      const actionId = this.actionLogger.logActionStart(
-        enhancedAction,
-        {
-          currentUrl,
-          pageTitle,
-          domState: state.domState
-        },
-        {
-          workflowType: 'smart-agent',
-          retryCount: state.retryCount,
-          maxRetries: state.maxRetries
-        }
-      );
-      
-      // Execute the tool with fallback handling
-      let result = await tool.execute(toolParams, state);
-      
-      // If primary action fails, try fallback or create intelligent fallback
-      if (!result.success) {
-        let fallbackAction = nextAction.fallbackAction;
-        
-        // If no fallback exists, create an intelligent one
-        if (!fallbackAction) {
-          console.log('🧠 No fallback action provided, creating intelligent fallback...');
-          fallbackAction = this.createIntelligentFallback(nextAction, state);
-        }
-        
-        if (fallbackAction) {
-          console.log(`🔄 Primary action failed, trying fallback: ${fallbackAction.type}`);
-          console.log(`📋 Fallback action: ${fallbackAction.description}`);
-          
-          // If fallback is navigate and no URL provided, construct intelligent URL
-          if (fallbackAction.type === 'navigate' && !fallbackAction.inputText) {
-            const currentUrl = this.puppeteerWorker.getCurrentUrl() || state.goal;
-            const intelligentUrl = this.constructFallbackUrl(nextAction, currentUrl);
-            fallbackAction.inputText = intelligentUrl;
-            console.log(`🔗 Constructed intelligent fallback URL: ${intelligentUrl}`);
-          }
-          
-          // Prepare fallback tool parameters
-          const fallbackParams = this.prepareToolParameters(fallbackAction, state);
-          console.log(`🔧 Fallback params:`, JSON.stringify(fallbackParams, null, 2));
-        
-          // Map fallback action type to tool
-          const fallbackToolName = this.mapActionToTool(fallbackAction.type);
-          const fallbackTool = this.tools.get(fallbackToolName);
-          
-          if (fallbackTool) {
-            console.log(`🛠️  Executing fallback tool: ${fallbackToolName}`);
-            result = await fallbackTool.execute(fallbackParams, state);
-            
-            // Log fallback usage
-            this.actionLogger.logFallbackUsed(
-              actionId,
-              fallbackAction,
-              result.success,
-              result.error
-            );
-            
-            if (result.success) {
-              console.log('✅ Fallback action successful');
-            } else {
-              console.log('❌ Fallback action also failed:', result.error);
-            }
-          } else {
-            console.log(`❌ No fallback tool available for: ${fallbackAction.type}`);
-          }
+          console.warn('Failed to cleanup screenshot after execution:', error);
         }
       }
       
       if (result.success) {
-        console.log('✅ Tool execution successful');
-        
-        // Take screenshot after successful tool execution for visual analysis
-        console.log('📸 Taking screenshot for visual analysis...');
-        const screenshot = await this.puppeteerWorker.takeScreenshot();
-        const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
-        const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
+        console.log('✅ Intelligent goal execution successful');
         
         // Log action completion
-        this.actionLogger.logActionComplete(actionId, true);
+        this.actionLogger.logActionComplete(`goal-${state.currentActionIndex}-${Date.now()}`, true);
         
         // Create tour step
         const tourStep: TourStep = {
@@ -1163,18 +1250,18 @@ export class SmartLangGraphAgentService {
           extractedData: { ...state.extractedData, ...result.result }
         };
       } else {
-        console.log('❌ Tool execution failed:', result.error);
+        console.log('❌ Intelligent goal execution failed:', result.error);
         
         // Log action failure
-        this.actionLogger.logActionComplete(actionId, false, result.error);
+        this.actionLogger.logActionComplete(`goal-${state.currentActionIndex}-${Date.now()}`, false, result.error);
         
-        // Check if this is a critical action that should stop the agent
-        const isCriticalAction = this.isCriticalAction(nextAction, state);
+        // Check if this is a critical goal that should stop the agent
+        const isCriticalGoal = this.isCriticalAction(nextAction, state);
         
-        if (isCriticalAction) {
-          console.log(`🚨 CRITICAL ACTION DETECTED: ${nextAction.type} - ${nextAction.description}`);
-          console.error('💥 CRITICAL ACTION FAILED - STOPPING AGENT EXECUTION');
-          console.error(`Critical action: ${nextAction.type} - ${nextAction.description}`);
+        if (isCriticalGoal) {
+          console.log(`🚨 CRITICAL GOAL DETECTED: ${nextAction.description}`);
+          console.error('💥 CRITICAL GOAL FAILED - STOPPING AGENT EXECUTION');
+          console.error(`Critical goal: ${nextAction.description}`);
           console.error(`Error: ${result.error}`);
           
           const tourStep: TourStep = {
@@ -1187,10 +1274,10 @@ export class SmartLangGraphAgentService {
             },
             selector: nextAction.selector || '',
             description: nextAction.description,
-            tooltip: 'Critical action failed - stopping execution',
+            tooltip: 'Critical goal failed - stopping execution',
             timestamp: Date.now(),
             success: false,
-            errorMessage: `CRITICAL FAILURE (STOPPING): ${result.error}`
+            errorMessage: `CRITICAL GOAL FAILURE (STOPPING): ${result.error}`
           };
           
           return {
@@ -1199,12 +1286,12 @@ export class SmartLangGraphAgentService {
             tourSteps: [...state.tourSteps, tourStep],
             isComplete: true,
             success: false,
-            error: `Critical action failed: ${nextAction.type} - ${result.error}`,
+            error: `Critical goal failed: ${nextAction.description} - ${result.error}`,
             endTime: Date.now()
           };
         }
         
-        // For non-critical actions, continue but mark as failed
+        // For non-critical goals, continue but mark as failed
         const tourStep: TourStep = {
           order: state.currentActionIndex + 1,
           action: {
@@ -1215,7 +1302,7 @@ export class SmartLangGraphAgentService {
           },
           selector: nextAction.selector || '',
           description: nextAction.description,
-          tooltip: 'Action failed - continuing',
+          tooltip: 'Goal failed - continuing',
           timestamp: Date.now(),
           success: false,
           errorMessage: result.error
@@ -1229,15 +1316,15 @@ export class SmartLangGraphAgentService {
         };
       }
     } catch (error) {
-      console.error('Tool execution failed:', error);
+      console.error('Intelligent goal execution failed:', error);
       
-      // Check if this is a critical action
+      // Check if this is a critical goal
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
-      const isCriticalAction = this.isCriticalAction(nextAction, state);
+      const isCriticalGoal = this.isCriticalAction(nextAction, state);
       
-      if (isCriticalAction) {
-        console.error('💥 CRITICAL ACTION EXCEPTION - STOPPING AGENT EXECUTION');
-        console.error(`Critical action exception: ${error instanceof Error ? error.message : 'Critical tool execution failed'}`);
+      if (isCriticalGoal) {
+        console.error('💥 CRITICAL GOAL EXCEPTION - STOPPING AGENT EXECUTION');
+        console.error(`Critical goal exception: ${error instanceof Error ? error.message : 'Critical goal execution failed'}`);
         
         const tourStep: TourStep = {
           order: state.currentActionIndex + 1,
@@ -1249,10 +1336,10 @@ export class SmartLangGraphAgentService {
           },
           selector: nextAction.selector || '',
           description: nextAction.description,
-          tooltip: 'Critical action exception - stopping execution',
+          tooltip: 'Critical goal exception - stopping execution',
           timestamp: Date.now(),
           success: false,
-          errorMessage: `CRITICAL EXCEPTION (STOPPING): ${error instanceof Error ? error.message : 'Critical tool execution failed'}`
+          errorMessage: `CRITICAL GOAL EXCEPTION (STOPPING): ${error instanceof Error ? error.message : 'Critical goal execution failed'}`
         };
         
         return {
@@ -1261,14 +1348,14 @@ export class SmartLangGraphAgentService {
           tourSteps: [...state.tourSteps, tourStep],
           isComplete: true,
           success: false,
-          error: `Critical action exception: ${error instanceof Error ? error.message : 'Critical tool execution failed'}`,
+          error: `Critical goal exception: ${error instanceof Error ? error.message : 'Critical goal execution failed'}`,
           endTime: Date.now()
         };
       }
       
       return {
         ...state,
-        error: error instanceof Error ? error.message : 'Tool execution failed',
+        error: error instanceof Error ? error.message : 'Intelligent goal execution failed',
         failedActions: [...state.failedActions, state.currentActionIndex]
       };
     }
@@ -1654,7 +1741,10 @@ export class SmartLangGraphAgentService {
       'click_coordinates': 'click_coordinates', // Pure coordinate-based approach
       'type': 'type',
       'type_coordinates': 'type_coordinates', // Pure coordinate-based typing
-      'navigate': 'navigate',
+      'navigate': 'intelligent_navigate', // Use intelligent navigation
+      'intelligent_navigate': 'intelligent_navigate', // Intelligent navigation
+      'discover_feature': 'intelligent_discover_feature', // Intelligent feature discovery
+      'intelligent_discover_feature': 'intelligent_discover_feature', // Intelligent feature discovery
       'wait': 'wait',
       'scroll': 'scroll_coordinates', // Use coordinate-based scrolling
       'scroll_coordinates': 'scroll_coordinates', // Pure coordinate-based scrolling
@@ -1666,7 +1756,7 @@ export class SmartLangGraphAgentService {
       'evaluate': 'evaluate'
     };
     
-    return mapping[actionType] || 'click';
+    return mapping[actionType] || 'intelligent_navigate';
   }
 
   private validateStepExecution(state: SmartAgentState): boolean {
@@ -2018,6 +2108,76 @@ export class SmartLangGraphAgentService {
       estimatedDuration: action.estimatedDuration,
       prerequisites: []
     };
+  }
+
+  private constructIntelligentUrl(goal: string, featureName: string, currentUrl: string): string {
+    console.log('🔗 Constructing intelligent URL for goal:', goal);
+    
+    let baseUrl: string;
+    
+    try {
+      // Extract base URL from current URL
+      const url = new URL(currentUrl);
+      baseUrl = `${url.protocol}//${url.host}`;
+    } catch (error) {
+      // If current URL is invalid, use a default base URL
+      console.warn('Invalid current URL, using default base URL:', currentUrl);
+      baseUrl = 'https://app.gorattle.com';
+    }
+    
+    // Intelligent URL construction based on goal and feature name
+    const goalLower = goal.toLowerCase();
+    const featureLower = featureName.toLowerCase();
+    
+    // Feature-specific patterns
+    if (featureLower.includes('workflow')) {
+      return `${baseUrl}/workflows`;
+    } else if (featureLower.includes('dashboard')) {
+      return `${baseUrl}/dashboard`;
+    } else if (featureLower.includes('setting')) {
+      return `${baseUrl}/settings`;
+    } else if (featureLower.includes('profile')) {
+      return `${baseUrl}/profile`;
+    } else if (featureLower.includes('help')) {
+      return `${baseUrl}/help`;
+    } else if (featureLower.includes('home')) {
+      return `${baseUrl}/home`;
+    } else if (featureLower.includes('login')) {
+      return `${baseUrl}/login`;
+    } else if (featureLower.includes('create')) {
+      return `${baseUrl}/create`;
+    } else if (featureLower.includes('edit')) {
+      return `${baseUrl}/edit`;
+    } else if (featureLower.includes('view')) {
+      return `${baseUrl}/view`;
+    } else if (featureLower.includes('search')) {
+      return `${baseUrl}/search`;
+    } else if (featureLower.includes('export')) {
+      return `${baseUrl}/export`;
+    } else if (featureLower.includes('import')) {
+      return `${baseUrl}/import`;
+    }
+    
+    // Goal-based patterns
+    if (goalLower.includes('navigate to') || goalLower.includes('go to')) {
+      // Extract the target from the goal
+      const targetMatch = goalLower.match(/navigate to (?:the )?([^/]+)/) || goalLower.match(/go to (?:the )?([^/]+)/);
+      if (targetMatch) {
+        const target = targetMatch[1].replace(/\s+/g, '-');
+        return `${baseUrl}/${target}`;
+      }
+    } else if (goalLower.includes('access') || goalLower.includes('find')) {
+      // Extract the feature from the goal
+      const featureMatch = goalLower.match(/access (?:the )?([^/]+)/) || goalLower.match(/find (?:the )?([^/]+)/);
+      if (featureMatch) {
+        const feature = featureMatch[1].replace(/\s+/g, '-');
+        return `${baseUrl}/${feature}`;
+      }
+    }
+    
+    // Default fallback - construct from feature name
+    const featureSlug = featureLower.replace(/\s+/g, '-');
+    return `${baseUrl}/${featureSlug}`;
   }
 
   private constructFallbackUrl(action: PuppeteerAction, currentUrl: string): string {

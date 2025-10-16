@@ -47,15 +47,16 @@ export class DemoAutomationService {
         prerequisites: extractedData.prerequisites,
       };
 
-      // Generate and log intelligent action plan
+      // Generate and log intelligent roadmap
       let actionPlan: ActionPlan;
       try {
         actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
-        console.log('🧠 Generated intelligent, flexible action plan');
-        console.log(`📋 Plan provides high-level guidance for ${actionPlan.actions.length} actions`);
-        console.log('🎯 Agent will make intelligent decisions based on visual context');
+        console.log('🧠 Generated intelligent roadmap for feature demonstration');
+        console.log(`📋 Roadmap provides ${actionPlan.actions.length} high-level goals`);
+        console.log('🎯 Agent will figure out execution details based on visual analysis');
+        console.log('🔍 Agent will intelligently navigate to and use the feature');
       } catch (error) {
-        console.error('Failed to generate intelligent action plan with Gemini:', error);
+        console.error('Failed to generate intelligent roadmap with Gemini:', error);
         throw error;
       }
 
@@ -82,8 +83,9 @@ export class DemoAutomationService {
 
       // Run the Intelligent Smart LangGraph Agent
       console.log('🤖 Starting Intelligent Smart LangGraph Agent...');
-      console.log('🧠 Agent will intelligently adapt based on visual context and page state');
-      console.log('🎯 Plan provides guidance but agent makes smart decisions');
+      console.log('🧠 Agent will intelligently navigate to and use the feature');
+      console.log('🎯 Roadmap provides goals, agent figures out execution details');
+      console.log('🔍 Agent will analyze screenshots and make smart decisions');
       
       const result = await this.smartAgent.runSmartAgent(
         actionPlan,
@@ -140,13 +142,19 @@ export class DemoAutomationService {
 
   async generateAndLogActionPlan(featureDocs: ProductDocs, websiteUrl: string): Promise<ActionPlan> {
     try {
-      console.log('\n🤖 Generating Puppeteer Action Plan...');
+      console.log('\n🧠 Generating Intelligent Roadmap...');
+      console.log('🎯 Creating high-level goals for feature demonstration');
+      console.log('🔍 Agent will figure out execution details through visual analysis');
       
       const actionPlan = await this.geminiService.generateActionPlan(featureDocs, websiteUrl);
 
+      console.log('✅ Generated intelligent roadmap');
+      console.log(`📋 Roadmap contains ${actionPlan.actions.length} high-level goals`);
+      console.log('🧠 Agent will intelligently execute each goal based on visual context');
+
       return actionPlan;
     } catch (error) {
-      console.error('❌ Error generating intelligent action plan:', error);
+      console.error('❌ Error generating intelligent roadmap:', error);
       throw error;
     }
   }

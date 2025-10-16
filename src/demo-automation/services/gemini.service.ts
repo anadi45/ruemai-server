@@ -735,12 +735,12 @@ Only return valid JSON. Do not include any other text or explanations.
 
       const parsed = JSON.parse(jsonMatch[0]);
 
-      // Validate and structure the response
+      // Validate and structure the response as a roadmap
       const actionPlan: ActionPlan = {
         featureName: parsed.featureName || featureDocs.featureName,
         totalActions: parsed.actions?.length || 0,
         estimatedDuration: parsed.estimatedDuration || 0,
-        scrapingStrategy: parsed.scrapingStrategy || 'Standard web scraping approach',
+        scrapingStrategy: parsed.scrapingStrategy || 'Intelligent visual analysis with goal-based execution',
         actions: parsed.actions || [],
         summary: {
           clickActions: parsed.summary?.clickActions || 0,
@@ -766,7 +766,7 @@ Only return valid JSON. Do not include any other text or explanations.
 
   private buildActionPlanningPrompt(featureDocs: ProductDocs, websiteUrl: string): string {
     return `
-You are an expert automation engineer creating a HIGH-LEVEL, FLEXIBLE action plan for intelligent web automation. Your task is to create a strategic roadmap that will be intelligently executed by an AI agent that can adapt based on visual context and real-time analysis.
+You are creating a HIGH-LEVEL ROADMAP for an intelligent automation agent. Your task is to create a strategic plan that tells the agent WHAT to accomplish, not HOW to accomplish it. The agent will figure out the execution details based on visual analysis.
 
 FEATURE: ${featureDocs.featureName}
 DESCRIPTION: ${featureDocs.description}
@@ -784,101 +784,62 @@ ${featureDocs.expectedOutcomes.join('\n')}
 PREREQUISITES:
 ${featureDocs.prerequisites?.join('\n') || 'None specified'}
 
-**INTELLIGENT, ADAPTIVE AUTOMATION APPROACH:**
-- **HIGH-LEVEL STRATEGY**: Create a flexible plan that provides guidance but allows the AI agent to make intelligent decisions
-- **VISUAL CONTEXT AWARENESS**: The agent will analyze screenshots in real-time to understand the current state
-- **ADAPTIVE EXECUTION**: The agent will intelligently adapt actions based on what it sees on the page
-- **GOAL-ORIENTED**: Focus on achieving the feature goals rather than rigid step-by-step execution
-- **INTELLIGENT DISCOVERY**: The agent will discover and interact with elements based on visual analysis
+**ROADMAP PLANNING PRINCIPLES:**
+1. **GOAL-ORIENTED**: Focus on WHAT needs to be achieved, not HOW to achieve it
+2. **HIGH-LEVEL GUIDANCE**: Provide strategic direction, not technical implementation
+3. **VISUAL INTELLIGENCE**: Trust the agent to analyze screenshots and make decisions
+4. **ADAPTIVE EXECUTION**: Let the agent figure out the best approach based on what it sees
+5. **CONTEXTUAL AWARENESS**: The agent will understand the current page state and adapt
 
-**FLEXIBLE PLANNING PRINCIPLES:**
-1. **STRATEGIC OVERVIEW**: Provide high-level goals and objectives rather than rigid step-by-step instructions
-2. **INTELLIGENT ADAPTATION**: Allow the agent to make decisions based on visual context and page state
-3. **GOAL-ORIENTED ACTIONS**: Focus on what needs to be accomplished rather than how to accomplish it
-4. **VISUAL INTELLIGENCE**: Trust the agent to analyze screenshots and make intelligent decisions
-5. **CONTEXTUAL AWARENESS**: Let the agent understand the current page state and adapt accordingly
+**ROADMAP STRUCTURE:**
+Create a plan with these types of high-level goals:
 
-**HIGH-LEVEL STRATEGY APPROACH:**
-- **GOAL-BASED PLANNING**: Create actions that describe what needs to be achieved, not specific technical steps
-- **INTELLIGENT NAVIGATION**: Let the agent discover and navigate based on visual analysis
-- **ADAPTIVE INTERACTION**: Allow the agent to find and interact with elements intelligently
-- **CONTEXTUAL DECISION MAKING**: Trust the agent to make decisions based on what it sees
-- **FLEXIBLE EXECUTION**: Provide guidance but allow the agent to adapt the approach as needed
+**NAVIGATION GOALS:**
+- "Navigate to the [Feature Name] section"
+- "Find and access the [Feature Name] functionality"
+- "Reach the [Feature Name] area of the application"
 
-**INTELLIGENT EXECUTION STRATEGY:**
-- **VISUAL ANALYSIS FIRST**: The agent will analyze screenshots to understand the current page state
-- **INTELLIGENT ELEMENT DISCOVERY**: The agent will find elements based on visual context and descriptions
-- **ADAPTIVE INTERACTION**: The agent will interact with elements using the most appropriate method
-- **CONTEXTUAL AWARENESS**: The agent will understand the page state and adapt accordingly
-- **GOAL-ORIENTED EXECUTION**: Focus on achieving the feature goals through intelligent automation
-- **STOP BEFORE PERSISTENT CHANGES**: End the plan just before any action that would permanently save data or make irreversible changes
-- **IDENTIFY SAVE TRIGGERS**: Look for buttons/elements with text like "Save", "Submit", "Create", "Update", "Delete", "Confirm", "Finish", "Complete"
-- **FOCUS ON DEMONSTRATION**: The goal is to demonstrate the feature flow without actually persisting changes
-- **INCLUDE VALIDATION STEPS**: Include form validation and data entry steps, but stop before final submission
+**INTERACTION GOALS:**
+- "Use the [Feature Name] feature"
+- "Demonstrate [Feature Name] functionality"
+- "Show how to [specific action from documentation]"
 
-**FLEXIBLE PLANNING REQUIREMENTS:**
-- **HIGH-LEVEL GOALS**: Focus on what needs to be accomplished rather than specific technical steps
-- **INTELLIGENT ADAPTATION**: Allow the agent to make decisions based on visual context and page state
-- **GOAL-ORIENTED ACTIONS**: Create actions that describe objectives rather than rigid procedures
-- **VISUAL INTELLIGENCE**: Trust the agent to analyze screenshots and make intelligent decisions
-- **CONTEXTUAL AWARENESS**: Let the agent understand the current page state and adapt accordingly
+**VALIDATION GOALS:**
+- "Verify the [Feature Name] is working correctly"
+- "Confirm the [Feature Name] functionality is accessible"
+- "Validate the [Feature Name] feature behavior"
 
-Create a flexible, intelligent automation plan that includes:
+**IMPORTANT CONSTRAINTS:**
+- **NO TECHNICAL DETAILS**: Don't specify selectors, click targets, or technical steps
+- **NO IMPLEMENTATION**: Don't tell the agent how to find elements or interact with them
+- **GOAL FOCUS**: Only describe what needs to be accomplished
+- **VISUAL TRUST**: Trust the agent to figure out the visual elements and interactions
+- **ADAPTIVE APPROACH**: Let the agent adapt based on what it sees on the page
 
-**INTELLIGENT NAVIGATION:**
-- **GOAL-BASED NAVIGATION**: Describe what needs to be reached rather than specific navigation steps
-- **VISUAL CONTEXT AWARENESS**: Let the agent analyze the current page and decide how to navigate
-- **ADAPTIVE ROUTING**: Allow the agent to find the best path based on what it sees
-- **INTELLIGENT DISCOVERY**: Trust the agent to discover navigation elements visually
+**ROADMAP REQUIREMENTS:**
+- **HIGH-LEVEL OBJECTIVES**: Create goals that describe the desired outcome
+- **FEATURE-FOCUSED**: Focus on reaching and using the specific feature
+- **DEMONSTRATION-ORIENTED**: Plan to show the feature in action
+- **VISUAL-DRIVEN**: Let the agent use visual analysis to execute the goals
+- **FLEXIBLE EXECUTION**: Allow the agent to adapt the approach based on page state
 
-**INTELLIGENT INTERACTION:**
-- **GOAL-ORIENTED ACTIONS**: Describe what needs to be accomplished rather than specific technical steps
-- **VISUAL ELEMENT DISCOVERY**: Let the agent find elements based on visual analysis
-- **ADAPTIVE INTERACTION**: Allow the agent to interact with elements using the most appropriate method
-- **CONTEXTUAL DECISION MAKING**: Trust the agent to make decisions based on page state
+**EXAMPLE ROADMAP STRUCTURE:**
+1. "Navigate to the [Feature Name] section of the application"
+2. "Access the [Feature Name] functionality"
+3. "Use the [Feature Name] feature to [specific action]"
+4. "Verify the [Feature Name] is working as expected"
+5. "Demonstrate the [Feature Name] capabilities"
 
-**INTELLIGENT FORM HANDLING:**
-- **GOAL-BASED FORM INTERACTION**: Describe what information needs to be entered rather than specific field interactions
-- **VISUAL FORM DISCOVERY**: Let the agent find form fields based on visual analysis
-- **ADAPTIVE DATA ENTRY**: Allow the agent to enter data using the most appropriate method
-- **INTELLIGENT VALIDATION**: Trust the agent to validate form data based on visual feedback
+**AGENT INTELLIGENCE:**
+The agent will:
+- **Analyze screenshots** to understand the current page state
+- **Find navigation elements** visually to reach the feature
+- **Discover interaction elements** based on visual context
+- **Adapt the approach** based on what it sees on the page
+- **Make intelligent decisions** about how to accomplish each goal
+- **Use visual cues** to determine the best interaction method
 
-**INTELLIGENT ERROR HANDLING:**
-- **VISUAL ERROR DETECTION**: Let the agent detect errors based on visual analysis
-- **ADAPTIVE RECOVERY**: Allow the agent to recover from errors intelligently
-- **CONTEXTUAL PROBLEM SOLVING**: Trust the agent to solve problems based on what it sees
-- **INTELLIGENT RETRY**: Let the agent retry actions with improved approaches
-
-**INTELLIGENT WAITING:**
-- **VISUAL STATE DETECTION**: Let the agent detect when pages are ready based on visual analysis
-- **ADAPTIVE TIMING**: Allow the agent to wait for appropriate conditions
-- **CONTEXTUAL PATIENCE**: Trust the agent to wait for the right moment
-- **INTELLIGENT TIMEOUTS**: Let the agent handle timeouts intelligently
-
-For each action, provide:
-- **GOAL-ORIENTED DESCRIPTIONS**: Describe what needs to be accomplished rather than how to accomplish it
-- **INTELLIGENT TARGETS**: Use descriptions that allow the agent to find elements visually
-- **ADAPTIVE APPROACHES**: Allow the agent to adapt the approach based on what it sees
-- **CONTEXTUAL INTELLIGENCE**: Trust the agent to make decisions based on visual context
-- **FLEXIBLE EXECUTION**: Provide guidance but allow the agent to adapt as needed
-
-**INTELLIGENT EXECUTION SPECIFICATIONS:**
-- **VISUAL ANALYSIS FIRST**: The agent will analyze screenshots to understand the current state
-- **INTELLIGENT ELEMENT DISCOVERY**: The agent will find elements based on visual context and descriptions
-- **ADAPTIVE INTERACTION**: The agent will interact with elements using the most appropriate method
-- **CONTEXTUAL AWARENESS**: The agent will understand the page state and adapt accordingly
-- **GOAL-ORIENTED EXECUTION**: Focus on achieving the feature goals through intelligent automation
-
-**INTELLIGENT FALLBACK STRATEGY:**
-- **VISUAL FALLBACK DETECTION**: The agent will detect when fallbacks are needed based on visual analysis
-- **ADAPTIVE FALLBACK SELECTION**: The agent will choose the most appropriate fallback based on context
-- **INTELLIGENT RECOVERY**: The agent will recover from failures using visual analysis
-- **CONTEXTUAL PROBLEM SOLVING**: The agent will solve problems based on what it sees
-- **Click "Settings" menu** → Fallback: navigate to "/settings"
-- **Click "Create" button** → Fallback: navigate to "/create" or "/new"
-- **Click "Login" button** → Fallback: navigate to "/login"
-- **Click "Profile" link** → Fallback: navigate to "/profile" or "/account"
-- **Click "Help" link** → Fallback: navigate to "/help" or "/support"
+Create a roadmap that provides clear goals for the agent to accomplish, while letting the agent figure out the execution details through visual analysis and intelligent decision-making.
 - **Click "Home" link** → Fallback: navigate to "/" or "/home"
 - **Click "Back" button** → Fallback: navigate to previous page or parent URL
 - **Click "Next" button** → Fallback: navigate to next page or increment URL
