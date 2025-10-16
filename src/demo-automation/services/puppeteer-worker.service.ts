@@ -166,6 +166,33 @@ export class PuppeteerWorkerService {
     }
   }
 
+  async goBack(): Promise<void> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    try {
+      console.log(`🔙 Going back to previous page...`);
+      
+      // Use browser history to go back
+      await this.page.goBack({ 
+        waitUntil: 'networkidle0',
+        timeout: this.config.timeout 
+      });
+
+      // Wait for page to stabilize
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify navigation was successful
+      const currentUrl = this.page.url();
+      console.log(`✅ Successfully navigated back. Current URL: ${currentUrl}`);
+
+    } catch (error) {
+      console.error('Go back failed:', error);
+      throw error;
+    }
+  }
+
   async login(credentials: { username: string; password: string }): Promise<boolean> {
     if (!this.page) {
       throw new Error('Page not initialized. Call initialize() first.');

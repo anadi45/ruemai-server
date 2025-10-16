@@ -44,6 +44,7 @@ export class WebAutomation {
     // Initialize only coordinate-based tools using the WebAutomationTools class
     this.tools.set('navigate', this.webAutomationTools.createNavigateTool());
     this.tools.set('wait', this.webAutomationTools.createWaitTool());
+    this.tools.set('go_back', this.webAutomationTools.createGoBackTool());
     this.tools.set('click_coordinates', this.webAutomationTools.createClickCoordinatesTool());
     this.tools.set('type_coordinates', this.webAutomationTools.createTypeCoordinatesTool());
     this.tools.set('scroll_coordinates', this.webAutomationTools.createScrollCoordinatesTool());
@@ -261,6 +262,14 @@ export class WebAutomation {
         toolName = 'navigate';
         toolParams = {
           url: nextAction.inputText || nextAction.selector
+        };
+      } else if (nextAction.description.toLowerCase().includes('go back') ||
+                 nextAction.description.toLowerCase().includes('back') ||
+                 nextAction.description.toLowerCase().includes('previous')) {
+        // Use go back tool
+        toolName = 'go_back';
+        toolParams = {
+          waitAfter: 1000
         };
       } else if (nextAction.type === 'click' || 
                  nextAction.description.toLowerCase().includes('click')) {
