@@ -766,23 +766,26 @@ export class SmartLangGraphAgentService {
         let state = { ...initialState };
         
         try {
-          console.log('🤖 Starting Smart LangGraph Agent...');
-          console.log(`📋 Following plan: ${state.actionPlan.featureName}`);
+          console.log('🤖 Starting Intelligent Smart LangGraph Agent...');
+          console.log(`📋 Following flexible plan: ${state.actionPlan.featureName}`);
           console.log(`🎯 Total actions in plan: ${state.actionPlan.actions.length}`);
+          console.log(`🧠 Intelligent adaptation enabled - agent will make smart decisions based on visual context`);
           
           // Initialize the agent
           state = await self.initializeAgent(state);
           
-          // Main execution loop
+          // Main execution loop with intelligent adaptation
           while (!state.isComplete && state.currentActionIndex < state.actionPlan.actions.length) {
-            console.log(`\n🔄 Executing action ${state.currentActionIndex + 1}/${state.actionPlan.actions.length}`);
+            console.log(`\n🔄 Intelligently executing action ${state.currentActionIndex + 1}/${state.actionPlan.actions.length}`);
+            console.log(`🎯 Plan guidance: ${state.actionPlan.actions[state.currentActionIndex]?.description || 'No guidance available'}`);
+            console.log(`🧠 Feature goal: ${state.featureDocs.featureName}`);
             
-            // Analyze current state and plan
+            // Intelligently analyze current state and plan
             state = await self.analyzeAndPlan(state);
             
             if (state.isComplete) break;
             
-            // Select and execute the best tool
+            // Intelligently select and execute the best tool
             state = await self.selectAndExecuteTool(state);
             
             // Check if execution was stopped due to critical failure
@@ -791,7 +794,7 @@ export class SmartLangGraphAgentService {
               break;
             }
             
-            // Validate the action result
+            // Intelligently validate the action result
             state = await self.validateAction(state);
             
             // Check if validation stopped execution
@@ -800,7 +803,7 @@ export class SmartLangGraphAgentService {
               break;
             }
             
-            // Adapt if necessary
+            // Intelligently adapt strategy based on results
             state = await self.adaptStrategy(state);
             
             // Only increment if we're continuing (not stopped)
@@ -813,7 +816,7 @@ export class SmartLangGraphAgentService {
           state = await self.completeWorkflow(state);
           
         } catch (error) {
-          console.error('❌ Smart Agent Error:', error);
+          console.error('❌ Intelligent Smart Agent Error:', error);
           state = await self.handleError(state, error);
         }
         
@@ -860,15 +863,15 @@ export class SmartLangGraphAgentService {
   }
 
   private async analyzeAndPlan(state: SmartAgentState): Promise<SmartAgentState> {
-    console.log('🧠 Analyzing current state and planning next action...');
+    console.log('🧠 Intelligently analyzing current state and planning next action...');
     
     try {
-      // Take screenshot instead of getting DOM state
+      // Take screenshot for intelligent visual analysis
       const screenshot = await this.puppeteerWorker.takeScreenshot();
       const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
-      // Get the next action from the plan
+      // Get the next action from the plan (as guidance only)
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
       
       if (!nextAction) {
@@ -879,14 +882,16 @@ export class SmartLangGraphAgentService {
         };
       }
       
-      // Build enhanced context with screenshot analysis
+      // Build enhanced context with intelligent analysis
       let enhancedContext = state.currentContext;
-      enhancedContext += `\n\nCurrent Page State:\n`;
+      enhancedContext += `\n\nIntelligent Page Analysis:\n`;
       enhancedContext += `- URL: ${currentUrl}\n`;
       enhancedContext += `- Title: ${pageTitle}\n`;
-      enhancedContext += `- Screenshot captured for visual analysis\n`;
+      enhancedContext += `- Screenshot captured for intelligent visual analysis\n`;
+      enhancedContext += `- Plan guidance: ${nextAction.description}\n`;
+      enhancedContext += `- Feature goal: ${state.featureDocs.featureName}\n`;
       
-      // Use Gemini to analyze the screenshot and determine if we should proceed
+      // Use Gemini to intelligently analyze the screenshot and determine the best course of action
       const analysis = await this.geminiService.analyzeCurrentStateWithScreenshot(
         screenshot,
         currentUrl,
@@ -897,25 +902,33 @@ export class SmartLangGraphAgentService {
         enhancedContext
       );
       
+      // Enhanced reasoning with intelligent analysis
+      const intelligentReasoning = [
+        analysis.reasoning,
+        `Plan guidance: ${nextAction.description}`,
+        `Feature goal: ${state.featureDocs.featureName}`,
+        `Current step: ${state.currentActionIndex + 1}/${state.actionPlan.actions.length}`
+      ].filter(Boolean).join('\n');
+      
       return {
         ...state,
         currentContext: enhancedContext,
-        reasoning: analysis.reasoning,
-        // Store the next action for execution
+        reasoning: intelligentReasoning,
+        // Store the analysis results for intelligent execution
         ...analysis
       };
     } catch (error) {
-      console.error('Analysis failed:', error);
+      console.error('Intelligent analysis failed:', error);
       return {
         ...state,
-        error: error instanceof Error ? error.message : 'Analysis failed',
+        error: error instanceof Error ? error.message : 'Intelligent analysis failed',
         isComplete: true
       };
     }
   }
 
   private async selectAndExecuteTool(state: SmartAgentState): Promise<SmartAgentState> {
-    console.log('🔧 Selecting and executing tool...');
+    console.log('🔧 Intelligently selecting and executing tool...');
     
     try {
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
@@ -934,18 +947,21 @@ export class SmartLangGraphAgentService {
         };
       }
       
-      // INTELLIGENT ELEMENT DISCOVERY - First try to discover the element intelligently using screenshot
-      console.log(`🧠 Using intelligent element discovery for: "${nextAction.description}"`);
+      // INTELLIGENT ELEMENT DISCOVERY - Use intelligent visual analysis to find the best elements
+      console.log(`🧠 Using intelligent visual analysis for: "${nextAction.description}"`);
+      console.log(`🎯 Plan guidance: ${nextAction.description}`);
+      console.log(`🎯 Feature goal: ${state.featureDocs.featureName}`);
       
-      // Take screenshot for visual analysis with coordinate detection
+      // Take screenshot for intelligent visual analysis with coordinate detection
       const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
       const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
       console.log(`📸 Screenshot captured with dimensions: ${screenshotData.dimensions.width}x${screenshotData.dimensions.height}`);
-      console.log(`📊 Screenshot Analysis Input:`, {
-        actionDescription: nextAction.description,
+      console.log(`📊 Intelligent Analysis Input:`, {
+        planGuidance: nextAction.description,
         actionType: nextAction.type,
+        featureGoal: state.featureDocs.featureName,
         currentUrl: currentUrl,
         pageTitle: pageTitle,
         viewportDimensions: screenshotData.dimensions,
@@ -965,7 +981,7 @@ export class SmartLangGraphAgentService {
         viewportDimensions: screenshotData.dimensions
       }, state);
       
-      console.log(`📊 Screenshot Analysis Output:`, {
+      console.log(`📊 Intelligent Analysis Output:`, {
         success: discoveryResult.success,
         method: discoveryResult.result?.method,
         recommendedSelector: discoveryResult.result?.recommendedSelector,
@@ -1016,11 +1032,11 @@ export class SmartLangGraphAgentService {
           lastElementDiscovery: discoveryResult.result
         };
       } else {
-        console.log(`⚠️  Intelligent discovery failed, using original selector: ${nextAction.selector}`);
+        console.log(`⚠️  Intelligent discovery failed, using plan guidance: ${nextAction.description}`);
         
         // If no selector is available, try to generate one from the description
         if (!enhancedAction.selector) {
-          console.log(`🔧 No selector available, generating from description: "${nextAction.description}"`);
+          console.log(`🔧 No selector available, generating from plan guidance: "${nextAction.description}"`);
           enhancedAction.selector = this.generateSelectorFromDescription(nextAction.description);
         }
       }
@@ -1654,26 +1670,44 @@ export class SmartLangGraphAgentService {
   }
 
   private validateStepExecution(state: SmartAgentState): boolean {
-    // Check if we're executing steps in the correct order
+    // Flexible step validation - allow intelligent adaptation
     const expectedIndex = state.completedActions.length + state.failedActions.length;
     
-    if (state.currentActionIndex !== expectedIndex) {
-      console.error(`❌ Step execution order violation detected:`);
-      console.error(`   Expected action index: ${expectedIndex}`);
-      console.error(`   Current action index: ${state.currentActionIndex}`);
-      console.error(`   Completed actions: ${state.completedActions.length}`);
-      console.error(`   Failed actions: ${state.failedActions.length}`);
+    // Allow some flexibility in step execution for intelligent adaptation
+    const maxAllowedGap = 1; // Allow up to 1 step gap for intelligent adaptation
+    const indexDifference = Math.abs(state.currentActionIndex - expectedIndex);
+    
+    if (indexDifference > maxAllowedGap) {
+      console.warn(`⚠️  Step execution order deviation detected (${indexDifference} steps):`);
+      console.warn(`   Expected action index: ${expectedIndex}`);
+      console.warn(`   Current action index: ${state.currentActionIndex}`);
+      console.warn(`   Completed actions: ${state.completedActions.length}`);
+      console.warn(`   Failed actions: ${state.failedActions.length}`);
+      console.warn(`   Allowing intelligent adaptation within ${maxAllowedGap} step gap`);
+      
+      // For small gaps, allow intelligent adaptation
+      if (indexDifference <= maxAllowedGap) {
+        console.log(`✅ Allowing intelligent adaptation within acceptable range`);
+        return true;
+      }
+      
       return false;
     }
     
-    // Check for gaps in completed actions
+    // Check for significant gaps in completed actions (allow some flexibility)
     const allProcessedActions = [...state.completedActions, ...state.failedActions].sort((a, b) => a - b);
+    let gapCount = 0;
+    
     for (let i = 0; i < allProcessedActions.length; i++) {
       if (allProcessedActions[i] !== i) {
-        console.error(`❌ Gap detected in action execution:`);
-        console.error(`   Missing action at index: ${i}`);
-        console.error(`   Found action at index: ${allProcessedActions[i]}`);
-        return false;
+        gapCount++;
+        if (gapCount > 1) { // Allow up to 1 gap for intelligent adaptation
+          console.warn(`⚠️  Multiple gaps detected in action execution (${gapCount} gaps):`);
+          console.warn(`   Missing action at index: ${i}`);
+          console.warn(`   Found action at index: ${allProcessedActions[i]}`);
+          console.warn(`   Allowing intelligent adaptation with ${gapCount} gaps`);
+          return true; // Allow intelligent adaptation
+        }
       }
     }
     

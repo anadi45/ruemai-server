@@ -47,12 +47,15 @@ export class DemoAutomationService {
         prerequisites: extractedData.prerequisites,
       };
 
-      // Generate and log action plan
+      // Generate and log intelligent action plan
       let actionPlan: ActionPlan;
       try {
         actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
+        console.log('🧠 Generated intelligent, flexible action plan');
+        console.log(`📋 Plan provides high-level guidance for ${actionPlan.actions.length} actions`);
+        console.log('🎯 Agent will make intelligent decisions based on visual context');
       } catch (error) {
-        console.error('Failed to generate action plan with Gemini:', error);
+        console.error('Failed to generate intelligent action plan with Gemini:', error);
         throw error;
       }
 
@@ -77,7 +80,11 @@ export class DemoAutomationService {
         throw new Error('Login failed - cannot generate tour');
       }
 
-      // Run the Smart LangGraph Agent
+      // Run the Intelligent Smart LangGraph Agent
+      console.log('🤖 Starting Intelligent Smart LangGraph Agent...');
+      console.log('🧠 Agent will intelligently adapt based on visual context and page state');
+      console.log('🎯 Plan provides guidance but agent makes smart decisions');
+      
       const result = await this.smartAgent.runSmartAgent(
         actionPlan,
         tourConfig,
@@ -139,7 +146,7 @@ export class DemoAutomationService {
 
       return actionPlan;
     } catch (error) {
-      console.error('❌ Error generating action plan:', error);
+      console.error('❌ Error generating intelligent action plan:', error);
       throw error;
     }
   }

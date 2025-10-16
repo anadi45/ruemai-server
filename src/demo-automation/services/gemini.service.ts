@@ -766,7 +766,7 @@ Only return valid JSON. Do not include any other text or explanations.
 
   private buildActionPlanningPrompt(featureDocs: ProductDocs, websiteUrl: string): string {
     return `
-You are an expert Puppeteer automation engineer specializing in programmatic web scraping with screenshot + coordinate based execution. Your task is to create a detailed, executable action plan for automating web interactions using Puppeteer based on both textual documentation and visual context from images.
+You are an expert automation engineer creating a HIGH-LEVEL, FLEXIBLE action plan for intelligent web automation. Your task is to create a strategic roadmap that will be intelligently executed by an AI agent that can adapt based on visual context and real-time analysis.
 
 FEATURE: ${featureDocs.featureName}
 DESCRIPTION: ${featureDocs.description}
@@ -784,139 +784,96 @@ ${featureDocs.expectedOutcomes.join('\n')}
 PREREQUISITES:
 ${featureDocs.prerequisites?.join('\n') || 'None specified'}
 
-VISUAL CONTEXT (from images):
+**INTELLIGENT, ADAPTIVE AUTOMATION APPROACH:**
+- **HIGH-LEVEL STRATEGY**: Create a flexible plan that provides guidance but allows the AI agent to make intelligent decisions
+- **VISUAL CONTEXT AWARENESS**: The agent will analyze screenshots in real-time to understand the current state
+- **ADAPTIVE EXECUTION**: The agent will intelligently adapt actions based on what it sees on the page
+- **GOAL-ORIENTED**: Focus on achieving the feature goals rather than rigid step-by-step execution
+- **INTELLIGENT DISCOVERY**: The agent will discover and interact with elements based on visual analysis
 
-CRITICAL ANALYSIS INSTRUCTIONS:
-1. **Carefully analyze BOTH text and image data together** to understand the complete user interface
-2. **Identify UI elements** visible in images that may not be mentioned in text
-3. **Use generic element descriptions** instead of specific CSS selectors (e.g., "workflows link" not "a[href='/workflows']")
-4. **Consider the actual user flow** as shown in images vs. documented steps
-5. **Identify potential scraping challenges** like dynamic content, modals, or complex interactions
+**FLEXIBLE PLANNING PRINCIPLES:**
+1. **STRATEGIC OVERVIEW**: Provide high-level goals and objectives rather than rigid step-by-step instructions
+2. **INTELLIGENT ADAPTATION**: Allow the agent to make decisions based on visual context and page state
+3. **GOAL-ORIENTED ACTIONS**: Focus on what needs to be accomplished rather than how to accomplish it
+4. **VISUAL INTELLIGENCE**: Trust the agent to analyze screenshots and make intelligent decisions
+5. **CONTEXTUAL AWARENESS**: Let the agent understand the current page state and adapt accordingly
 
-**HUMAN-LIKE VISUAL AUTOMATION APPROACH:**
-- **VISUAL TARGET IDENTIFICATION**: The system simulates human behavior by visually scanning screenshots to find targets
-- **NATURAL INTERACTION PATTERNS**: Actions are executed using human-like clicking patterns and visual cues
-- **VISUAL HIERARCHY UNDERSTANDING**: Focus on what humans naturally see and interact with (buttons, links, text, icons)
-- **USER-CENTRIC NAVIGATION**: Plan actions based on what a human user would naturally do to accomplish tasks
-- **VISUAL STATE AWARENESS**: Account for how UI elements appear and change visually during interactions
+**HIGH-LEVEL STRATEGY APPROACH:**
+- **GOAL-BASED PLANNING**: Create actions that describe what needs to be achieved, not specific technical steps
+- **INTELLIGENT NAVIGATION**: Let the agent discover and navigate based on visual analysis
+- **ADAPTIVE INTERACTION**: Allow the agent to find and interact with elements intelligently
+- **CONTEXTUAL DECISION MAKING**: Trust the agent to make decisions based on what it sees
+- **FLEXIBLE EXECUTION**: Provide guidance but allow the agent to adapt the approach as needed
 
-**ENHANCED UI STRUCTURE ANALYSIS:**
-1. **COLLAPSIBLE ELEMENTS**: Identify dropdowns, accordions, expandable sections, and nested menus that need to be opened before accessing sub-elements
-2. **VISUAL HIERARCHY**: Understand parent-child relationships in the UI (e.g., "Workflows" menu that contains "General" submenu)
-3. **PROGRESSIVE DISCLOSURE**: Account for UI patterns where information is revealed progressively (tabs, steps, wizards)
-4. **CONTEXTUAL ELEMENTS**: Identify elements that only appear after certain actions (conditional UI, dynamic content)
-5. **NAVIGATION PATTERNS**: Understand breadcrumbs, back buttons, and multi-level navigation structures
-
-**MANDATORY STEP-BY-STEP ANALYSIS:**
-- **GO THROUGH EACH DOCUMENTED STEP**: For every step in the feature documentation, create a corresponding action in the plan
-- **IDENTIFY MISSING STEPS**: Look for navigation, validation, or intermediate steps that might not be explicitly documented
-- **SEQUENCE VALIDATION**: Ensure the action sequence follows the logical user flow
-- **COMPLETE COVERAGE**: Every documented step must have at least one corresponding action in the plan
-- **NO STEP LEFT BEHIND**: Double-check that all feature steps are represented in the action plan
-
-**DRY RUN EXECUTION STRATEGY:**
-- **GO THROUGH THE ENTIRE FEATURE FLOW**: Create a plan that covers all steps of the feature from start to finish
-- **AVOID FINAL SAVE/SUBMIT ACTIONS**: Do NOT include actions that would trigger save, submit, create, update, or delete API calls
+**INTELLIGENT EXECUTION STRATEGY:**
+- **VISUAL ANALYSIS FIRST**: The agent will analyze screenshots to understand the current page state
+- **INTELLIGENT ELEMENT DISCOVERY**: The agent will find elements based on visual context and descriptions
+- **ADAPTIVE INTERACTION**: The agent will interact with elements using the most appropriate method
+- **CONTEXTUAL AWARENESS**: The agent will understand the page state and adapt accordingly
+- **GOAL-ORIENTED EXECUTION**: Focus on achieving the feature goals through intelligent automation
 - **STOP BEFORE PERSISTENT CHANGES**: End the plan just before any action that would permanently save data or make irreversible changes
 - **IDENTIFY SAVE TRIGGERS**: Look for buttons/elements with text like "Save", "Submit", "Create", "Update", "Delete", "Confirm", "Finish", "Complete"
 - **FOCUS ON DEMONSTRATION**: The goal is to demonstrate the feature flow without actually persisting changes
 - **INCLUDE VALIDATION STEPS**: Include form validation and data entry steps, but stop before final submission
 
-**COMPREHENSIVE STEP MAPPING REQUIREMENTS:**
-- **MANDATORY COMPLETENESS**: Every single step from the feature documentation MUST have a corresponding action in the plan
-- **DETAILED BREAKDOWN**: If a documented step is complex, break it down into multiple actions
-- **NAVIGATION COVERAGE**: Include all necessary navigation steps between different pages/sections
-- **FORM INTERACTION COVERAGE**: Include all form fields, dropdowns, checkboxes, and input interactions
-- **VALIDATION COVERAGE**: Include all validation steps, error checking, and confirmation steps
-- **SEQUENCE VERIFICATION**: Ensure the action sequence matches the logical user flow exactly
-- **NO ASSUMPTIONS**: Do not assume any steps are implicit - make everything explicit in the plan
+**FLEXIBLE PLANNING REQUIREMENTS:**
+- **HIGH-LEVEL GOALS**: Focus on what needs to be accomplished rather than specific technical steps
+- **INTELLIGENT ADAPTATION**: Allow the agent to make decisions based on visual context and page state
+- **GOAL-ORIENTED ACTIONS**: Create actions that describe objectives rather than rigid procedures
+- **VISUAL INTELLIGENCE**: Trust the agent to analyze screenshots and make intelligent decisions
+- **CONTEXTUAL AWARENESS**: Let the agent understand the current page state and adapt accordingly
 
-Create a comprehensive Puppeteer automation plan that includes:
+Create a flexible, intelligent automation plan that includes:
 
-**NAVIGATION & SETUP:**
-- **DO NOT ASSUME LOGIN STATE**: Never assume user is logged in or logged out. Handle both scenarios
-- **DETECT AUTHENTICATION STATE**: Check if redirected to login page and handle accordingly
-- **PREFER DOM SELECTOR INTERACTIONS**: Use click actions on navigation elements (buttons, links, menu items) rather than direct URL navigation
-- **URL NAVIGATION AS FALLBACK**: Only use direct URL navigation when DOM selectors are not available or when navigating to external pages
-- **INTELLIGENT FALLBACK ACTIONS**: Every navigation action must have a meaningful fallback
-- Set up proper viewport and user agent
+**INTELLIGENT NAVIGATION:**
+- **GOAL-BASED NAVIGATION**: Describe what needs to be reached rather than specific navigation steps
+- **VISUAL CONTEXT AWARENESS**: Let the agent analyze the current page and decide how to navigate
+- **ADAPTIVE ROUTING**: Allow the agent to find the best path based on what it sees
+- **INTELLIGENT DISCOVERY**: Trust the agent to discover navigation elements visually
 
-**INTELLIGENT FALLBACK STRATEGY:**
-- **NAVIGATION ACTIONS**: If clicking a link fails, fallback to direct URL navigation
-- **CLICK ACTIONS**: If clicking an element fails, consider alternative selectors or navigation
-- **FORM ACTIONS**: If form interaction fails, try alternative form fields or navigation
-- **WAIT ACTIONS**: If waiting for an element fails, try waiting for alternative elements or navigation
-- **URL CONSTRUCTION**: Build fallback URLs based on website structure (e.g., /workflows, /dashboard, /settings)
-- **HIERARCHICAL FALLBACKS**: Provide multiple levels of fallback (click → navigate → wait → retry)
+**INTELLIGENT INTERACTION:**
+- **GOAL-ORIENTED ACTIONS**: Describe what needs to be accomplished rather than specific technical steps
+- **VISUAL ELEMENT DISCOVERY**: Let the agent find elements based on visual analysis
+- **ADAPTIVE INTERACTION**: Allow the agent to interact with elements using the most appropriate method
+- **CONTEXTUAL DECISION MAKING**: Trust the agent to make decisions based on page state
 
-**HUMAN-LIKE INTERACTION APPROACH:**
-- **VISUAL TARGET FOCUS**: Describe actions in human terms (e.g., "Click the blue 'Create' button", "Navigate to the 'Settings' menu", "Fill in the 'Name' field")
-- **NATURAL USER FLOW**: Plan actions as a human user would naturally perform them
-- **VISUAL ELEMENT DESCRIPTIONS**: Use descriptive, human-readable names for targets (e.g., "Workflows dropdown menu", "Create New button", "Save form button")
-- **USER INTENT MAPPING**: Focus on what the user wants to accomplish, not technical implementation
-- **AVOID SAVE/SUBMIT ACTIONS**: Do NOT include clicks on save, submit, create, update, delete buttons
-- **STOP BEFORE PERSISTENCE**: End the plan before any action that would save data to the server
+**INTELLIGENT FORM HANDLING:**
+- **GOAL-BASED FORM INTERACTION**: Describe what information needs to be entered rather than specific field interactions
+- **VISUAL FORM DISCOVERY**: Let the agent find form fields based on visual analysis
+- **ADAPTIVE DATA ENTRY**: Allow the agent to enter data using the most appropriate method
+- **INTELLIGENT VALIDATION**: Trust the agent to validate form data based on visual feedback
 
-**COLLAPSIBLE UI ELEMENT HANDLING:**
-- **IDENTIFY EXPANDABLE ELEMENTS**: Look for dropdowns, accordions, collapsible sections, and nested menus in the UI
-- **PROGRESSIVE EXPANSION**: Plan to expand/collapse elements in the correct order to reveal nested options
-- **PARENT-CHILD RELATIONSHIPS**: Account for hierarchical UI structures (e.g., "Workflows" → "General" → specific workflow options)
-- **STATE-DEPENDENT ELEMENTS**: Plan for elements that only become available after expanding parent elements
-- **VISUAL INDICATORS**: Consider UI indicators like arrows, chevrons, or plus/minus icons that suggest expandable content
-- **NESTED NAVIGATION**: Plan for multi-level navigation where each level must be expanded before accessing the next level
+**INTELLIGENT ERROR HANDLING:**
+- **VISUAL ERROR DETECTION**: Let the agent detect errors based on visual analysis
+- **ADAPTIVE RECOVERY**: Allow the agent to recover from errors intelligently
+- **CONTEXTUAL PROBLEM SOLVING**: Trust the agent to solve problems based on what it sees
+- **INTELLIGENT RETRY**: Let the agent retry actions with improved approaches
 
-**DYNAMIC CONTENT HANDLING:**
-- Wait for AJAX requests and dynamic content loading
-- Handle infinite scroll or pagination
-- Manage modal dialogs and overlays
-- Deal with loading states and spinners
-
-**DATA EXTRACTION:**
-- Scrape text content, attributes, and metadata
-- Extract form data and user inputs
-- Capture structured data from tables or lists
-- Handle different data formats (JSON, HTML, etc.)
-
-**ERROR HANDLING & VALIDATION:**
-- Verify element existence before interaction
-- Handle network timeouts and retries
-- Validate expected outcomes and states
-
-**ADVANCED PUPPETEER TECHNIQUES:**
-- Use page.evaluate() for complex DOM manipulation
-- Handle iframes and shadow DOM
-- Manage cookies and local storage
-- Implement proper waiting strategies (waitForSelector, waitForFunction)
+**INTELLIGENT WAITING:**
+- **VISUAL STATE DETECTION**: Let the agent detect when pages are ready based on visual analysis
+- **ADAPTIVE TIMING**: Allow the agent to wait for appropriate conditions
+- **CONTEXTUAL PATIENCE**: Trust the agent to wait for the right moment
+- **INTELLIGENT TIMEOUTS**: Let the agent handle timeouts intelligently
 
 For each action, provide:
-- **HUMAN-READABLE DESCRIPTIONS**: Use natural language that describes what a human would see and click (e.g., "Click the 'Create Workflow' button", "Navigate to the 'Settings' menu", "Fill in the 'Project Name' field")
-- **VISUAL TARGET FOCUS**: Describe elements by their visual appearance, text, or position rather than technical attributes
-- **NATURAL USER FLOW**: Plan actions as a human would naturally perform them
-- **REALISTIC INPUT DATA**: Use realistic, human-like data for forms
-- **VISUAL WAITING CONDITIONS**: Describe what to wait for in visual terms (e.g., "Wait for the form to load", "Wait for the menu to expand")
-- **VISUAL ERROR HANDLING**: Describe error handling in terms of what a human would see and do
-- **SCREENSHOT CAPTURE**: Take screenshots at key visual milestones
-- **HUMAN-LIKE FALLBACKS**: Provide natural alternatives that a human would try
+- **GOAL-ORIENTED DESCRIPTIONS**: Describe what needs to be accomplished rather than how to accomplish it
+- **INTELLIGENT TARGETS**: Use descriptions that allow the agent to find elements visually
+- **ADAPTIVE APPROACHES**: Allow the agent to adapt the approach based on what it sees
+- **CONTEXTUAL INTELLIGENCE**: Trust the agent to make decisions based on visual context
+- **FLEXIBLE EXECUTION**: Provide guidance but allow the agent to adapt as needed
 
-**SCREENSHOT + COORDINATE EXECUTION SPECIFICATIONS:**
-- **VISUAL ELEMENT IDENTIFICATION**: Use descriptive names that can be visually identified in screenshots (e.g., "Workflows dropdown arrow", "General submenu item", "Create Workflow button")
-- **COORDINATE-BASED CLICKING**: Plan for precise coordinate-based interactions with UI elements
-- **VISUAL HIERARCHY MAPPING**: Map out the visual structure of collapsible elements and nested menus
-- **EXPANSION SEQUENCE**: Plan the correct sequence of expanding/collapsing UI elements to reach target functionality
-- **VISUAL STATE CHANGES**: Account for how UI elements change appearance when expanded/collapsed
-- **SCREENSHOT ANALYSIS**: Plan for taking screenshots at key points to verify UI state changes
+**INTELLIGENT EXECUTION SPECIFICATIONS:**
+- **VISUAL ANALYSIS FIRST**: The agent will analyze screenshots to understand the current state
+- **INTELLIGENT ELEMENT DISCOVERY**: The agent will find elements based on visual context and descriptions
+- **ADAPTIVE INTERACTION**: The agent will interact with elements using the most appropriate method
+- **CONTEXTUAL AWARENESS**: The agent will understand the page state and adapt accordingly
+- **GOAL-ORIENTED EXECUTION**: Focus on achieving the feature goals through intelligent automation
 
-**FALLBACK ACTION REQUIREMENTS:**
-- **Navigation Actions**: Must have fallback to direct URL navigation (e.g., click "Workflows" → navigate to "/workflows")
-- **Click Actions**: Must have fallback to alternative selectors or navigation
-- **Form Actions**: Must have fallback to alternative form fields or navigation
-- **Wait Actions**: Must have fallback to alternative elements or navigation
-- **URL Construction**: Build logical fallback URLs based on website structure
-- **Hierarchical Fallbacks**: Provide multiple levels of fallback strategies
-
-**INTELLIGENT FALLBACK EXAMPLES:**
-- **Click "Workflows" link** → Fallback: navigate to "/workflows"
-- **Click "Dashboard" button** → Fallback: navigate to "/dashboard"
+**INTELLIGENT FALLBACK STRATEGY:**
+- **VISUAL FALLBACK DETECTION**: The agent will detect when fallbacks are needed based on visual analysis
+- **ADAPTIVE FALLBACK SELECTION**: The agent will choose the most appropriate fallback based on context
+- **INTELLIGENT RECOVERY**: The agent will recover from failures using visual analysis
+- **CONTEXTUAL PROBLEM SOLVING**: The agent will solve problems based on what it sees
 - **Click "Settings" menu** → Fallback: navigate to "/settings"
 - **Click "Create" button** → Fallback: navigate to "/create" or "/new"
 - **Click "Login" button** → Fallback: navigate to "/login"
@@ -1250,14 +1207,14 @@ RESPONSE FORMAT (JSON):
       : 'No previous actions';
 
     return `
-You are an AI assistant analyzing a screenshot of a web page to help with automation decisions.
+You are an intelligent AI assistant analyzing a screenshot to make adaptive automation decisions. Your role is to understand the current page state and intelligently determine the best course of action based on visual context.
 
 CURRENT PAGE STATE:
 - URL: ${currentUrl}
 - Title: ${pageTitle}
 - Screenshot: [Image provided below]
 
-NEXT PLANNED ACTION:
+NEXT PLANNED ACTION (GUIDANCE ONLY):
 - Type: ${nextAction.type}
 - Description: ${nextAction.description}
 - Expected Outcome: ${nextAction.expectedOutcome}
@@ -1271,23 +1228,43 @@ ${historyText}
 
 CURRENT CONTEXT: ${currentContext}
 
-QUESTIONS TO ANSWER:
-1. What do you see in the screenshot? Describe the main elements and layout.
-2. Can you see any elements that might match the target action: "${nextAction.description}"?
-3. What is the current state of the page? Is it ready for the next action?
-4. Are there any errors, loading states, or issues visible in the screenshot?
-5. What would be the best way to proceed based on what you see?
+INTELLIGENT ANALYSIS INSTRUCTIONS:
+1. **VISUAL CONTEXT ANALYSIS**: Analyze the screenshot to understand the current page state, layout, and available elements
+2. **INTELLIGENT DECISION MAKING**: Based on what you see, determine the most appropriate action to take next
+3. **ADAPTIVE APPROACH**: Don't strictly follow the planned action if the visual context suggests a better approach
+4. **GOAL-ORIENTED THINKING**: Focus on achieving the feature goals rather than following rigid steps
+5. **CONTEXTUAL AWARENESS**: Consider the current page state, available elements, and user flow
 
-Please provide your analysis in this JSON format:
+INTELLIGENT ANALYSIS QUESTIONS:
+1. **What do you see in the screenshot?** Describe the main elements, layout, and current state
+2. **What is the page trying to accomplish?** Understand the user's goal and the page's purpose
+3. **What elements are available for interaction?** Identify clickable elements, forms, navigation, etc.
+4. **What would be the most intelligent next action?** Based on visual context, what should happen next?
+5. **Are there any obstacles or opportunities?** Look for errors, loading states, or new opportunities
+6. **How can we adapt the approach?** What changes should be made based on what you see?
+
+INTELLIGENT DECISION MAKING:
+- **VISUAL INTELLIGENCE**: Use visual cues to make smart decisions about what to do next
+- **ADAPTIVE EXECUTION**: Adapt the approach based on what you see rather than following rigid plans
+- **GOAL-ORIENTED ACTIONS**: Focus on achieving the feature goals through intelligent automation
+- **CONTEXTUAL AWARENESS**: Make decisions based on the current page state and available options
+- **INTELLIGENT DISCOVERY**: Find the best elements to interact with based on visual analysis
+
+Please provide your intelligent analysis in this JSON format:
 {
-  "pageDescription": "What you see in the screenshot",
-  "targetElements": ["Elements that might match the target action"],
+  "pageDescription": "Detailed description of what you see in the screenshot",
+  "pagePurpose": "What the page is trying to accomplish or what the user's goal is",
+  "availableElements": ["Elements that are available for interaction"],
+  "intelligentTargets": ["Best elements to interact with based on visual analysis"],
   "pageState": "Current state of the page (ready, loading, error, etc.)",
-  "issues": ["Any problems or issues visible"],
-  "recommendations": ["What should be done next"],
+  "obstacles": ["Any problems, errors, or obstacles visible"],
+  "opportunities": ["New opportunities or elements that appeared"],
+  "intelligentRecommendations": ["What should be done next based on visual intelligence"],
+  "adaptiveApproach": "How to adapt the approach based on what you see",
   "context": "Updated context based on visual analysis",
-  "reasoning": "Why you made this decision based on the screenshot",
-  "shouldProceed": true/false
+  "reasoning": "Why you made this decision based on the screenshot and visual context",
+  "shouldProceed": true/false,
+  "alternativeActions": ["Alternative actions that might be better based on visual context"]
 }
 `;
   }
@@ -1301,9 +1278,27 @@ Please provide your analysis in this JSON format:
 
       const parsed = JSON.parse(jsonMatch[0]);
 
+      // Enhanced context with intelligent analysis
+      const enhancedContext = [
+        parsed.context || 'No context provided',
+        parsed.pageDescription ? `Page: ${parsed.pageDescription}` : '',
+        parsed.pagePurpose ? `Purpose: ${parsed.pagePurpose}` : '',
+        parsed.intelligentRecommendations ? `Recommendations: ${parsed.intelligentRecommendations.join(', ')}` : '',
+        parsed.adaptiveApproach ? `Adaptive approach: ${parsed.adaptiveApproach}` : ''
+      ].filter(Boolean).join('\n');
+
+      // Enhanced reasoning with intelligent analysis
+      const enhancedReasoning = [
+        parsed.reasoning || 'No reasoning provided',
+        parsed.intelligentTargets ? `Intelligent targets: ${parsed.intelligentTargets.join(', ')}` : '',
+        parsed.opportunities ? `Opportunities: ${parsed.opportunities.join(', ')}` : '',
+        parsed.obstacles ? `Obstacles: ${parsed.obstacles.join(', ')}` : '',
+        parsed.alternativeActions ? `Alternatives: ${parsed.alternativeActions.join(', ')}` : ''
+      ].filter(Boolean).join('\n');
+
       return {
-        context: parsed.context || 'No context provided',
-        reasoning: parsed.reasoning || 'No reasoning provided',
+        context: enhancedContext,
+        reasoning: enhancedReasoning,
         shouldProceed: parsed.shouldProceed !== false
       };
     } catch (error) {
