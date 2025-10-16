@@ -391,15 +391,15 @@ export class WebAutomationAgentService {
           
           // Fallback to URL-based navigation
           console.log('🔄 Trying URL-based navigation fallback...');
-          const fallbackUrl = this.constructIntelligentUrl(params.goal, params.featureName, currentUrl);
-          await this.puppeteerWorker.navigateToUrl(fallbackUrl);
+          // Use the current URL as fallback since we can't intelligently construct URLs
+          await this.puppeteerWorker.navigateToUrl(currentUrl);
           
           return { 
             success: true, 
             result: {
               method: 'url',
-              url: fallbackUrl,
-              reasoning: 'Used URL-based navigation fallback'
+              url: currentUrl,
+              reasoning: 'Used current URL as fallback navigation'
             }
           };
         } catch (error) {
@@ -1909,75 +1909,6 @@ export class WebAutomationAgentService {
     }
   }
 
-  private constructIntelligentUrl(goal: string, featureName: string, currentUrl: string): string {
-    console.log('🔗 Constructing intelligent URL for goal:', goal);
-    
-    let baseUrl: string;
-    
-    try {
-      // Extract base URL from current URL
-      const url = new URL(currentUrl);
-      baseUrl = `${url.protocol}//${url.host}`;
-    } catch (error) {
-      // If current URL is invalid, use a default base URL
-      console.warn('Invalid current URL, using default base URL:', currentUrl);
-      baseUrl = 'https://app.gorattle.com';
-    }
-    
-    // Intelligent URL construction based on goal and feature name
-    const goalLower = goal.toLowerCase();
-    const featureLower = featureName.toLowerCase();
-    
-    // Feature-specific patterns
-    if (featureLower.includes('workflow')) {
-      return `${baseUrl}/workflows`;
-    } else if (featureLower.includes('dashboard')) {
-      return `${baseUrl}/dashboard`;
-    } else if (featureLower.includes('setting')) {
-      return `${baseUrl}/settings`;
-    } else if (featureLower.includes('profile')) {
-      return `${baseUrl}/profile`;
-    } else if (featureLower.includes('help')) {
-      return `${baseUrl}/help`;
-    } else if (featureLower.includes('home')) {
-      return `${baseUrl}/home`;
-    } else if (featureLower.includes('login')) {
-      return `${baseUrl}/login`;
-    } else if (featureLower.includes('create')) {
-      return `${baseUrl}/create`;
-    } else if (featureLower.includes('edit')) {
-      return `${baseUrl}/edit`;
-    } else if (featureLower.includes('view')) {
-      return `${baseUrl}/view`;
-    } else if (featureLower.includes('search')) {
-      return `${baseUrl}/search`;
-    } else if (featureLower.includes('export')) {
-      return `${baseUrl}/export`;
-    } else if (featureLower.includes('import')) {
-      return `${baseUrl}/import`;
-    }
-    
-    // Goal-based patterns
-    if (goalLower.includes('navigate to') || goalLower.includes('go to')) {
-      // Extract the target from the goal
-      const targetMatch = goalLower.match(/navigate to (?:the )?([^/]+)/) || goalLower.match(/go to (?:the )?([^/]+)/);
-      if (targetMatch) {
-        const target = targetMatch[1].replace(/\s+/g, '-');
-        return `${baseUrl}/${target}`;
-      }
-    } else if (goalLower.includes('access') || goalLower.includes('find')) {
-      // Extract the feature from the goal
-      const featureMatch = goalLower.match(/access (?:the )?([^/]+)/) || goalLower.match(/find (?:the )?([^/]+)/);
-      if (featureMatch) {
-        const feature = featureMatch[1].replace(/\s+/g, '-');
-        return `${baseUrl}/${feature}`;
-      }
-    }
-    
-    // Default fallback - construct from feature name
-    const featureSlug = featureLower.replace(/\s+/g, '-');
-    return `${baseUrl}/${featureSlug}`;
-  }
 
   async stopAutomationAgent(): Promise<void> {
     await this.puppeteerWorker.cleanup();
