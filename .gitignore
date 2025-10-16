@@ -13,6 +13,7 @@ lerna-debug.log*
 plan.json
 action-run.json
 screenshots
+dump.txt
 
 # OS
 .DS_Store

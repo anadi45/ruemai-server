@@ -23,48 +23,6 @@ export class DemoAutomationService {
     private smartAgent: SmartLangGraphAgentService
   ) {}
 
-  async loginToWebsite(
-    websiteUrl: string,
-    credentials: { username: string; password: string }
-  ): Promise<CreateDemoResponseDto> {
-    const demoId = uuidv4();
-    const startTime = Date.now();
-
-    try {
-      // Initialize Puppeteer
-      await this.puppeteerWorker.initialize();
-      
-      // Navigate to website
-      await this.puppeteerWorker.navigateToUrl(websiteUrl);
-      
-      // Attempt login
-      const loginSuccess = await this.puppeteerWorker.login(credentials);
-      
-      // Get page info
-      const pageInfo = await this.getPageInfo();
-      
-      const processingTime = Date.now() - startTime;
-
-      return {
-        demoId,
-        demoName: `Demo-${demoId.slice(0, 8)}`,
-        websiteUrl,
-        loginStatus: loginSuccess ? 'success' : 'failed',
-        pageInfo,
-        summary: {
-          processingTime,
-          loginAttempted: true,
-          finalUrl: this.puppeteerWorker.getCurrentUrl() || websiteUrl
-        }
-      };
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
-    } finally {
-      await this.puppeteerWorker.cleanup();
-    }
-  }
-
   private async getPageInfo() {
     try {
       const domState = await this.puppeteerWorker.getDOMState();

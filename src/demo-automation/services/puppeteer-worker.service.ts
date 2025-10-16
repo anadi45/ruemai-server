@@ -171,15 +171,6 @@ export class PuppeteerWorkerService {
       throw new Error('Page not initialized. Call initialize() first.');
     }
 
-    // Debug: Log credentials to help identify undefined values
-    console.log('PuppeteerWorkerService.login - Received credentials:', {
-      username: credentials?.username,
-      password: credentials?.password ? '[REDACTED]' : 'undefined',
-      credentialsType: typeof credentials,
-      usernameType: typeof credentials?.username,
-      passwordType: typeof credentials?.password
-    });
-
     // Validate credentials before attempting login
     if (!credentials || !credentials.username || !credentials.password) {
       throw new Error('Invalid credentials: username and password are required');
@@ -711,6 +702,8 @@ export class PuppeteerWorkerService {
     }
 
     const domHtml = await this.page.content();
+
+    require('fs').writeFileSync('dump.txt', domHtml);
     const currentUrl = this.page.url();
     const pageTitle = await this.page.title();
 
@@ -929,7 +922,10 @@ export class PuppeteerWorkerService {
     }
 
     try {
-      await this.page.waitForNavigation({ timeout });
+      await this.page.waitForNavigation({ 
+        timeout,
+        waitUntil: 'networkidle0'
+      });
       return true;
     } catch (error) {
       return false;
