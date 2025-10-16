@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { StateGraph, MemorySaver } from '@langchain/langgraph';
+import { StateGraph, MemorySaver, START, END } from '@langchain/langgraph';
 import { GeminiService } from './gemini.service';
 import { PuppeteerWorkerService } from './puppeteer-worker.service';
 import { IntelligentElementDiscoveryService } from './intelligent-element-discovery.service';
@@ -18,10 +18,10 @@ import {
   IntelligentElementDiscovery
 } from '../types/demo-automation.types';
 
-// Enhanced agent state for intelligent plan following
+// Enhanced automation agent state for intelligent plan following
 // SmartAgentState is now imported from types
 
-// Tool definitions for the agent
+// Tool definitions for the automation agent
 export interface AgentTool {
   name: string;
   description: string;
@@ -30,7 +30,7 @@ export interface AgentTool {
 }
 
 @Injectable()
-export class SmartLangGraphAgentService {
+export class WebAutomationAgentService {
   private workflow: any;
   private memory: MemorySaver;
   private tools: Map<string, AgentTool>;
@@ -44,7 +44,7 @@ export class SmartLangGraphAgentService {
     this.memory = new MemorySaver();
     this.tools = new Map();
     this.initializeTools();
-    this.workflow = this.createSmartWorkflow();
+    this.workflow = this.createAutomationWorkflow();
   }
 
   private initializeTools(): void {
@@ -938,7 +938,7 @@ export class SmartLangGraphAgentService {
     });
   }
 
-  private createSmartWorkflow(): any {
+  private createAutomationWorkflow(): any {
     const self = this;
     
     return {
@@ -946,13 +946,13 @@ export class SmartLangGraphAgentService {
         let state = { ...initialState };
         
         try {
-          console.log('🤖 Starting Intelligent Smart LangGraph Agent...');
+          console.log('🤖 Starting Intelligent Web Automation Agent...');
           console.log(`📋 Following flexible plan: ${state.actionPlan.featureName}`);
           console.log(`🎯 Total actions in plan: ${state.actionPlan.actions.length}`);
-          console.log(`🧠 Intelligent adaptation enabled - agent will make smart decisions based on visual context`);
+          console.log(`🧠 Intelligent adaptation enabled - agent will make intelligent decisions based on visual context`);
           
-          // Initialize the agent
-          state = await self.initializeAgent(state);
+          // Initialize the automation agent
+          state = await self.initializeNode(state);
           
           // Main execution loop with intelligent adaptation
           while (!state.isComplete && state.currentActionIndex < state.actionPlan.actions.length) {
@@ -961,12 +961,12 @@ export class SmartLangGraphAgentService {
             console.log(`🧠 Feature goal: ${state.featureDocs.featureName}`);
             
             // Intelligently analyze current state and plan
-            state = await self.analyzeAndPlan(state);
+            state = await self.analyzeNode(state);
             
             if (state.isComplete) break;
             
             // Intelligently select and execute the best tool
-            state = await self.selectAndExecuteTool(state);
+            state = await self.executeNode(state);
             
             // Check if execution was stopped due to critical failure
             if (state.isComplete && !state.success) {
@@ -975,7 +975,7 @@ export class SmartLangGraphAgentService {
             }
             
             // Intelligently validate the action result
-            state = await self.validateAction(state);
+            state = await self.validateNode(state);
             
             // Check if validation stopped execution
             if (state.isComplete && !state.success) {
@@ -984,20 +984,18 @@ export class SmartLangGraphAgentService {
             }
             
             // Intelligently adapt strategy based on results
-            state = await self.adaptStrategy(state);
+            state = await self.adaptNode(state);
             
-            // Only increment if we're continuing (not stopped)
-            if (!state.isComplete) {
-              state.currentActionIndex++;
-            }
+            // Increment to next action
+            state = await self.incrementNode(state);
           }
           
-          // Complete the workflow
-          state = await self.completeWorkflow(state);
+          // Complete the automation workflow
+          state = await self.completeNode(state);
           
         } catch (error) {
-          console.error('❌ Intelligent Smart Agent Error:', error);
-          state = await self.handleError(state, error);
+          console.error('❌ Intelligent Web Automation Agent Error:', error);
+          state = await self.errorNode(state);
         }
         
         return state;
@@ -1005,8 +1003,9 @@ export class SmartLangGraphAgentService {
     };
   }
 
-  private async initializeAgent(state: SmartAgentState): Promise<SmartAgentState> {
-    console.log('🚀 Initializing Smart Agent...');
+  // Automation Workflow Node Implementations
+  private async initializeNode(state: SmartAgentState): Promise<SmartAgentState> {
+    console.log('🚀 Initializing Web Automation Agent...');
     
     try {
       // Ensure Puppeteer is initialized
@@ -1042,7 +1041,7 @@ export class SmartLangGraphAgentService {
     }
   }
 
-  private async analyzeAndPlan(state: SmartAgentState): Promise<SmartAgentState> {
+  private async analyzeNode(state: SmartAgentState): Promise<SmartAgentState> {
     console.log('🧠 Intelligently analyzing current state and planning next action...');
     
     try {
@@ -1078,7 +1077,7 @@ export class SmartLangGraphAgentService {
         pageTitle,
         nextAction,
         state.featureDocs,
-        state.history,
+        state.history || [],
         enhancedContext
       );
       
@@ -1107,7 +1106,7 @@ export class SmartLangGraphAgentService {
     }
   }
 
-  private async selectAndExecuteTool(state: SmartAgentState): Promise<SmartAgentState> {
+  private async executeNode(state: SmartAgentState): Promise<SmartAgentState> {
     console.log('🔧 Intelligently selecting and executing tool based on roadmap goals...');
     
     try {
@@ -1138,15 +1137,6 @@ export class SmartLangGraphAgentService {
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
       console.log(`📸 Screenshot captured with dimensions: ${screenshotData.dimensions.width}x${screenshotData.dimensions.height}`);
-      console.log(`📊 Goal-Based Analysis Input:`, {
-        roadmapGoal: nextAction.description,
-        featureName: state.featureDocs.featureName,
-        currentUrl: currentUrl,
-        pageTitle: pageTitle,
-        viewportDimensions: screenshotData.dimensions,
-        screenshotLength: screenshotData.screenshot.length,
-        context: state.currentContext
-      });
       
       // Determine the best tool based on the goal type
       let toolName: string;
@@ -1361,7 +1351,7 @@ export class SmartLangGraphAgentService {
     }
   }
 
-  private async validateAction(state: SmartAgentState): Promise<SmartAgentState> {
+  private async validateNode(state: SmartAgentState): Promise<SmartAgentState> {
     console.log('✅ Validating action result...');
     
     try {
@@ -1373,19 +1363,6 @@ export class SmartLangGraphAgentService {
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
       console.log('📸 Screenshot captured for validation analysis with dimensions:', screenshotData.dimensions);
-      
-      console.log(`📊 Validation Analysis Input:`, {
-        actionType: nextAction.type,
-        selector: nextAction.selector,
-        inputText: nextAction.inputText,
-        description: nextAction.description,
-        coordinates: nextAction.coordinates,
-        currentUrl: currentUrl,
-        pageTitle: pageTitle,
-        expectedOutcome: nextAction.expectedOutcome,
-        screenshotLength: screenshotData.screenshot.length,
-        viewportDimensions: screenshotData.dimensions
-      });
       
       // Use Gemini to validate the action was successful using screenshot
       const validation = await this.geminiService.validateActionSuccessWithScreenshot(
@@ -1607,10 +1584,10 @@ export class SmartLangGraphAgentService {
         );
       }
       
-        return {
-          ...state,
-          reasoning: validationReasoning
-        };
+      return {
+        ...state,
+        reasoning: validationReasoning
+      };
     } catch (error) {
       console.error('Validation failed:', error);
       
@@ -1653,7 +1630,7 @@ export class SmartLangGraphAgentService {
     }
   }
 
-  private async adaptStrategy(state: SmartAgentState): Promise<SmartAgentState> {
+  private async adaptNode(state: SmartAgentState): Promise<SmartAgentState> {
     console.log('🔄 Adapting strategy based on results...');
     
     try {
@@ -1683,14 +1660,38 @@ export class SmartLangGraphAgentService {
     }
   }
 
-  private async completeWorkflow(state: SmartAgentState): Promise<SmartAgentState> {
-    console.log('🏁 Completing workflow...');
+  private async incrementNode(state: SmartAgentState): Promise<SmartAgentState> {
+    console.log('📈 Incrementing to next action...');
+    
+    // Increment the action index to move to the next action
+    const nextActionIndex = state.currentActionIndex + 1;
+    
+    // Check if we've completed all actions
+    if (nextActionIndex >= state.actionPlan.actions.length) {
+      console.log('✅ All actions completed');
+      return {
+        ...state,
+        isComplete: true,
+        reasoning: 'All actions in plan completed'
+      };
+    }
+    
+    console.log(`🔄 Moving to action ${nextActionIndex + 1}/${state.actionPlan.actions.length}`);
+    
+    return {
+      ...state,
+      currentActionIndex: nextActionIndex
+    };
+  }
+
+  private async completeNode(state: SmartAgentState): Promise<SmartAgentState> {
+    console.log('🏁 Completing automation workflow...');
     
     const endTime = Date.now();
     const processingTime = endTime - state.startTime;
     const successRate = state.completedActions.length / state.actionPlan.actions.length;
     
-    console.log(`📊 Workflow completed:`);
+    console.log(`📊 Automation workflow completed:`);
     console.log(`   ✅ Successful actions: ${state.completedActions.length}`);
     console.log(`   ❌ Failed actions: ${state.failedActions.length}`);
     console.log(`   📈 Success rate: ${(successRate * 100).toFixed(1)}%`);
@@ -1703,7 +1704,7 @@ export class SmartLangGraphAgentService {
     });
     
     if (hasCriticalFailures) {
-      console.error('💥 Workflow completed with critical failures - marking as failed');
+      console.error('💥 Automation workflow completed with critical failures - marking as failed');
       return {
         ...state,
         endTime,
@@ -1723,17 +1724,69 @@ export class SmartLangGraphAgentService {
     };
   }
 
-  private async handleError(state: SmartAgentState, error: any): Promise<SmartAgentState> {
-    console.error('💥 Handling error:', error);
+  private async errorNode(state: SmartAgentState): Promise<SmartAgentState> {
+    console.error('💥 Handling error:', state.error);
     
     return {
       ...state,
-      error: error instanceof Error ? error.message : 'Unknown error',
       isComplete: true,
       success: false,
       endTime: Date.now()
     };
   }
+
+  // Conditional routing functions
+  private shouldContinue(state: SmartAgentState): string {
+    if (state.isComplete) {
+      return 'complete';
+    }
+    
+    if (state.error) {
+      return 'error';
+    }
+    
+    if (state.currentActionIndex >= state.actionPlan.actions.length) {
+      return 'complete';
+    }
+    
+    return 'continue';
+  }
+
+  private shouldValidate(state: SmartAgentState): string {
+    if (state.isComplete) {
+      return 'complete';
+    }
+    
+    if (state.error) {
+      return 'error';
+    }
+    
+    return 'validate';
+  }
+
+  private shouldAdapt(state: SmartAgentState): string {
+    if (state.isComplete) {
+      return 'complete';
+    }
+    
+    if (state.error) {
+      return 'error';
+    }
+    
+    // Check if we need to adapt strategy or continue to next action
+    const failureRate = state.failedActions.length / (state.currentActionIndex + 1);
+    
+    if (failureRate > 0.3) {
+      return 'adapt';
+    }
+    
+    // Move to next action - increment the action index
+    return 'continue';
+  }
+
+
+
+
 
   private mapActionToTool(actionType: string): string {
     const mapping: Record<string, string> = {
@@ -1955,14 +2008,14 @@ export class SmartLangGraphAgentService {
     }
   }
 
-  // Public method to run the smart agent
-  async runSmartAgent(
+  // Public method to run the web automation agent
+  async runWebAutomationAgent(
     actionPlan: ActionPlan,
     tourConfig: TourConfig,
     featureDocs: ProductDocs,
     credentials?: { username: string; password: string }
   ): Promise<DemoAutomationResult> {
-    console.log('🤖 Starting Smart LangGraph Agent...');
+    console.log('🤖 Starting Web Automation Agent...');
     console.log(`📋 Plan: ${actionPlan.featureName} (${actionPlan.actions.length} actions)`);
     
     try {
@@ -1990,7 +2043,7 @@ export class SmartLangGraphAgentService {
         adaptationStrategy: 'adaptive'
       };
       
-      // Run the workflow
+      // Run the LangGraph workflow
       const result = await this.workflow.invoke(initialState, {
         configurable: {
           thread_id: `smart-agent-${Date.now()}`
@@ -2015,7 +2068,7 @@ export class SmartLangGraphAgentService {
         }
       };
     } catch (error) {
-      console.error('Smart Agent failed:', error);
+      console.error('Web Automation Agent failed:', error);
       
       return {
         success: false,
@@ -2023,7 +2076,7 @@ export class SmartLangGraphAgentService {
         totalSteps: 0,
         processingTime: 0,
         finalUrl: '',
-        error: error instanceof Error ? error.message : 'Smart Agent failed',
+        error: error instanceof Error ? error.message : 'Web Automation Agent failed',
         summary: {
           featuresCovered: [],
           actionsPerformed: [],
@@ -2398,7 +2451,7 @@ export class SmartLangGraphAgentService {
     return analysis;
   }
 
-  async stopAgent(): Promise<void> {
+  async stopAutomationAgent(): Promise<void> {
     await this.puppeteerWorker.cleanup();
   }
 

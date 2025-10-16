@@ -3,7 +3,7 @@ import { CreateDemoResponseDto } from './demo-automation.dto';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
-import { SmartLangGraphAgentService } from './services/smart-langgraph-agent.service';
+import { WebAutomationAgentService } from './services/web-automation-agent.service';
 import { writePlanToFile } from './utils/plan-writer';
 import { 
   TourConfig, 
@@ -20,7 +20,7 @@ export class DemoAutomationService {
     private geminiService: GeminiService,
     private puppeteerWorker: PuppeteerWorkerService,
     private langGraphWorkflow: LangGraphWorkflowService,
-    private smartAgent: SmartLangGraphAgentService
+    private webAutomationAgent: WebAutomationAgentService
   ) {}
 
   async generateProductTour(
@@ -81,13 +81,13 @@ export class DemoAutomationService {
         throw new Error('Login failed - cannot generate tour');
       }
 
-      // Run the Intelligent Smart LangGraph Agent
-      console.log('🤖 Starting Intelligent Smart LangGraph Agent...');
+      // Run the Intelligent Web Automation Agent
+      console.log('🤖 Starting Intelligent Web Automation Agent...');
       console.log('🧠 Agent will intelligently navigate to and use the feature');
       console.log('🎯 Roadmap provides goals, agent figures out execution details');
-      console.log('🔍 Agent will analyze screenshots and make smart decisions');
+      console.log('🔍 Agent will analyze screenshots and make intelligent decisions');
       
-      const result = await this.smartAgent.runSmartAgent(
+      const result = await this.webAutomationAgent.runWebAutomationAgent(
         actionPlan,
         tourConfig,
         featureDocs,
