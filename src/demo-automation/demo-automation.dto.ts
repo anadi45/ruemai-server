@@ -72,18 +72,6 @@ export class CreateDemoResponseDto {
 
   @IsOptional()
   @IsObject()
-  pageInfo?: {
-    title: string;
-    url: string;
-    bodyText: string;
-    totalElements: number;
-    buttons: number;
-    links: number;
-    inputs: number;
-  };
-
-  @IsOptional()
-  @IsObject()
   summary?: {
     processingTime: number;
     loginAttempted: boolean;

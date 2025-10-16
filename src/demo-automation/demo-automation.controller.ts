@@ -28,7 +28,7 @@ export class DemoAutomationController {
       };
       
       // Generate tour from uploaded documents (includes action planning and console logging)
-      const result = await this.demoAutomationService.generateProductTourFromFiles(
+      const result = await this.demoAutomationService.generateProductTour(
         body.websiteUrl,
         credentials,
         files,
@@ -42,7 +42,6 @@ export class DemoAutomationController {
         loginStatus: result.loginStatus,
         tourSteps: result.scrapedData?.pages?.[0]?.scrapedData || [],
         summary: result.summary,
-        pageInfo: result.pageInfo
       };
     } catch (error) {
       throw error;

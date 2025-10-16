@@ -23,36 +23,7 @@ export class DemoAutomationService {
     private smartAgent: SmartLangGraphAgentService
   ) {}
 
-  private async getPageInfo() {
-    try {
-      const domState = await this.puppeteerWorker.getDOMState();
-      
-      return {
-        title: domState.pageTitle,
-        url: domState.currentUrl,
-        bodyText: domState.visibleText.slice(0, 10).join(' '),
-        totalElements: domState.clickableSelectors.length + 
-                      domState.inputSelectors.length + 
-                      domState.selectSelectors.length,
-        buttons: domState.clickableSelectors.length,
-        links: domState.clickableSelectors.filter(sel => sel.includes('a')).length,
-        inputs: domState.inputSelectors.length
-      };
-    } catch (error) {
-      console.error('Error getting page info:', error);
-      return {
-        title: 'Unknown',
-        url: 'Unknown',
-        bodyText: '',
-        totalElements: 0,
-        buttons: 0,
-        links: 0,
-        inputs: 0
-      };
-    }
-  }
-
-  async generateProductTourFromFiles(
+  async generateProductTour(
     websiteUrl: string,
     credentials: { username: string; password: string },
     files: Express.Multer.File[],
@@ -114,8 +85,6 @@ export class DemoAutomationService {
         credentials
       );
 
-      // Get page info before cleanup
-      const pageInfo = await this.getPageInfo();
       const pageTitle = await this.puppeteerWorker.getPageTitle() || 'Tour Page';
 
       // Build response
@@ -126,7 +95,6 @@ export class DemoAutomationService {
         demoName: `Tour-${featureDocs.featureName}-${demoId.slice(0, 8)}`,
         websiteUrl,
         loginStatus: 'success',
-        pageInfo,
         summary: {
           processingTime,
           loginAttempted: true,
@@ -142,7 +110,15 @@ export class DemoAutomationService {
             html: '', // Not storing full HTML for demo
             scrapedData: result.tourSteps,
             timestamp: new Date().toISOString(),
-            pageInfo
+            pageInfo: {
+              title: pageTitle,
+              url: result.finalUrl,
+              bodyText: '',
+              totalElements: 0,
+              buttons: 0,
+              links: 0,
+              inputs: 0
+            }
           }]
         }
       };
