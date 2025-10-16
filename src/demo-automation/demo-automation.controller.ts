@@ -34,13 +34,7 @@ export class DemoAutomationController {
         files,
         body.featureName
       );
-      
-      console.log(`\n✅ Demo automation completed successfully!`);
-      console.log(`📊 Demo ID: ${result.demoId}`);
-      console.log(`📝 Demo Name: ${result.demoName}`);
-      console.log(`🔗 Final URL: ${result.summary?.finalUrl}`);
-      
-      // Return comprehensive result including tour steps and metadata
+
       return {
         demoId: result.demoId,
         demoName: result.demoName,
@@ -54,8 +48,6 @@ export class DemoAutomationController {
       throw error;
     }
   }
-
-
 
   @Post('stop-automation')
   async stopAutomation(): Promise<{ message: string }> {

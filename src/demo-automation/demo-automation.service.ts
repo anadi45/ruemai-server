@@ -124,22 +124,7 @@ export class DemoAutomationService {
         actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
       } catch (error) {
         console.error('Failed to generate action plan with Gemini:', error);
-        // Create a fallback plan
-        actionPlan = {
-          featureName: featureDocs.featureName,
-          totalActions: 0,
-          estimatedDuration: 0,
-          scrapingStrategy: 'Fallback plan - Gemini service unavailable',
-          actions: [],
-          summary: {
-            clickActions: 0,
-            typeActions: 0,
-            navigationActions: 0,
-            waitActions: 0,
-            extractActions: 0,
-            evaluateActions: 0
-          }
-        };
+        throw error;
       }
 
       // Write the plan to JSON file

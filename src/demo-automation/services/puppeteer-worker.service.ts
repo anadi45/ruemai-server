@@ -80,7 +80,7 @@ export class PuppeteerWorkerService {
     await this.page.setJavaScriptEnabled(true);
     
     // Set realistic user agent
-    await this.page.setUserAgent(this.config.userAgent);
+    await this.page.setUserAgent({ userAgent: this.config.userAgent });
     
     // Set viewport
     await this.page.setViewport(this.config.viewport);
