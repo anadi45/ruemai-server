@@ -6,8 +6,6 @@ import { IntelligentElementDiscoveryService } from '../../demo-automation/servic
 import { ActionLoggerService } from '../../demo-automation/services/action-logger.service';
 import { 
   Action, 
-  DOMState, 
-  DOMAnalysis,
   SmartAgentState,
   TourStep, 
   TourConfig, 
@@ -43,16 +41,9 @@ export class WebAutomation {
   }
 
   private initializeTools(): void {
-    // Initialize all tools using the WebAutomationTools class
+    // Initialize only coordinate-based tools using the WebAutomationTools class
     this.tools.set('navigate', this.webAutomationTools.createNavigateTool());
-    this.tools.set('click', this.webAutomationTools.createClickTool());
-    this.tools.set('type', this.webAutomationTools.createTypeTool());
     this.tools.set('wait', this.webAutomationTools.createWaitTool());
-    this.tools.set('extract', this.webAutomationTools.createExtractTool());
-    this.tools.set('evaluate', this.webAutomationTools.createEvaluateTool());
-    this.tools.set('intelligent_navigate', this.webAutomationTools.createIntelligentNavigateTool());
-    this.tools.set('intelligent_discover_feature', this.webAutomationTools.createIntelligentDiscoverFeatureTool());
-    this.tools.set('discover_element', this.webAutomationTools.createDiscoverElementTool());
     this.tools.set('click_coordinates', this.webAutomationTools.createClickCoordinatesTool());
     this.tools.set('type_coordinates', this.webAutomationTools.createTypeCoordinatesTool());
     this.tools.set('scroll_coordinates', this.webAutomationTools.createScrollCoordinatesTool());
@@ -163,10 +154,10 @@ export class WebAutomation {
   }
 
   private async analyzeNode(state: SmartAgentState): Promise<SmartAgentState> {
-    console.log('🧠 Intelligently analyzing current state and planning next action...');
+    console.log('🧠 Analyzing current state for coordinate-based action planning...');
     
     try {
-      // Take screenshot for intelligent visual analysis
+      // Take screenshot for coordinate-based visual analysis
       const screenshot = await this.puppeteerWorker.takeScreenshot();
       const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
@@ -182,16 +173,16 @@ export class WebAutomation {
         };
       }
       
-      // Build enhanced context with intelligent analysis
+      // Build enhanced context for coordinate-based analysis
       let enhancedContext = state.currentContext;
-      enhancedContext += `\n\nIntelligent Page Analysis:\n`;
+      enhancedContext += `\n\nCoordinate-Based Page Analysis:\n`;
       enhancedContext += `- URL: ${currentUrl}\n`;
       enhancedContext += `- Title: ${pageTitle}\n`;
-      enhancedContext += `- Screenshot captured for intelligent visual analysis\n`;
+      enhancedContext += `- Screenshot captured for coordinate-based visual analysis\n`;
       enhancedContext += `- Plan guidance: ${nextAction.description}\n`;
       enhancedContext += `- Feature goal: ${state.featureDocs.featureName}\n`;
       
-      // Use Gemini to intelligently analyze the screenshot and determine the best course of action
+      // Use Gemini to analyze the screenshot for coordinate-based actions
       const analysis = await this.geminiService.analyzeCurrentStateWithScreenshot(
         screenshot,
         currentUrl,
@@ -202,8 +193,8 @@ export class WebAutomation {
         enhancedContext
       );
       
-      // Enhanced reasoning with intelligent analysis
-      const intelligentReasoning = [
+      // Enhanced reasoning with coordinate-based analysis
+      const coordinateBasedReasoning = [
         analysis.reasoning,
         `Plan guidance: ${nextAction.description}`,
         `Feature goal: ${state.featureDocs.featureName}`,
@@ -213,22 +204,22 @@ export class WebAutomation {
       return {
         ...state,
         currentContext: enhancedContext,
-        reasoning: intelligentReasoning,
-        // Store the analysis results for intelligent execution
+        reasoning: coordinateBasedReasoning,
+        // Store the analysis results for coordinate-based execution
         ...analysis
       };
     } catch (error) {
-      console.error('Intelligent analysis failed:', error);
+      console.error('Coordinate-based analysis failed:', error);
       return {
         ...state,
-        error: error instanceof Error ? error.message : 'Intelligent analysis failed',
+        error: error instanceof Error ? error.message : 'Coordinate-based analysis failed',
         isComplete: true
       };
     }
   }
 
   private async executeNode(state: SmartAgentState): Promise<SmartAgentState> {
-    console.log('🔧 Intelligently selecting and executing tool based on roadmap goals...');
+    console.log('🔧 Selecting and executing coordinate-based tool based on roadmap goals...');
     
     try {
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
@@ -247,51 +238,96 @@ export class WebAutomation {
         };
       }
       
-      // INTELLIGENT GOAL-BASED EXECUTION - Use roadmap goals to determine the best approach
-      console.log(`🧠 Using intelligent goal-based execution for: "${nextAction.description}"`);
+      // COORDINATE-BASED EXECUTION - Use coordinate-based tools for all interactions
+      console.log(`🎯 Using coordinate-based execution for: "${nextAction.description}"`);
       console.log(`🎯 Roadmap goal: ${nextAction.description}`);
       console.log(`🎯 Feature: ${state.featureDocs.featureName}`);
       
-      // Take screenshot for intelligent visual analysis
+      // Take screenshot for coordinate-based analysis
       const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
       const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
       console.log(`📸 Screenshot captured with dimensions: ${screenshotData.dimensions.width}x${screenshotData.dimensions.height}`);
       
-      // Determine the best tool based on the goal type
+      // Determine the best coordinate-based tool based on the action type
       let toolName: string;
       let toolParams: any;
       
       if (nextAction.description.toLowerCase().includes('navigate') || 
           nextAction.description.toLowerCase().includes('go to') ||
           nextAction.description.toLowerCase().includes('reach')) {
-        // Use intelligent navigation
-        toolName = 'intelligent_navigate';
+        // Use navigation tool
+        toolName = 'navigate';
         toolParams = {
-          goal: nextAction.description,
-          featureName: state.featureDocs.featureName,
-          context: state.currentContext,
-          screenshot: screenshotData.screenshot,
-          currentUrl: currentUrl,
-          pageTitle: pageTitle
+          url: nextAction.inputText || nextAction.selector
         };
-      } else if (nextAction.description.toLowerCase().includes('access') ||
-                 nextAction.description.toLowerCase().includes('use') ||
-                 nextAction.description.toLowerCase().includes('demonstrate')) {
-        // Use intelligent feature discovery
-        toolName = 'intelligent_discover_feature';
+      } else if (nextAction.type === 'click' || 
+                 nextAction.description.toLowerCase().includes('click')) {
+        // Use coordinate-based click
+        toolName = 'click_coordinates';
         toolParams = {
-          featureName: state.featureDocs.featureName,
-          goal: nextAction.description,
+          actionDescription: nextAction.description,
+          actionType: nextAction.type,
           context: state.currentContext,
           screenshot: screenshotData.screenshot,
+          screenshotData: screenshotData.screenshotData,
+          screenshotPath: screenshotData.screenshotPath,
           currentUrl: currentUrl,
-          pageTitle: pageTitle
+          pageTitle: pageTitle,
+          viewportDimensions: screenshotData.dimensions
+        };
+      } else if (nextAction.type === 'type' || 
+                 nextAction.description.toLowerCase().includes('type') ||
+                 nextAction.description.toLowerCase().includes('enter')) {
+        // Use coordinate-based type
+        toolName = 'type_coordinates';
+        toolParams = {
+          actionDescription: nextAction.description,
+          actionType: nextAction.type,
+          inputText: nextAction.inputText,
+          context: state.currentContext,
+          screenshot: screenshotData.screenshot,
+          screenshotData: screenshotData.screenshotData,
+          screenshotPath: screenshotData.screenshotPath,
+          currentUrl: currentUrl,
+          pageTitle: pageTitle,
+          viewportDimensions: screenshotData.dimensions
+        };
+      } else if (nextAction.type === 'scroll' || 
+                 nextAction.description.toLowerCase().includes('scroll')) {
+        // Use coordinate-based scroll
+        toolName = 'scroll_coordinates';
+        toolParams = {
+          actionDescription: nextAction.description,
+          actionType: nextAction.type,
+          context: state.currentContext,
+          screenshot: screenshotData.screenshot,
+          screenshotData: screenshotData.screenshotData,
+          screenshotPath: screenshotData.screenshotPath,
+          currentUrl: currentUrl,
+          pageTitle: pageTitle,
+          viewportDimensions: screenshotData.dimensions
+        };
+      } else if (nextAction.type === 'select' || 
+                 nextAction.description.toLowerCase().includes('select')) {
+        // Use coordinate-based select
+        toolName = 'select_coordinates';
+        toolParams = {
+          actionDescription: nextAction.description,
+          actionType: nextAction.type,
+          inputText: nextAction.inputText,
+          context: state.currentContext,
+          screenshot: screenshotData.screenshot,
+          screenshotData: screenshotData.screenshotData,
+          screenshotPath: screenshotData.screenshotPath,
+          currentUrl: currentUrl,
+          pageTitle: pageTitle,
+          viewportDimensions: screenshotData.dimensions
         };
       } else {
-        // Use intelligent element discovery for other goals
-        toolName = 'discover_element';
+        // Default to coordinate-based click for unknown actions
+        toolName = 'click_coordinates';
         toolParams = {
           actionDescription: nextAction.description,
           actionType: nextAction.type,
@@ -305,18 +341,18 @@ export class WebAutomation {
         };
       }
       
-      console.log(`🛠️  Selected intelligent tool: ${toolName}`);
+      console.log(`🛠️  Selected coordinate-based tool: ${toolName}`);
       console.log(`🎯 Goal: ${nextAction.description}`);
       
       const tool = this.tools.get(toolName);
       if (!tool) {
-        throw new Error(`No intelligent tool available for: ${toolName}`);
+        throw new Error(`No coordinate-based tool available for: ${toolName}`);
       }
       
-      // Execute the intelligent tool
+      // Execute the coordinate-based tool
       const result = await tool.execute(toolParams, state);
       
-      console.log(`📊 Goal-Based Execution Output:`, {
+      console.log(`📊 Coordinate-Based Execution Output:`, {
         success: result.success,
         method: result.result?.method,
         reasoning: result.result?.reasoning,
@@ -333,7 +369,7 @@ export class WebAutomation {
       }
       
       if (result.success) {
-        console.log('✅ Intelligent goal execution successful');
+        console.log('✅ Coordinate-based execution successful');
         
         // Log action completion
         this.actionLogger.logActionComplete(`goal-${state.currentActionIndex}-${Date.now()}`, true);
@@ -361,7 +397,7 @@ export class WebAutomation {
           extractedData: { ...state.extractedData, ...result.result }
         };
       } else {
-        console.log('❌ Intelligent goal execution failed:', result.error);
+        console.log('❌ Coordinate-based execution failed:', result.error);
         
         // Log action failure
         this.actionLogger.logActionComplete(`goal-${state.currentActionIndex}-${Date.now()}`, false, result.error);
@@ -427,7 +463,7 @@ export class WebAutomation {
         };
       }
     } catch (error) {
-      console.error('Intelligent goal execution failed:', error);
+      console.error('Coordinate-based execution failed:', error);
       
       // Check if this is a critical goal
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
@@ -464,11 +500,11 @@ export class WebAutomation {
         };
       }
       
-      return {
-        ...state,
-        error: error instanceof Error ? error.message : 'Intelligent goal execution failed',
-        failedActions: [...state.failedActions, state.currentActionIndex]
-      };
+        return {
+          ...state,
+          error: error instanceof Error ? error.message : 'Coordinate-based execution failed',
+          failedActions: [...state.failedActions, state.currentActionIndex]
+        };
     }
   }
 
@@ -485,7 +521,7 @@ export class WebAutomation {
       
       console.log('📸 Screenshot captured for validation analysis with dimensions:', screenshotData.dimensions);
       
-      // Use Gemini to validate the action was successful using screenshot
+      // Use Gemini to validate the coordinate-based action was successful using screenshot
       const validation = await this.geminiService.validateActionSuccessWithScreenshot(
         {
           type: nextAction.type,
@@ -516,7 +552,7 @@ export class WebAutomation {
         }
       }
       
-      // Enhanced validation logic using screenshot analysis
+      // Enhanced validation logic for coordinate-based actions using screenshot analysis
       let validationSuccess = validation.success;
       let validationReasoning = validation.reasoning;
       
@@ -524,20 +560,28 @@ export class WebAutomation {
       if (nextAction.type === 'navigate') {
         const targetUrl = nextAction.inputText || nextAction.selector;
         
-        console.log(`🔍 Navigation validation details:`);
+        console.log(`🔍 Coordinate-based navigation validation details:`);
         console.log(`   Target URL: "${targetUrl}"`);
         console.log(`   Current URL: "${currentUrl}"`);
         
         if (targetUrl && currentUrl && currentUrl.includes(targetUrl.split('/')[2])) {
           // We're on the same domain, navigation might be successful
           validationSuccess = true;
-          validationReasoning = 'Navigation successful - reached target domain';
-          console.log(`✅ Navigation validation: Target domain reached`);
+          validationReasoning = 'Coordinate-based navigation successful - reached target domain';
+          console.log(`✅ Coordinate-based navigation validation: Target domain reached`);
         } else if (targetUrl && currentUrl && currentUrl !== targetUrl) {
           validationSuccess = false;
-          validationReasoning = 'Navigation action did not result in expected URL change';
-          console.log(`❌ Navigation validation: URL change required but not detected`);
+          validationReasoning = 'Coordinate-based navigation action did not result in expected URL change';
+          console.log(`❌ Coordinate-based navigation validation: URL change required but not detected`);
         }
+      }
+      
+      // For coordinate-based actions, rely more heavily on visual validation
+      if (nextAction.type === 'click' || nextAction.type === 'type' || nextAction.type === 'scroll' || nextAction.type === 'select') {
+        console.log(`🔍 Coordinate-based action validation: ${nextAction.type}`);
+        // For coordinate-based actions, the screenshot analysis is more reliable
+        validationSuccess = validation.success;
+        validationReasoning = `Coordinate-based ${nextAction.type} validation: ${validation.reasoning}`;
       }
       
       if (!validationSuccess) {
@@ -560,19 +604,19 @@ export class WebAutomation {
           
           // For critical actions, also use intelligent retry but with stricter limits
           if (state.retryCount < state.maxRetries) {
-            console.log(`🔄 Critical action validation failed, attempting intelligent retry (${state.retryCount + 1}/${state.maxRetries})...`);
+            console.log(`🔄 Critical coordinate-based action validation failed, attempting intelligent retry (${state.retryCount + 1}/${state.maxRetries})...`);
             
             try {
-              // Use LLM to analyze failure and regenerate improved action
+              // Use LLM to analyze failure and regenerate improved coordinate-based action
               const retryAnalysis = await this.geminiService.analyzeFailureAndRegenerateAction(
                 nextAction,
                 validationReasoning,
-                state.domState!,
+                null, // No DOM state for coordinate-based actions
                 state.goal,
                 state.retryCount + 1
               );
               
-              console.log(`🧠 Critical action intelligent retry analysis:`, {
+              console.log(`🧠 Critical coordinate-based action intelligent retry analysis:`, {
                 analysis: retryAnalysis.analysis,
                 improvedAction: retryAnalysis.improvedAction,
                 recommendations: retryAnalysis.recommendations
@@ -596,11 +640,11 @@ export class WebAutomation {
                 retryCount: state.retryCount + 1,
                 actionPlan: updatedActionPlan,
                 currentActionIndex: state.currentActionIndex - 1, // Retry the same action index
-                reasoning: `Critical action intelligent retry ${state.retryCount + 1}: ${retryAnalysis.analysis}`
+                reasoning: `Critical coordinate-based action intelligent retry ${state.retryCount + 1}: ${retryAnalysis.analysis}`
               };
             } catch (error) {
-              console.error('Critical action intelligent retry failed:', error);
-              console.log('🔄 Critical action falling back to simple retry...');
+              console.error('Critical coordinate-based action intelligent retry failed:', error);
+              console.log('🔄 Critical coordinate-based action falling back to simple retry...');
               
               return {
                 ...state,
@@ -644,19 +688,19 @@ export class WebAutomation {
         
         // For non-critical actions, check retry count and use intelligent retry
         if (state.retryCount < state.maxRetries) {
-          console.log(`🔄 Action validation failed, attempting intelligent retry (${state.retryCount + 1}/${state.maxRetries})...`);
+          console.log(`🔄 Coordinate-based action validation failed, attempting intelligent retry (${state.retryCount + 1}/${state.maxRetries})...`);
           
           try {
-            // Use LLM to analyze failure and regenerate improved action
+            // Use LLM to analyze failure and regenerate improved coordinate-based action
             const retryAnalysis = await this.geminiService.analyzeFailureAndRegenerateAction(
               nextAction,
               validationReasoning,
-              state.domState!,
+              null, // No DOM state for coordinate-based actions
               state.goal,
               state.retryCount + 1
             );
             
-            console.log(`🧠 Intelligent retry analysis:`, {
+            console.log(`🧠 Coordinate-based intelligent retry analysis:`, {
               analysis: retryAnalysis.analysis,
               improvedAction: retryAnalysis.improvedAction,
               recommendations: retryAnalysis.recommendations
@@ -680,11 +724,11 @@ export class WebAutomation {
               retryCount: state.retryCount + 1,
               actionPlan: updatedActionPlan,
               currentActionIndex: state.currentActionIndex - 1, // Retry the same action index
-              reasoning: `Intelligent retry ${state.retryCount + 1}: ${retryAnalysis.analysis}`
+              reasoning: `Coordinate-based intelligent retry ${state.retryCount + 1}: ${retryAnalysis.analysis}`
             };
           } catch (error) {
-            console.error('Intelligent retry failed:', error);
-            console.log('🔄 Falling back to simple retry...');
+            console.error('Coordinate-based intelligent retry failed:', error);
+            console.log('🔄 Coordinate-based action falling back to simple retry...');
             
             return {
               ...state,
@@ -693,7 +737,7 @@ export class WebAutomation {
             };
           }
         } else {
-          console.log('⚠️  Non-critical action validation failed after max retries, continuing...');
+          console.log('⚠️  Non-critical coordinate-based action validation failed after max retries, continuing...');
         }
       } else {
         // Log successful validation
@@ -971,7 +1015,6 @@ export class WebAutomation {
         failedActions: [],
         currentStep: 0,
         totalSteps: actionPlan.actions.length,
-        domState: null,
         tourSteps: [],
         history: [],
         goal: tourConfig.goal,
