@@ -30,7 +30,7 @@ export interface AgentTool {
 }
 
 @Injectable()
-export class WebAutomationAgentService {
+export class WebAutomation {
   private workflow: any;
   private memory: MemorySaver;
   private tools: Map<string, AgentTool>;
