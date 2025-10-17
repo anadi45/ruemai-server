@@ -230,6 +230,68 @@ export class LLMService {
     }
   }
 
+  /**
+   * Call LLM with screenshot file for coordinate analysis
+   */
+  private async callLLMWithScreenshotFile(
+    prompt: string,
+    systemPrompt: string,
+    screenshotPath: string,
+    temperature: number = 0.1
+  ): Promise<LLMResponse> {
+    try {
+      console.log(`📸 Uploading screenshot file for coordinate analysis: ${screenshotPath}`);
+      
+      // Read the screenshot file
+      const screenshotBuffer = fs.readFileSync(screenshotPath);
+      
+      // Upload the screenshot file to Gemini
+      const uploadedFiles = await this.uploadScreenshotToGemini(screenshotBuffer, screenshotPath);
+      
+      // Call LLM with the uploaded screenshot
+      const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
+      const response = await this.callLLMWithFiles(fullPrompt, uploadedFiles, temperature);
+      
+      return this.parseLLMResponse(response);
+    } catch (error) {
+      console.error('Error calling LLM with screenshot file:', error);
+      return {
+        success: false,
+        reasoning: 'Error analyzing screenshot with LLM',
+        action: null,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Upload screenshot file to Gemini and return file references
+   */
+  private async uploadScreenshotToGemini(screenshotBuffer: Buffer, screenshotPath: string): Promise<any[]> {
+    try {
+      console.log(`📤 Uploading screenshot to Gemini: ${screenshotPath}`);
+      
+      // Get API key for file upload
+      const keyIndex = this.getNextKeyIndex();
+      const apiKey = this.getApiKeys()[keyIndex];
+      
+      // Create file manager instance
+      const fileManager = new GoogleAIFileManager(apiKey);
+      
+      // Upload file directly using buffer
+      const uploadedFile = await fileManager.uploadFile(screenshotBuffer, {
+        mimeType: 'image/png',
+        displayName: `screenshot_${Date.now()}.png`
+      });
+      
+      console.log(`✅ Successfully uploaded screenshot to ${uploadedFile.file.uri}`);
+      return [uploadedFile.file];
+    } catch (error) {
+      console.error(`❌ Failed to upload screenshot ${screenshotPath}:`, error);
+      throw new Error(`Failed to upload screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   async callLLM(
     prompt: string,
     systemPrompt?: string,
@@ -652,6 +714,15 @@ Based on the failure analysis, suggest an alternative action. Return in this JSO
     pageAnalysis: string;
     recommendations: string[];
   }> {
+    if (!screenshotPath) {
+      console.error('❌ Screenshot path is required for coordinate analysis');
+      return {
+        coordinates: [],
+        pageAnalysis: 'No screenshot path provided',
+        recommendations: ['Screenshot path is required']
+      };
+    }
+
     const systemPrompt = `You are an expert web automation agent specializing in coordinate-based interactions. Analyze the screenshot and determine the best coordinates for clicking on elements.
 
 Guidelines:
@@ -669,9 +740,6 @@ Current URL: ${currentUrl}
 Page Title: ${pageTitle}
 Viewport: ${viewportDimensions.width}x${viewportDimensions.height}
 Search Context: ${searchContext}
-
-Screenshot Analysis:
-[Base64 screenshot provided - analyze the visual layout and interactive elements]
 
 IMPORTANT: Only return coordinates with high confidence (>0.7) for clear, unambiguous elements.
 For navigation elements like "workflows" in a left sidebar, look for:
@@ -704,7 +772,8 @@ Find the best coordinates for this action. Return in this JSON format:
 `;
 
     try {
-      const response = await this.callLLM(prompt, systemPrompt, 0.1);
+      // Upload screenshot file to Gemini and get coordinate analysis
+      const response = await this.callLLMWithScreenshotFile(prompt, systemPrompt, screenshotPath, 0.1);
       
       console.log("🚀 ~ LLMService ~ detectClickCoordinates ~ response:", JSON.stringify(response, null, 2));
       
@@ -765,6 +834,16 @@ Find the best coordinates for this action. Return in this JSON format:
         pageAnalysis: 'Error analyzing page',
         recommendations: ['Check page state and try again']
       };
+    } finally {
+      // Clean up the screenshot file after analysis
+      if (screenshotPath && fs.existsSync(screenshotPath)) {
+        try {
+          fs.unlinkSync(screenshotPath);
+          console.log(`🗑️ Cleaned up screenshot file: ${screenshotPath}`);
+        } catch (cleanupError) {
+          console.warn(`⚠️ Failed to clean up screenshot file ${screenshotPath}:`, cleanupError);
+        }
+      }
     }
   }
 

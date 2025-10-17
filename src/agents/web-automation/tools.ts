@@ -118,7 +118,9 @@ export class WebAutomationTools {
             currentUrl,
             pageTitle,
             screenshotData.viewport,
-            params.context || state.currentContext
+            params.context || state.currentContext,
+            screenshotData.screenshotData,
+            screenshotData.screenshotPath
           );
           
           if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.1) {
@@ -260,7 +262,9 @@ export class WebAutomationTools {
             currentUrl,
             pageTitle,
             screenshotData.viewport,
-            params.context || state.currentContext
+            params.context || state.currentContext,
+            screenshotData.screenshotData,
+            screenshotData.screenshotPath
           );
           
           if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.1) {
