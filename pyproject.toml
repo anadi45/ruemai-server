@@ -1,0 +1,26 @@
+[project]
+name = "ruem-server"
+version = "1.0.0"
+description = "A basic FastAPI server with health check endpoints"
+authors = [
+    {name = "RUEM Team"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.104.1",
+    "python-multipart>=0.0.20",
+    "uvicorn[standard]>=0.24.0",
+    "browser-use>=0.1.0",
+    "httpx>=0.24.0",
+    "python-dotenv>=1.0.0",
+    "google-generativeai>=0.3.0",
+    "PyPDF2>=3.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.24.0",
+]
