@@ -26,8 +26,14 @@ async def create_demo(
 
         print("feature_usage_instructions: ", feature_usage_instructions)
         
+        # Create the final task - combine original task with feature usage instructions if available
+        final_task = task
+        if feature_usage_instructions:
+            final_task = f"{task}\n\nFeature Usage Instructions:\n{feature_usage_instructions}"
+            logger.info("Combined original task with feature usage instructions")
+        
         # Execute the browser automation task
-        automation_result = await execute_browser_task(task)
+        automation_result = await execute_browser_task(final_task)
         
         # Prepare response data
         response_data = {
