@@ -267,12 +267,18 @@ export class IntelligentElementDiscoveryService {
           )
         : null;
       
-      if (bestMatch && bestMatch.confidence > 0.3) {
+      if (bestMatch && bestMatch.confidence > 0.1) {
         console.log(`✅ Coordinates found: (${bestMatch.x}, ${bestMatch.y}) with confidence ${bestMatch.confidence}`);
         console.log(`💭 Reasoning: ${bestMatch.reasoning}`);
       } else {
         console.log(`❌ No suitable coordinates found. Best match:`, bestMatch);
         console.log(`📊 All coordinates:`, coordinateResult.coordinates);
+        console.log(`🔍 Confidence threshold: 0.3, Best match confidence: ${bestMatch?.confidence || 'N/A'}`);
+        
+        // Try with lower confidence threshold for debugging
+        if (bestMatch && bestMatch.confidence > 0.1) {
+          console.log(`⚠️ Found coordinates with lower confidence (${bestMatch.confidence}), but above 0.1 threshold`);
+        }
       }
       
       return {

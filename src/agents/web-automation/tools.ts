@@ -121,7 +121,7 @@ export class WebAutomationTools {
             params.context || state.currentContext
           );
           
-          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.1) {
             console.log(`✅ Coordinates found: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y}) with confidence ${coordinateDiscovery.bestMatch.confidence}`);
             
             const clickResult = await this.puppeteerWorker.clickAtCoordinates(
@@ -196,9 +196,31 @@ export class WebAutomationTools {
             }
           }
           
+          // Try a fallback approach - use center of screen as last resort
+          console.log('🔄 No coordinates found, trying center of screen fallback...');
+          const centerX = Math.floor(screenshotData.viewport.width / 2);
+          const centerY = Math.floor(screenshotData.viewport.height / 2);
+          
+          console.log(`🎯 Using center coordinates: (${centerX}, ${centerY})`);
+          
+          const fallbackResult = await this.puppeteerWorker.clickAtCoordinates(centerX, centerY);
+          
+          if (fallbackResult.success) {
+            console.log('✅ Fallback center click successful');
+            return { 
+              success: true, 
+              result: {
+                coordinates: { x: centerX, y: centerY },
+                confidence: 0.1,
+                reasoning: 'Fallback center click',
+                method: 'fallback'
+              }
+            };
+          }
+          
           return { 
             success: false, 
-            error: 'No suitable coordinates found and no fallback available' 
+            error: 'No suitable coordinates found and fallback also failed' 
           };
         } catch (error) {
           console.error('Coordinate-based click failed:', error);
@@ -241,7 +263,7 @@ export class WebAutomationTools {
             params.context || state.currentContext
           );
           
-          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.1) {
             console.log(`✅ Coordinates found: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y}) with confidence ${coordinateDiscovery.bestMatch.confidence}`);
             
             const typeResult = await this.puppeteerWorker.executeAction({
@@ -317,7 +339,7 @@ export class WebAutomationTools {
             params.context || state.currentContext
           );
           
-          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.1) {
             console.log(`✅ Coordinates found: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y}) with confidence ${coordinateDiscovery.bestMatch.confidence}`);
             
             const scrollResult = await this.puppeteerWorker.executeAction({
@@ -393,7 +415,7 @@ export class WebAutomationTools {
             params.context || state.currentContext
           );
           
-          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.3) {
+          if (coordinateDiscovery.bestMatch && coordinateDiscovery.bestMatch.confidence > 0.1) {
             console.log(`✅ Coordinates found: (${coordinateDiscovery.bestMatch.x}, ${coordinateDiscovery.bestMatch.y}) with confidence ${coordinateDiscovery.bestMatch.confidence}`);
             
             const selectResult = await this.puppeteerWorker.executeAction({

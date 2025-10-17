@@ -261,9 +261,20 @@ export class WebAutomation {
         // Use navigation tool
         toolName = 'navigate';
         
-        // Extract URL from description text
-        const urlMatch = nextAction.description.match(/https?:\/\/[^\s]+/);
-        const extractedUrl = urlMatch ? urlMatch[0].replace(/[.,;!?]+$/, '') : nextAction.description;
+        // Extract URL from description text - handle both with and without protocols
+        let extractedUrl = nextAction.description;
+        
+        // First try to find URLs with protocols
+        const urlWithProtocolMatch = nextAction.description.match(/https?:\/\/[^\s]+/);
+        if (urlWithProtocolMatch) {
+          extractedUrl = urlWithProtocolMatch[0].replace(/[.,;!?]+$/, '');
+        } else {
+          // Try to find URLs without protocols (like app.gorattle.com/home)
+          const urlWithoutProtocolMatch = nextAction.description.match(/([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:\/[^\s\)]*)?/);
+          if (urlWithoutProtocolMatch) {
+            extractedUrl = `https://${urlWithoutProtocolMatch[0].replace(/[.,;!?\)]+$/, '')}`;
+          }
+        }
         
         console.log(`🔍 Extracted URL from description: "${nextAction.description}" -> "${extractedUrl}"`);
         
