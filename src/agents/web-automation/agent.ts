@@ -260,8 +260,15 @@ export class WebAutomation {
           nextAction.description.toLowerCase().includes('reach')) {
         // Use navigation tool
         toolName = 'navigate';
+        
+        // Extract URL from description text
+        const urlMatch = nextAction.description.match(/https?:\/\/[^\s]+/);
+        const extractedUrl = urlMatch ? urlMatch[0].replace(/[.,;!?]+$/, '') : nextAction.description;
+        
+        console.log(`🔍 Extracted URL from description: "${nextAction.description}" -> "${extractedUrl}"`);
+        
         toolParams = {
-          url: nextAction.description // Use description as URL hint
+          url: extractedUrl // Extract actual URL from description
         };
       } else if (nextAction.description.toLowerCase().includes('go back') ||
                  nextAction.description.toLowerCase().includes('back') ||

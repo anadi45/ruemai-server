@@ -73,7 +73,7 @@ export class WebAutomationTools {
             // Simple time-based wait
             const duration = params.duration || 1; // Default to 1 second if not specified
             console.log(`⏳ Waiting for ${duration} seconds`);
-            await new Promise(resolve => setTimeout(resolve, duration * 1000));
+            // Note: setTimeout removed - using networkidle instead
             return { success: true, result: { duration: duration } };
           }
         } catch (error) {
@@ -132,9 +132,7 @@ export class WebAutomationTools {
             if (clickResult.success) {
               console.log('✅ Coordinate-based click successful');
               
-              if (params.waitAfter) {
-                await new Promise(resolve => setTimeout(resolve, params.waitAfter));
-              }
+              // Note: waitAfter timeout removed - using networkidle instead
               
               return { 
                 success: true, 
@@ -261,9 +259,7 @@ export class WebAutomationTools {
             if (typeResult.success) {
               console.log('✅ Coordinate-based type successful');
               
-              if (params.waitAfter) {
-                await new Promise(resolve => setTimeout(resolve, params.waitAfter));
-              }
+              // Note: waitAfter timeout removed - using networkidle instead
               
               return { 
                 success: true, 
@@ -338,9 +334,7 @@ export class WebAutomationTools {
             if (scrollResult.success) {
               console.log('✅ Coordinate-based scroll successful');
               
-              if (params.waitAfter) {
-                await new Promise(resolve => setTimeout(resolve, params.waitAfter));
-              }
+              // Note: waitAfter timeout removed - using networkidle instead
               
               return { 
                 success: true, 
@@ -417,9 +411,7 @@ export class WebAutomationTools {
             if (selectResult.success) {
               console.log('✅ Coordinate-based select successful');
               
-              if (params.waitAfter) {
-                await new Promise(resolve => setTimeout(resolve, params.waitAfter));
-              }
+              // Note: waitAfter timeout removed - using networkidle instead
               
               return { 
                 success: true, 
@@ -469,11 +461,7 @@ export class WebAutomationTools {
           const newUrl = this.puppeteerWorker.getCurrentUrl() || '';
           console.log(`📍 New URL after going back: ${newUrl}`);
           
-          // Wait additional time if specified
-          if (params.waitAfter) {
-            console.log(`⏳ Waiting ${params.waitAfter}ms after going back...`);
-            await new Promise(resolve => setTimeout(resolve, params.waitAfter));
-          }
+          // Note: waitAfter timeout removed - using networkidle instead
           
           console.log(`✅ Successfully navigated back`);
           return { 
