@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { CreateDemoResponseDto } from './demo-automation.dto';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
-import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
 import { WebAutomation } from '../agents/web-automation/agent';
 import { writePlanToFile } from './utils/plan-writer';
 import { 
@@ -19,7 +18,6 @@ export class DemoAutomationService {
   constructor(
     private geminiService: GeminiService,
     private puppeteerWorker: PuppeteerWorkerService,
-    private langGraphWorkflow: LangGraphWorkflowService,
     private webAutomationAgent: WebAutomation
   ) {}
 
@@ -161,6 +159,5 @@ export class DemoAutomationService {
 
   async stopAllAutomation(): Promise<void> {
     await this.puppeteerWorker.cleanup();
-    await this.langGraphWorkflow.stopWorkflow();
   }
 }

@@ -5,7 +5,6 @@ import { DemoAutomationModule } from '../src/demo-automation/demo-automation.mod
 import { DemoAutomationService } from '../src/demo-automation/demo-automation.service';
 import { GeminiService } from '../src/demo-automation/services/gemini.service';
 import { PuppeteerWorkerService } from '../src/demo-automation/services/puppeteer-worker.service';
-import { LangGraphWorkflowService } from '../src/demo-automation/services/langgraph-workflow.service';
 
 describe('Demo Automation E2E Tests', () => {
   let app: INestApplication;

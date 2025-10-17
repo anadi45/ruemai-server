@@ -3,7 +3,6 @@ import { DemoAutomationController } from './demo-automation.controller';
 import { DemoAutomationService } from './demo-automation.service';
 import { GeminiService } from './services/gemini.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
-import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
 import { WebAutomation } from '../agents/web-automation/agent';
 import { IntelligentElementDiscoveryService } from './services/intelligent-element-discovery.service';
 import { ActionLoggerService } from './services/action-logger.service';
@@ -14,7 +13,6 @@ import { ActionLoggerService } from './services/action-logger.service';
     DemoAutomationService,
     GeminiService,
     PuppeteerWorkerService,
-    LangGraphWorkflowService,
     WebAutomation,
     IntelligentElementDiscoveryService,
     ActionLoggerService
