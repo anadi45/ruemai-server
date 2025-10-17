@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CreateDemoResponseDto } from './demo-automation.dto';
 import { LLMService } from './services/llm.service';
+import { ActionPlanService } from './services/action-plan.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { WebAutomation } from '../agents/web-automation/agent';
 import { writePlanToFile } from './utils/plan-writer';
@@ -17,6 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
 export class DemoAutomationService {
   constructor(
     private llmService: LLMService,
+    private actionPlanService: ActionPlanService,
     private puppeteerWorker: PuppeteerWorkerService,
     private webAutomationAgent: WebAutomation
   ) {}
@@ -63,6 +65,8 @@ export class DemoAutomationService {
 
       // Write the plan to JSON file
       writePlanToFile(actionPlan);
+
+      return;
 
       // Generate tour configuration
       const tourConfig: TourConfig = {
@@ -147,7 +151,7 @@ export class DemoAutomationService {
       console.log('🎯 Creating high-level goals for feature demonstration');
       console.log('🔍 Agent will figure out execution details through visual analysis');
       
-      const actionPlan = await this.llmService.generateActionPlan(featureDocs, websiteUrl);
+      const actionPlan = await this.actionPlanService.generateActionPlan(featureDocs, websiteUrl);
 
       console.log('✅ Generated intelligent roadmap');
       console.log(`📋 Roadmap contains ${actionPlan.actions.length} high-level goals`);
