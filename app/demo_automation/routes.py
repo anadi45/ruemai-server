@@ -27,8 +27,7 @@ async def create_demo(
                 "login_details": {
                     "success": True,
                     "message": login_result["message"],
-                    "final_url": login_result.get("url"),
-                    "page_title": login_result.get("title")
+                    "final_result": login_result.get("final_result", "No result available")
                 },
                 "feature_name": featureName,
                 "uploaded_file": featureDocs.filename
@@ -42,6 +41,7 @@ async def create_demo(
                 "login_details": {
                     "success": False,
                     "message": login_result["message"],
+                    "final_result": login_result.get("final_result", "No result available"),
                     "error": login_result.get("error")
                 },
                 "feature_name": featureName,

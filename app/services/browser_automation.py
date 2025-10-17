@@ -14,7 +14,6 @@ class BrowserAutomationService:
     async def __aenter__(self):
         """Async context manager entry."""
         self.agent = Agent(
-            task="Login to website",
             llm=None,  # browser-use will use default LLM
             use_vision=True,
             max_steps=10  # Explicitly set max_steps as integer
@@ -70,13 +69,15 @@ class BrowserAutomationService:
             # Analyze the result to determine success
             success = self._analyze_login_result(result, website_url)
             
+            # Extract final result message
+            final_result_message = result.final_result() if result.final_result() else "No final result available"
+            
             if success:
                 logger.info("Login successful")
                 return {
                     "success": True,
                     "message": "Login successful",
-                    "url": result.get("url", website_url),
-                    "title": result.get("title", ""),
+                    "final_result": final_result_message,
                     "agent_result": result
                 }
             else:
@@ -84,7 +85,7 @@ class BrowserAutomationService:
                 return {
                     "success": False,
                     "message": "Login failed - could not authenticate",
-                    "url": result.get("url", website_url),
+                    "final_result": final_result_message,
                     "agent_result": result
                 }
                 
@@ -96,33 +97,35 @@ class BrowserAutomationService:
                 "error": str(e)
             }
     
-    def _analyze_login_result(self, result: Dict[str, Any], original_url: str) -> bool:
+    def _analyze_login_result(self, result, original_url: str) -> bool:
         """
         Analyze the agent result to determine if login was successful.
         
         Args:
-            result (Dict[str, Any]): Result from browser-use agent
+            result: AgentHistoryList from browser-use agent
             original_url (str): Original website URL
             
         Returns:
             bool: True if login appears successful, False otherwise
         """
         try:
-            # Check if we're still on the login page (indicates failure)
-            current_url = result.get("url", "")
-            if "login" in current_url.lower() or "signin" in current_url.lower():
+            # Get the final result message from the agent
+            final_result = result.final_result()
+            if not final_result:
                 return False
             
-            # Check for success indicators in the result
-            result_text = str(result).lower()
+            # Convert to lowercase for analysis
+            result_text = final_result.lower()
+            
+            # Check for success indicators
             success_indicators = [
                 "dashboard", "profile", "welcome", "logout", "account", 
-                "settings", "authenticated", "logged in"
+                "settings", "authenticated", "logged in", "success", "completed"
             ]
             
             failure_indicators = [
                 "invalid", "incorrect", "wrong", "failed", "error", 
-                "denied", "unauthorized", "login failed"
+                "denied", "unauthorized", "login failed", "unable to", "cannot"
             ]
             
             # Check for failure indicators first
@@ -135,9 +138,16 @@ class BrowserAutomationService:
                 if indicator in result_text:
                     return True
             
-            # If URL changed from original, assume success
-            if current_url != original_url and current_url:
-                return True
+            # Check the action results for any browser state changes
+            action_results = result.action_results()
+            if action_results:
+                # Look at the last action result for any success indicators
+                last_result = action_results[-1]
+                if hasattr(last_result, 'extracted_content') and last_result.extracted_content:
+                    content = last_result.extracted_content.lower()
+                    for indicator in success_indicators:
+                        if indicator in content:
+                            return True
             
             # Default to failure if we can't determine
             return False
