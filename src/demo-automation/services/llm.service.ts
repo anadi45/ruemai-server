@@ -302,22 +302,28 @@ export class LLMService {
       const prompt = `
 Analyze the following uploaded files and extract feature information for "${featureName || 'the feature'}".
 
+Think about how a real user would interact with this feature. Focus on the user journey and natural interactions, not technical implementation details.
+
 Please extract:
 1. Feature name
-2. Description of what the feature does
-3. Step-by-step instructions for using the feature
-4. CSS selectors or element identifiers needed
+2. Description of what the feature does from a user's perspective
+3. Step-by-step user journey - describe what the user does, sees, and experiences
+4. User-visible elements and interactions (buttons, forms, text, etc.) - describe what the user sees and interacts with
 5. Expected outcomes after completing the feature
 6. Any prerequisites or setup requirements
 
-IMPORTANT: You must respond with ONLY valid JSON. Do not include any text before or after the JSON. Do not wrap the JSON in markdown code blocks.
+IMPORTANT: 
+- Focus on user behavior and natural interactions
+- Describe what the user sees and does, not technical selectors
+- Think about the user's journey through the interface
+- You must respond with ONLY valid JSON. Do not include any text before or after the JSON. Do not wrap the JSON in markdown code blocks.
 
 Return the information in this exact JSON format:
 {
   "featureName": "string",
   "description": "string", 
-  "steps": ["step1", "step2", "step3"],
-  "selectors": ["selector1", "selector2"],
+  "steps": ["user step 1", "user step 2", "user step 3"],
+  "selectors": ["user-visible element 1", "user-visible element 2"],
   "expectedOutcomes": ["outcome1", "outcome2"],
   "prerequisites": ["prereq1", "prereq2"]
 }
@@ -352,21 +358,23 @@ Return the information in this exact JSON format:
     totalSteps: number,
     currentStep: number
   ): Promise<LLMResponse> {
-    const systemPrompt = `You are an expert web automation agent. Analyze the current page state and decide the next action to take.
+    const systemPrompt = `You are an expert user experience automation agent. Analyze the current page state and decide the next action to take from a user's perspective.
 
 You have access to:
-- Current DOM state with all elements and their properties
+- Current page state and visual information
 - The goal you're trying to achieve
 - Feature documentation
 - Previous actions taken
 - Current step progress
 
 Guidelines:
-- Always prioritize user-like behavior
-- Look for the most obvious and intuitive elements
+- Think like a real user navigating the website
+- Always prioritize user-like behavior and natural interactions
+- Look for the most obvious and intuitive elements that a user would see and interact with
 - Consider the context and flow of the user journey
+- Focus on what the user sees, thinks, and does
 - If you can't find the right element, suggest a navigation action
-- Be specific about what you're looking for
+- Be specific about what you're looking for from a user's perspective
 - Return null if the goal is already achieved or cannot be achieved`;
 
     const prompt = `
@@ -397,7 +405,7 @@ Based on the current state and goal, decide the next action. Return in this JSON
   "reasoning": "Your reasoning for this decision",
   "action": {
     "type": "click|type|navigate|wait|scroll",
-    "selector": "CSS selector or element identifier",
+    "selector": "User-visible element description (what the user sees and interacts with)",
     "value": "value to type (if applicable)",
     "description": "Human-readable description of the action"
   }
@@ -485,14 +493,15 @@ Was this action successful? Return in this JSON format:
     history: Action[],
     enhancedContext: string
   ): Promise<LLMResponse> {
-    const systemPrompt = `You are an expert web automation agent with visual analysis capabilities. Analyze the current page state using both DOM data and visual information from the screenshot.
+    const systemPrompt = `You are an expert user experience automation agent with visual analysis capabilities. Analyze the current page state using both visual information and user context from the screenshot.
 
 Guidelines:
-- Use the screenshot to understand the visual layout and context
-- Combine visual information with DOM data for better decisions
-- Look for visual cues that might not be obvious in the DOM
+- Think like a real user looking at the website
+- Use the screenshot to understand the visual layout and user experience
+- Focus on what the user sees and how they would naturally interact
+- Look for visual cues that guide user behavior
 - Consider the user experience and visual hierarchy
-- Be specific about what you can see and what actions are possible`;
+- Be specific about what the user can see and what actions are naturally available to them`;
 
     const prompt = `
 Current Page Analysis:
@@ -516,7 +525,7 @@ Based on the visual analysis and current state, what should be the next action? 
   "reasoning": "Your analysis of the current state and reasoning for the next action",
   "action": {
     "type": "click|type|navigate|wait|scroll",
-    "selector": "CSS selector or element identifier",
+    "selector": "User-visible element description (what the user sees and interacts with)",
     "value": "value to type (if applicable)",
     "description": "Human-readable description of the action"
   }
@@ -537,14 +546,15 @@ Based on the visual analysis and current state, what should be the next action? 
     screenshotData?: any,
     screenshotPath?: string
   ): Promise<LLMResponse> {
-    const systemPrompt = `You are an expert web automation validator with visual analysis capabilities. Compare the before and after screenshots to determine if an action was successful.
+    const systemPrompt = `You are an expert user experience validator with visual analysis capabilities. Compare the before and after screenshots to determine if an action was successful from a user's perspective.
 
 Guidelines:
-- Use visual comparison to detect meaningful changes
-- Look for UI state changes, new elements, or visual feedback
-- Consider loading states and dynamic content
-- Be realistic about what constitutes success
-- Combine visual analysis with DOM state changes`;
+- Think like a real user evaluating the result of their action
+- Use visual comparison to detect meaningful changes that a user would notice
+- Look for UI state changes, new elements, or visual feedback that indicates success
+- Consider loading states and dynamic content from a user's perspective
+- Be realistic about what constitutes success from a user's point of view
+- Focus on user-visible changes and improvements`;
 
     const prompt = `
 Action Performed:
@@ -580,14 +590,16 @@ Was this action successful based on the visual analysis? Return in this JSON for
     goal: string,
     retryCount: number
   ): Promise<LLMResponse> {
-    const systemPrompt = `You are an expert web automation agent specializing in error recovery. When an action fails, analyze the failure and suggest an alternative approach.
+    const systemPrompt = `You are an expert user experience automation agent specializing in error recovery. When an action fails, analyze the failure and suggest an alternative approach from a user's perspective.
 
 Guidelines:
-- Understand why the previous action failed
-- Look for alternative ways to achieve the same goal
-- Consider different selectors or interaction methods
+- Think like a real user who encountered a problem
+- Understand why the previous action failed from a user's perspective
+- Look for alternative ways to achieve the same goal that a user would naturally try
+- Consider different user interaction methods and approaches
 - Be creative but realistic in your suggestions
-- Learn from the failure to avoid similar issues`;
+- Learn from the failure to avoid similar issues
+- Focus on user-friendly solutions`;
 
     const prompt = `
 Failed Action Analysis:
@@ -616,7 +628,7 @@ Based on the failure analysis, suggest an alternative action. Return in this JSO
   "reasoning": "Your analysis of the failure and reasoning for the alternative",
   "action": {
     "type": "click|type|navigate|wait|scroll",
-    "selector": "CSS selector or element identifier",
+    "selector": "User-visible element description (what the user sees and interacts with)",
     "value": "value to type (if applicable)",
     "description": "Human-readable description of the alternative action"
   }
