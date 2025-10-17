@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Form, File, UploadFile, HTTPException
 from app.services.browser_automation import execute_browser_task
+from app.services.gemini_service import extract_feature_usage_from_file
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,16 @@ async def create_demo(
     """Create demo endpoint that accepts a task and optional feature details, then executes browser automation."""
     try:
         logger.info(f"Executing browser automation task: {task}")
+        
+        # Process feature docs if provided
+        feature_usage_instructions = None
+        if featureDocs:
+            logger.info(f"Processing feature documentation: {featureDocs.filename}")
+            file_content = await featureDocs.read()
+            feature_usage_instructions = await extract_feature_usage_from_file(file_content, featureDocs.filename)
+            logger.info("Feature usage instructions extracted successfully")
+
+        print("feature_usage_instructions: ", feature_usage_instructions)
         
         # Execute the browser automation task
         automation_result = await execute_browser_task(task)
@@ -36,6 +47,7 @@ async def create_demo(
         
         if featureDocs:
             response_data["uploaded_file"] = featureDocs.filename
+            response_data["feature_usage_instructions"] = feature_usage_instructions
         
         # Add error details if automation failed
         if not automation_result["success"]:
