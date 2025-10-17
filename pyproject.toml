@@ -6,11 +6,12 @@ authors = [
     {name = "RUEM Team"}
 ]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.104.1",
     "python-multipart>=0.0.20",
     "uvicorn[standard]>=0.24.0",
+    "browser-use>=0.1.0",
 ]
 
 [dependency-groups]
