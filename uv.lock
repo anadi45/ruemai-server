@@ -4720,6 +4720,8 @@ source = { virtual = "." }
 dependencies = [
     { name = "browser-use" },
     { name = "fastapi" },
+    { name = "httpx" },
+    { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -4735,6 +4737,8 @@ dev = [
 requires-dist = [
     { name = "browser-use", specifier = ">=0.1.0" },
     { name = "fastapi", specifier = ">=0.104.1" },
+    { name = "httpx", specifier = ">=0.24.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]
