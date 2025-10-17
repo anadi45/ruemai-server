@@ -3,14 +3,13 @@ import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import { DemoAutomationModule } from '../src/demo-automation/demo-automation.module';
 import { DemoAutomationService } from '../src/demo-automation/demo-automation.service';
-import { GeminiService } from '../src/demo-automation/services/gemini.service';
+import { LLMService } from '../src/demo-automation/services/llm.service';
 import { PuppeteerWorkerService } from '../src/demo-automation/services/puppeteer-worker.service';
-import { LangGraphWorkflowService } from '../src/demo-automation/services/langgraph-workflow.service';
 
 describe('Demo Automation E2E Tests', () => {
   let app: INestApplication;
   let demoAutomationService: DemoAutomationService;
-  let geminiService: GeminiService;
+  let llmService: LLMService;
   let puppeteerWorker: PuppeteerWorkerService;
 
   beforeAll(async () => {
@@ -22,7 +21,7 @@ describe('Demo Automation E2E Tests', () => {
     await app.init();
 
     demoAutomationService = moduleFixture.get<DemoAutomationService>(DemoAutomationService);
-    geminiService = moduleFixture.get<GeminiService>(GeminiService);
+    llmService = moduleFixture.get<LLMService>(LLMService);
     puppeteerWorker = moduleFixture.get<PuppeteerWorkerService>(PuppeteerWorkerService);
   });
 
@@ -207,8 +206,8 @@ describe('Demo Automation E2E Tests', () => {
   });
 
   describe('Service Integration Tests', () => {
-    it('should initialize Gemini service', () => {
-      expect(geminiService).toBeDefined();
+    it('should initialize LLM service', () => {
+      expect(llmService).toBeDefined();
     });
 
     it('should initialize Puppeteer worker service', () => {

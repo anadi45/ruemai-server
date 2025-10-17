@@ -1,16 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { GeminiService } from './gemini.service';
+import { LLMService } from './llm.service';
 import { DOMState, ProductDocs } from '../types/demo-automation.types';
 
-describe('GeminiService', () => {
-  let service: GeminiService;
+describe('LLMService', () => {
+  let service: LLMService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [GeminiService],
+      providers: [LLMService],
     }).compile();
 
-    service = module.get<GeminiService>(GeminiService);
+    service = module.get<LLMService>(LLMService);
   });
 
   it('should be defined', () => {
@@ -40,7 +40,7 @@ describe('GeminiService', () => {
 
       const mockHistory = [];
 
-      // Mock the Gemini API call
+      // Mock the LLM API call
       jest.spyOn(service as any, 'model', 'get').mockReturnValue({
         generateContent: jest.fn().mockResolvedValue({
           response: {
@@ -156,7 +156,7 @@ describe('GeminiService', () => {
       );
 
       expect(result.action).toBeNull();
-      expect(result.reasoning).toBe('Error calling Gemini API');
+      expect(result.reasoning).toBe('Error calling LLM API');
       expect(result.confidence).toBe(0);
     });
   });

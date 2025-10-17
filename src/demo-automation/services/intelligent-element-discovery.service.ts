@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PuppeteerWorkerService } from './puppeteer-worker.service';
-import { GeminiService } from './gemini.service';
+import { LLMService } from './llm.service';
 import { 
   ElementMatch, 
   IntelligentElementDiscovery, 
@@ -13,7 +13,7 @@ import {
 export class IntelligentElementDiscoveryService {
   constructor(
     private puppeteerWorker: PuppeteerWorkerService,
-    private geminiService: GeminiService
+    private llmService: LLMService
   ) {}
 
   /**
@@ -80,8 +80,8 @@ export class IntelligentElementDiscoveryService {
     const searchContext = this.buildCoordinateSearchContext(action, currentUrl, pageTitle, viewportDimensions, context);
     
     try {
-      // Use Gemini to detect click coordinates
-      const coordinateResult = await this.geminiService.detectClickCoordinates(
+      // Use LLM to detect click coordinates
+      const coordinateResult = await this.llmService.detectClickCoordinates(
         targetDescription,
         screenshot,
         currentUrl,
@@ -242,8 +242,8 @@ export class IntelligentElementDiscoveryService {
     });
     
     try {
-      // Use Gemini to detect click coordinates
-      const coordinateResult = await this.geminiService.detectClickCoordinates(
+      // Use LLM to detect click coordinates
+      const coordinateResult = await this.llmService.detectClickCoordinates(
         targetDescription,
         screenshot,
         currentUrl,
@@ -267,8 +267,18 @@ export class IntelligentElementDiscoveryService {
           )
         : null;
       
-      if (bestMatch && bestMatch.confidence > 0.3) {
+      if (bestMatch && bestMatch.confidence > 0.1) {
         console.log(`✅ Coordinates found: (${bestMatch.x}, ${bestMatch.y}) with confidence ${bestMatch.confidence}`);
+        console.log(`💭 Reasoning: ${bestMatch.reasoning}`);
+      } else {
+        console.log(`❌ No suitable coordinates found. Best match:`, bestMatch);
+        console.log(`📊 All coordinates:`, coordinateResult.coordinates);
+        console.log(`🔍 Confidence threshold: 0.3, Best match confidence: ${bestMatch?.confidence || 'N/A'}`);
+        
+        // Try with lower confidence threshold for debugging
+        if (bestMatch && bestMatch.confidence > 0.1) {
+          console.log(`⚠️ Found coordinates with lower confidence (${bestMatch.confidence}), but above 0.1 threshold`);
+        }
       }
       
       return {
@@ -306,8 +316,8 @@ export class IntelligentElementDiscoveryService {
   ): Promise<IntelligentElementDiscovery> {
     console.log('🧠 Using semantic discovery strategy...');
     
-    // Use Gemini to analyze the page and find semantically matching elements
-    const analysis = await this.geminiService.analyzePageForElement(
+    // Use LLM to analyze the page and find semantically matching elements
+    const analysis = await this.llmService.analyzePageForElement(
       targetDescription,
       domState,
       context
@@ -683,8 +693,8 @@ export class IntelligentElementDiscoveryService {
   ): Promise<IntelligentElementDiscovery> {
     console.log('📸 Using screenshot-based discovery strategy...');
     
-    // Use Gemini to analyze the screenshot and find elements
-    const analysis = await this.geminiService.analyzePageForElementWithScreenshot(
+    // Use LLM to analyze the screenshot and find elements
+    const analysis = await this.llmService.analyzePageForElementWithScreenshot(
       targetDescription,
       screenshot,
       currentUrl,

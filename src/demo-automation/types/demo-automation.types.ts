@@ -124,11 +124,28 @@ export interface DemoAutomationState {
   endTime?: number;
 }
 
-export interface GeminiResponse {
+export interface LLMResponse {
+  success: boolean;
   action: Action | null;
   reasoning: string;
-  confidence: number;
+  confidence?: number;
   nextSteps?: string[];
+  error?: string;
+  analysis?: string;
+  improvedAction?: Action;
+  recommendations?: string[];
+  suggestedSelectors?: string[];
+  coordinates?: {
+    x: number;
+    y: number;
+    element: any;
+  };
+  pageAnalysis?: string;
+  selectedTool?: string;
+  toolParams?: Record<string, any>;
+  goalProgress?: string;
+  canSkipAhead?: string;
+  needsIntermediateStep?: string;
 }
 
 export interface PuppeteerWorkerConfig {
@@ -174,18 +191,12 @@ export interface PuppeteerAction {
 
 export interface ActionPlan {
   featureName: string;
-  totalActions: number;
-  estimatedDuration: number; // total in seconds
-  scrapingStrategy?: string;
-  actions: PuppeteerAction[];
-  summary: {
-    clickActions: number;
-    typeActions: number;
-    navigationActions: number;
-    waitActions: number;
-    extractActions: number;
-    evaluateActions: number;
-  };
+  actions: {
+    id: string;
+    type: string;
+    description: string;
+    dependencies: string[];
+  }[];
 }
 
 export interface SmartAgentState {
@@ -213,6 +224,10 @@ export interface SmartAgentState {
   totalSteps?: number;
   history?: Action[];
   adaptationStrategy?: 'strict' | 'flexible' | 'adaptive';
+  // Intelligent analysis properties
+  goalProgress?: string;
+  canSkipAhead?: string;
+  needsIntermediateStep?: string;
 }
 
 export interface DemoAutomationResult {

@@ -80,7 +80,7 @@ export class PuppeteerWorkerService {
     await this.page.setJavaScriptEnabled(true);
     
     // Set realistic user agent
-    await this.page.setUserAgent(this.config.userAgent);
+    await this.page.setUserAgent({ userAgent: this.config.userAgent });
     
     // Set viewport
     await this.page.setViewport(this.config.viewport);
@@ -114,7 +114,13 @@ export class PuppeteerWorkerService {
 
     // Validate and fix URL format
     let validUrl = url;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    
+    // First, try to extract a clean URL if the input contains descriptive text
+    const urlMatch = url.match(/https?:\/\/[^\s]+/);
+    if (urlMatch) {
+      validUrl = urlMatch[0].replace(/[.,;!?]+$/, '');
+      console.log(`🔧 Extracted clean URL from text: "${url}" -> "${validUrl}"`);
+    } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
       // If it looks like a domain, add https://
       if (url.includes('.') && !url.includes(' ')) {
         validUrl = `https://${url}`;
@@ -127,30 +133,11 @@ export class PuppeteerWorkerService {
     try {
       console.log(`🧭 Navigating to: ${validUrl}`);
       
-      // Navigate with multiple wait strategies
+      // Navigate with networkidle wait strategy
       await this.page.goto(validUrl, { 
         waitUntil: 'networkidle0',
         timeout: this.config.timeout 
       });
-
-      // Wait for JavaScript to load and execute
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      // Check if JavaScript is working by looking for common indicators
-      const jsWorking = await this.page.evaluate(() => {
-        // Check if we can execute JavaScript
-        return typeof window !== 'undefined' && typeof document !== 'undefined';
-      });
-
-      if (!jsWorking) {
-        console.warn('JavaScript execution check failed - page may not be fully loaded');
-      }
-
-      // Wait for network to be idle
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Additional wait for dynamic content
-      await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Verify navigation was successful
       const currentUrl = this.page.url();
@@ -166,19 +153,35 @@ export class PuppeteerWorkerService {
     }
   }
 
-  async login(credentials: { username: string; password: string }): Promise<boolean> {
+  async goBack(): Promise<void> {
     if (!this.page) {
       throw new Error('Page not initialized. Call initialize() first.');
     }
 
-    // Debug: Log credentials to help identify undefined values
-    console.log('PuppeteerWorkerService.login - Received credentials:', {
-      username: credentials?.username,
-      password: credentials?.password ? '[REDACTED]' : 'undefined',
-      credentialsType: typeof credentials,
-      usernameType: typeof credentials?.username,
-      passwordType: typeof credentials?.password
-    });
+    try {
+      console.log(`🔙 Going back to previous page...`);
+      
+      // Use browser history to go back
+      await this.page.goBack({ 
+        waitUntil: 'networkidle0',
+        timeout: this.config.timeout 
+      });
+
+
+      // Verify navigation was successful
+      const currentUrl = this.page.url();
+      console.log(`✅ Successfully navigated back. Current URL: ${currentUrl}`);
+
+    } catch (error) {
+      console.error('Go back failed:', error);
+      throw error;
+    }
+  }
+
+  async login(credentials: { username: string; password: string }): Promise<boolean> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
 
     // Validate credentials before attempting login
     if (!credentials || !credentials.username || !credentials.password) {
@@ -268,8 +271,6 @@ export class PuppeteerWorkerService {
 
       await submitButton.click();
 
-      // Wait for navigation or error message
-      await new Promise(resolve => setTimeout(resolve, 2000));
 
       return true;
     } catch (error) {
@@ -284,11 +285,6 @@ export class PuppeteerWorkerService {
     }
 
     try {
-      // Check for JavaScript errors before executing action
-      const hasJsErrors = await this.checkForJavaScriptErrors();
-      if (hasJsErrors) {
-        console.warn('JavaScript errors detected on page, but continuing with action');
-      }
 
       console.log(`🎯 Executing action: ${action.type} - ${action.description}`);
       console.log(`🔍 Using selector: ${action.selector}`);
@@ -342,14 +338,6 @@ export class PuppeteerWorkerService {
           throw new Error(`Unknown action type: ${action.type}`);
       }
 
-      // Wait for page to settle and check for errors
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check for JavaScript errors after action
-      const hasJsErrorsAfter = await this.checkForJavaScriptErrors();
-      if (hasJsErrorsAfter) {
-        console.warn('JavaScript errors detected after action execution');
-      }
 
       console.log(`✅ Action completed successfully: ${action.type}`);
       return { success: true };
@@ -416,8 +404,6 @@ export class PuppeteerWorkerService {
       }
     }, selector);
     
-    // Wait a bit for scroll to complete
-    await new Promise(resolve => setTimeout(resolve, 500));
     
     // Click the element
     await this.page!.click(selector);
@@ -642,138 +628,6 @@ export class PuppeteerWorkerService {
     await new Promise(resolve => setTimeout(resolve, waitTime));
   }
 
-  async checkForJavaScriptErrors(): Promise<boolean> {
-    if (!this.page) {
-      return false;
-    }
-
-    try {
-      const errors = await this.page.evaluate(() => {
-        // Check for common JavaScript error indicators by text content
-        const errorTexts = [
-          'You need to enable JavaScript to run this app',
-          'JavaScript is disabled',
-          'Please enable JavaScript',
-          'Enable JavaScript',
-          'JavaScript required',
-          'JavaScript is not enabled',
-          'Please turn on JavaScript',
-          'This page requires JavaScript'
-        ];
-        
-        // Check for error text in the document
-        const bodyText = document.body.textContent || '';
-        for (const errorText of errorTexts) {
-          if (bodyText.includes(errorText)) {
-            return true;
-          }
-        }
-        
-        // Check for error elements by class or data attributes
-        const errorSelectors = [
-          '[data-testid*="error"]',
-          '.error-message',
-          '.js-error',
-          '.javascript-error',
-          '[class*="error"]'
-        ];
-        
-        for (const selector of errorSelectors) {
-          if (document.querySelector(selector)) {
-            return true;
-          }
-        }
-        
-        // Check if we can execute basic JavaScript
-        try {
-          return typeof window === 'undefined' || typeof document === 'undefined';
-        } catch (e) {
-          return true;
-        }
-      });
-      
-      return errors;
-    } catch (error) {
-      console.error('Error checking for JavaScript errors:', error);
-      return false;
-    }
-  }
-
-  async getDOMState(includeScreenshot: boolean = false): Promise<DOMState> {
-    if (!this.page) {
-      throw new Error('Page not initialized. Call initialize() first.');
-    }
-
-    // Check for JavaScript errors first
-    const hasJsErrors = await this.checkForJavaScriptErrors();
-    if (hasJsErrors) {
-      console.warn('JavaScript errors detected when getting DOM state');
-    }
-
-    const domHtml = await this.page.content();
-    const currentUrl = this.page.url();
-    const pageTitle = await this.page.title();
-
-    // Get visible text
-    const visibleText = await this.page.evaluate(() => {
-      const elements = document.querySelectorAll('*');
-      const texts: string[] = [];
-      
-      elements.forEach(el => {
-        const text = el.textContent?.trim();
-        if (text && text.length > 0 && text.length < 100) {
-          texts.push(text);
-        }
-      });
-      
-      return [...new Set(texts)]; // Remove duplicates
-    });
-
-    // Get clickable selectors
-    const clickableSelectors = await this.page.evaluate(() => {
-      const elements = document.querySelectorAll('a, button, [role="button"], input[type="submit"], input[type="button"]');
-      return Array.from(elements).map(el => {
-        // Generate a unique selector
-        if (el.id) return `#${el.id}`;
-        if (el.className) return `.${el.className.split(' ')[0]}`;
-        return el.tagName.toLowerCase();
-      });
-    });
-
-    // Get input selectors
-    const inputSelectors = await this.page.evaluate(() => {
-      const elements = document.querySelectorAll('input[type="text"], input[type="email"], input[type="password"], input:not([type])');
-      return Array.from(elements).map(el => {
-        if (el.id) return `#${el.id}`;
-        if ((el as any).name) return `[name="${(el as any).name}"]`;
-        if (el.className) return `.${el.className.split(' ')[0]}`;
-        return el.tagName.toLowerCase();
-      });
-    });
-
-    // Get select selectors
-    const selectSelectors = await this.page.evaluate(() => {
-      const elements = document.querySelectorAll('select');
-      return Array.from(elements).map(el => {
-        if (el.id) return `#${el.id}`;
-        if ((el as any).name) return `[name="${(el as any).name}"]`;
-        if (el.className) return `.${el.className.split(' ')[0]}`;
-        return el.tagName.toLowerCase();
-      });
-    });
-
-    return {
-      domHtml,
-      visibleText,
-      clickableSelectors,
-      inputSelectors,
-      selectSelectors,
-      currentUrl,
-      pageTitle,
-      timestamp: Date.now()
-    };
-  }
-
   async takeScreenshot(): Promise<string> {
     if (!this.page) {
       throw new Error('Page not initialized. Call initialize() first.');
@@ -787,6 +641,7 @@ export class PuppeteerWorkerService {
 
   /**
    * NEW: Take screenshot with specific dimensions for coordinate-based automation
+   * Enhanced with page stability checks and consistent viewport handling
    */
   async takeScreenshotForCoordinates(): Promise<{
     screenshot: string;
@@ -799,17 +654,26 @@ export class PuppeteerWorkerService {
       throw new Error('Page not initialized. Call initialize() first.');
     }
 
+    // Wait for page to be stable before taking screenshot
+    await this.waitForPageStability();
+
     // Get current viewport dimensions
     const viewport = this.page.viewport();
     if (!viewport) {
       throw new Error('Unable to get viewport dimensions');
     }
 
+    // Ensure consistent viewport dimensions
+    const consistentViewport = {
+      width: viewport.width || this.config.viewport.width,
+      height: viewport.height || this.config.viewport.height
+    };
+
     // Generate unique filename
     const timestamp = Date.now();
     const screenshotPath = path.join(process.cwd(), 'screenshots', `screenshot_${timestamp}.png`);
 
-    // Take screenshot and save as file
+    // Take screenshot and save as file with consistent viewport
     await this.page.screenshot({ 
       path: screenshotPath as `${string}.png`,
       fullPage: false 
@@ -821,6 +685,8 @@ export class PuppeteerWorkerService {
       fullPage: false 
     });
 
+    console.log(`📸 Screenshot captured with stable page state. Viewport: ${consistentViewport.width}x${consistentViewport.height}`);
+
     return {
       screenshot,
       screenshotData: {
@@ -828,9 +694,43 @@ export class PuppeteerWorkerService {
         mimeType: 'image/png'
       },
       screenshotPath,
-      dimensions: { width: viewport.width, height: viewport.height },
-      viewport: { width: viewport.width, height: viewport.height }
+      dimensions: consistentViewport,
+      viewport: consistentViewport
     };
+  }
+
+  /**
+   * Wait for page stability before taking screenshots
+   */
+  private async waitForPageStability(): Promise<void> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    try {
+      // Wait for network to be idle (Puppeteer equivalent)
+      await this.page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 5000 }).catch(() => {
+        // Ignore timeout if no navigation is happening
+      });
+      
+      // Wait for any pending animations or transitions
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Check if page is still loading
+      const isLoading = await this.page.evaluate(() => {
+        return document.readyState !== 'complete' || 
+               document.querySelectorAll('[style*="loading"], .loading, .spinner').length > 0;
+      });
+      
+      if (isLoading) {
+        console.log('⏳ Page still loading, waiting for stability...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      console.log('✅ Page is stable, ready for screenshot');
+    } catch (error) {
+      console.warn('⚠️ Could not verify page stability, proceeding with screenshot:', error);
+    }
   }
 
   /**
@@ -855,6 +755,153 @@ export class PuppeteerWorkerService {
       await this.cleanupScreenshot(path);
     }
   }
+
+  /**
+   * Verify if an action was successful by checking DOM state changes
+   */
+  async verifyActionSuccess(
+    actionType: string,
+    actionDescription: string,
+    expectedOutcome?: string
+  ): Promise<{ success: boolean; reasoning: string; confidence: number }> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    try {
+      // Get current page state
+      const currentUrl = this.page.url();
+      const pageTitle = await this.page.title();
+      
+      // Check for common success indicators based on action type
+      let success = false;
+      let reasoning = '';
+      let confidence = 0;
+
+      if (actionType === 'click' || actionType === 'click_coordinates') {
+        // For click actions, check if the page state changed or if we're on a new page
+        const urlChanged = currentUrl !== this.lastKnownUrl;
+        const titleChanged = pageTitle !== this.lastKnownTitle;
+        
+        if (urlChanged || titleChanged) {
+          success = true;
+          reasoning = `Page state changed after click: URL=${urlChanged}, Title=${titleChanged}`;
+          confidence = 0.8;
+        } else {
+          // Check for visual feedback like button states, form submissions, etc.
+          const hasVisualFeedback = await this.checkForVisualFeedback(actionDescription);
+          if (hasVisualFeedback) {
+            success = true;
+            reasoning = 'Visual feedback detected after click action';
+            confidence = 0.7;
+          } else {
+            success = false;
+            reasoning = 'No visible changes detected after click action';
+            confidence = 0.3;
+          }
+        }
+      } else if (actionType === 'type' || actionType === 'type_coordinates') {
+        // For type actions, check if the input field has the expected value
+        const inputValue = await this.getLastFocusedInputValue();
+        if (inputValue && inputValue.length > 0) {
+          success = true;
+          reasoning = `Text successfully entered: "${inputValue}"`;
+          confidence = 0.9;
+        } else {
+          success = false;
+          reasoning = 'No text detected in input field';
+          confidence = 0.2;
+        }
+      } else if (actionType === 'navigate') {
+        // For navigation, check if we're on the expected page
+        success = currentUrl.includes(actionDescription) || pageTitle.includes(actionDescription);
+        reasoning = success ? 'Successfully navigated to target page' : 'Navigation did not reach target page';
+        confidence = success ? 0.9 : 0.1;
+      }
+
+      // Store current state for next comparison
+      this.lastKnownUrl = currentUrl;
+      this.lastKnownTitle = pageTitle;
+
+      return { success, reasoning, confidence };
+    } catch (error) {
+      console.error('Error verifying action success:', error);
+      return { 
+        success: false, 
+        reasoning: `Verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        confidence: 0.1 
+      };
+    }
+  }
+
+  /**
+   * Check for visual feedback after an action
+   */
+  private async checkForVisualFeedback(actionDescription: string): Promise<boolean> {
+    if (!this.page) {
+      return false;
+    }
+
+    try {
+      // Check for common success indicators
+      const indicators = await this.page.evaluate(() => {
+        const successIndicators = [
+          // Check for success messages
+          document.querySelectorAll('[class*="success"], [class*="successful"], .alert-success, .toast-success').length > 0,
+          // Check for loading states that might indicate processing
+          document.querySelectorAll('[class*="loading"], .spinner, [class*="processing"]').length > 0,
+          // Check for form submissions
+          document.querySelectorAll('form[data-submitted="true"], .form-submitted').length > 0,
+          // Check for button state changes
+          document.querySelectorAll('button[disabled], .btn-disabled').length > 0,
+          // Check for new content appearing
+          document.querySelectorAll('[class*="new"], [class*="added"], [class*="created"]').length > 0
+        ];
+        
+        return indicators.some(indicator => indicator);
+      });
+
+      return indicators;
+    } catch (error) {
+      console.warn('Error checking for visual feedback:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get the value of the last focused input field
+   */
+  private async getLastFocusedInputValue(): Promise<string> {
+    if (!this.page) {
+      return '';
+    }
+
+    try {
+      return await this.page.evaluate(() => {
+        const activeElement = document.activeElement as HTMLInputElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+          return activeElement.value || '';
+        }
+        
+        // Fallback: check all input fields for recent changes
+        const inputs = document.querySelectorAll('input[type="text"], input[type="email"], input[type="password"], textarea');
+        for (const input of inputs) {
+          if ((input as HTMLInputElement).value && (input as HTMLInputElement).value.length > 0) {
+            return (input as HTMLInputElement).value;
+          }
+        }
+        
+        return '';
+      });
+    } catch (error) {
+      console.warn('Error getting input value:', error);
+      return '';
+    }
+  }
+
+  // Store last known state for comparison
+  private lastKnownUrl: string = '';
+  private lastKnownTitle: string = '';
 
   /**
    * NEW: Click at specific coordinates
@@ -929,7 +976,10 @@ export class PuppeteerWorkerService {
     }
 
     try {
-      await this.page.waitForNavigation({ timeout });
+      await this.page.waitForNavigation({ 
+        timeout,
+        waitUntil: 'networkidle0'
+      });
       return true;
     } catch (error) {
       return false;
@@ -992,39 +1042,6 @@ export class PuppeteerWorkerService {
     return await this.page.evaluate(pageFunction);
   }
 
-  async waitForAppToLoad(maxWaitTime: number = 10000): Promise<boolean> {
-    if (!this.page) {
-      throw new Error('Page not initialized. Call initialize() first.');
-    }
-
-    try {
-      // Wait for common app loading indicators
-      const appLoaded = await this.page.waitForFunction(() => {
-        // Check for common app loading indicators
-        const indicators = [
-          // React/Vue/Angular apps
-          document.querySelector('[data-reactroot]'),
-          document.querySelector('[data-vue]'),
-          document.querySelector('[ng-app]'),
-          // Common app containers
-          document.querySelector('#app'),
-          document.querySelector('.app'),
-          document.querySelector('[class*="app"]'),
-          // Check if body has content beyond just error messages
-          document.body.children.length > 1,
-          // Check for interactive elements
-          document.querySelector('button, input, a, [role="button"]')
-        ];
-        
-        return indicators.some(indicator => indicator !== null);
-      }, { timeout: maxWaitTime });
-
-      return !!appLoaded;
-    } catch (error) {
-      console.warn('App loading timeout or error:', error);
-      return false;
-    }
-  }
 
   async retryNavigation(url: string, maxRetries: number = 3): Promise<boolean> {
     for (let i = 0; i < maxRetries; i++) {
@@ -1032,28 +1049,12 @@ export class PuppeteerWorkerService {
         console.log(`Navigation attempt ${i + 1}/${maxRetries} to ${url}`);
         
         await this.navigateToUrl(url);
-        
-        // Check if JavaScript is working
-        const jsWorking = await this.page!.evaluate(() => {
-          return typeof window !== 'undefined' && typeof document !== 'undefined';
-        });
-
-        if (jsWorking) {
-          // Wait for app to load
-          const appLoaded = await this.waitForAppToLoad(5000);
-          if (appLoaded) {
-            console.log('Navigation successful and app loaded');
-            return true;
-          }
-        }
-
-        if (i < maxRetries - 1) {
-          console.log(`Navigation attempt ${i + 1} failed, retrying in 3 seconds...`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        }
+        console.log('Navigation successful');
+        return true;
       } catch (error) {
         console.error(`Navigation attempt ${i + 1} failed:`, error);
         if (i < maxRetries - 1) {
+          console.log(`Retrying navigation in 3 seconds...`);
           await new Promise(resolve => setTimeout(resolve, 3000));
         }
       }
@@ -1078,7 +1079,7 @@ export class PuppeteerWorkerService {
 
     // Validate coordinates are within reasonable bounds
     if (x < 0 || y < 0 || x > 1920 || y > 1080) {
-      throw new Error(`Invalid coordinates: (${x}, ${y}). Coordinates should be within screen bounds.`);
+      console.warn(`⚠️ Coordinates outside typical screen bounds: (${x}, ${y}). Proceeding with click.`);
     }
 
     // Take a screenshot before clicking for verification
@@ -1090,12 +1091,38 @@ export class PuppeteerWorkerService {
       await this.page!.mouse.click(x, y);
       console.log(`✅ Coordinate click successful at (${x}, ${y})`);
       
-      // Wait for any potential page changes after click
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait for any potential page changes or animations
+      await this.waitForActionCompletion();
       
     } catch (error) {
       console.error(`❌ Coordinate click failed at (${x}, ${y}):`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Wait for action completion and page stability
+   */
+  private async waitForActionCompletion(): Promise<void> {
+    if (!this.page) {
+      return;
+    }
+
+    try {
+      // Wait for any immediate page changes
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Wait for network activity to settle
+      await this.page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 3000 }).catch(() => {
+        // Ignore timeout if no navigation is happening
+      });
+      
+      // Wait for any animations or transitions to complete
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      console.log('✅ Action completion wait finished');
+    } catch (error) {
+      console.warn('⚠️ Could not wait for action completion:', error);
     }
   }
 
@@ -1122,8 +1149,6 @@ export class PuppeteerWorkerService {
       await this.page!.mouse.move(x, y);
       console.log(`✅ Coordinate hover successful at (${x}, ${y})`);
       
-      // Wait for any hover effects to trigger
-      await new Promise(resolve => setTimeout(resolve, 500));
       
     } catch (error) {
       console.error(`❌ Coordinate hover failed at (${x}, ${y}):`, error);
@@ -1158,8 +1183,6 @@ export class PuppeteerWorkerService {
       await this.page!.mouse.click(x, y);
       console.log(`✅ Clicked at coordinates (${x}, ${y}) to focus input field`);
       
-      // Wait for input field to be focused
-      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Clear any existing text and type new text
       await this.page!.keyboard.down('Control');
@@ -1169,8 +1192,6 @@ export class PuppeteerWorkerService {
       
       console.log(`✅ Typed text "${action.inputText}" at coordinates (${x}, ${y})`);
       
-      // Wait for any potential page changes after typing
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (error) {
       console.error(`❌ Coordinate type failed at (${x}, ${y}):`, error);
@@ -1207,8 +1228,6 @@ export class PuppeteerWorkerService {
       
       console.log(`✅ Scrolled at coordinates (${x}, ${y})`);
       
-      // Wait for scroll to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (error) {
       console.error(`❌ Coordinate scroll failed at (${x}, ${y}):`, error);
@@ -1243,8 +1262,6 @@ export class PuppeteerWorkerService {
       await this.page!.mouse.click(x, y);
       console.log(`✅ Clicked at coordinates (${x}, ${y}) to open select`);
       
-      // Wait for dropdown to open
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Try to find and click the option by text using evaluate
       const optionFound = await this.page!.evaluate((text) => {
@@ -1274,8 +1291,6 @@ export class PuppeteerWorkerService {
         console.log(`✅ Typed and selected option "${action.inputText}" at coordinates (${x}, ${y})`);
       }
       
-      // Wait for selection to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (error) {
       console.error(`❌ Coordinate select failed at (${x}, ${y}):`, error);

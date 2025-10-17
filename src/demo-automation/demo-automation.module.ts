@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { DemoAutomationController } from './demo-automation.controller';
 import { DemoAutomationService } from './demo-automation.service';
-import { GeminiService } from './services/gemini.service';
+import { LLMService } from './services/llm.service';
+import { ActionPlanService } from './services/action-plan.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
-import { LangGraphWorkflowService } from './services/langgraph-workflow.service';
-import { SmartLangGraphAgentService } from './services/smart-langgraph-agent.service';
+import { WebAutomation } from '../agents/web-automation/agent';
 import { IntelligentElementDiscoveryService } from './services/intelligent-element-discovery.service';
 import { ActionLoggerService } from './services/action-logger.service';
 
@@ -12,10 +12,10 @@ import { ActionLoggerService } from './services/action-logger.service';
   controllers: [DemoAutomationController],
   providers: [
     DemoAutomationService,
-    GeminiService,
+    LLMService,
+    ActionPlanService,
     PuppeteerWorkerService,
-    LangGraphWorkflowService,
-    SmartLangGraphAgentService,
+    WebAutomation,
     IntelligentElementDiscoveryService,
     ActionLoggerService
   ],
