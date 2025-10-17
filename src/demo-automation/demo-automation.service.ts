@@ -33,8 +33,6 @@ export class DemoAutomationService {
     const startTime = Date.now();
 
     try {
-      // Process files directly with LLM
-      console.log(`Processing ${files.length} files directly with LLM...`);
       const extractedData = await this.llmService.processFilesDirectly(files, featureName);
 
       // Convert to ProductDocs format
@@ -54,10 +52,7 @@ export class DemoAutomationService {
       let actionPlan: ActionPlan;
       try {
         actionPlan = await this.generateAndLogActionPlan(featureDocs, websiteUrl);
-        console.log('🧠 Generated intelligent roadmap for feature demonstration');
         console.log(`📋 Roadmap provides ${actionPlan.actions.length} high-level goals`);
-        console.log('🎯 Agent will figure out execution details based on visual analysis');
-        console.log('🔍 Agent will intelligently navigate to and use the feature');
       } catch (error) {
         console.error('Failed to generate intelligent roadmap with LLM:', error);
         throw error;
@@ -65,8 +60,6 @@ export class DemoAutomationService {
 
       // Write the plan to JSON file
       writePlanToFile(actionPlan);
-
-      return;
 
       // Generate tour configuration
       const tourConfig: TourConfig = {
@@ -87,10 +80,7 @@ export class DemoAutomationService {
       }
 
       // Run the Intelligent Web Automation Agent
-      console.log('🤖 Starting Intelligent Web Automation Agent...');
-      console.log('🧠 Agent will intelligently navigate to and use the feature');
-      console.log('🎯 Roadmap provides goals, agent figures out execution details');
-      console.log('🔍 Agent will analyze screenshots and make intelligent decisions');
+      console.log('🤖 Starting Web Automation Agent...');
       
       const result = await this.webAutomationAgent.runWebAutomationAgent(
         actionPlan,

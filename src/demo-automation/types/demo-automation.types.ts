@@ -186,18 +186,12 @@ export interface PuppeteerAction {
 
 export interface ActionPlan {
   featureName: string;
-  totalActions: number;
-  estimatedDuration: number; // total in seconds
-  scrapingStrategy?: string;
-  actions: PuppeteerAction[];
-  summary: {
-    clickActions: number;
-    typeActions: number;
-    navigationActions: number;
-    waitActions: number;
-    extractActions: number;
-    evaluateActions: number;
-  };
+  actions: {
+    id: string;
+    type: string;
+    description: string;
+    dependencies: string[];
+  }[];
 }
 
 export interface SmartAgentState {

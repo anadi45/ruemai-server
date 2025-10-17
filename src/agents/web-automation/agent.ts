@@ -261,7 +261,7 @@ export class WebAutomation {
         // Use navigation tool
         toolName = 'navigate';
         toolParams = {
-          url: nextAction.inputText || nextAction.selector
+          url: nextAction.description // Use description as URL hint
         };
       } else if (nextAction.description.toLowerCase().includes('go back') ||
                  nextAction.description.toLowerCase().includes('back') ||
@@ -294,7 +294,7 @@ export class WebAutomation {
         toolParams = {
           actionDescription: nextAction.description,
           actionType: nextAction.type,
-          inputText: nextAction.inputText,
+          inputText: '', // Will be determined by intelligent analysis
           context: state.currentContext,
           screenshot: screenshotData.screenshot,
           screenshotData: screenshotData.screenshotData,
@@ -325,7 +325,7 @@ export class WebAutomation {
         toolParams = {
           actionDescription: nextAction.description,
           actionType: nextAction.type,
-          inputText: nextAction.inputText,
+          inputText: '', // Will be determined by intelligent analysis
           context: state.currentContext,
           screenshot: screenshotData.screenshot,
           screenshotData: screenshotData.screenshotData,
@@ -387,14 +387,14 @@ export class WebAutomation {
         const tourStep: TourStep = {
           order: state.currentActionIndex + 1,
           action: {
-            type: nextAction.type,
-            selector: nextAction.selector,
-            inputText: nextAction.inputText,
+            type: this.convertToPuppeteerAction(nextAction).type as any,
+            selector: '',
+            inputText: '', // Will be determined by intelligent analysis
             description: nextAction.description
           },
-          selector: nextAction.selector || '',
+          selector: '',
           description: nextAction.description,
-          tooltip: nextAction.expectedOutcome,
+          tooltip: nextAction.description,
           timestamp: Date.now(),
           success: true
         };
@@ -412,7 +412,7 @@ export class WebAutomation {
         this.actionLogger.logActionComplete(`goal-${state.currentActionIndex}-${Date.now()}`, false, result.error);
         
         // Check if this is a critical goal that should stop the agent
-        const isCriticalGoal = this.isCriticalAction(nextAction, state);
+        const isCriticalGoal = this.isCriticalAction(this.convertToPuppeteerAction(nextAction), state);
         
         if (isCriticalGoal) {
           console.log(`🚨 CRITICAL GOAL DETECTED: ${nextAction.description}`);
@@ -423,12 +423,12 @@ export class WebAutomation {
           const tourStep: TourStep = {
             order: state.currentActionIndex + 1,
             action: {
-              type: nextAction.type,
-              selector: nextAction.selector,
-              inputText: nextAction.inputText,
+              type: this.convertToPuppeteerAction(nextAction).type as any,
+              selector: '',
+              inputText: '', // Will be determined by intelligent analysis
               description: nextAction.description
             },
-            selector: nextAction.selector || '',
+            selector: '',
             description: nextAction.description,
             tooltip: 'Critical goal failed - stopping execution',
             timestamp: Date.now(),
@@ -451,12 +451,12 @@ export class WebAutomation {
         const tourStep: TourStep = {
           order: state.currentActionIndex + 1,
           action: {
-            type: nextAction.type,
-            selector: nextAction.selector,
-            inputText: nextAction.inputText,
+            type: this.convertToPuppeteerAction(nextAction).type as any,
+            selector: '',
+            inputText: '', // Will be determined by intelligent analysis
             description: nextAction.description
           },
-          selector: nextAction.selector || '',
+          selector: '',
           description: nextAction.description,
           tooltip: 'Goal failed - continuing',
           timestamp: Date.now(),
@@ -476,7 +476,7 @@ export class WebAutomation {
       
       // Check if this is a critical goal
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
-      const isCriticalGoal = this.isCriticalAction(nextAction, state);
+      const isCriticalGoal = this.isCriticalAction(this.convertToPuppeteerAction(nextAction), state);
       
       if (isCriticalGoal) {
         console.error('💥 CRITICAL GOAL EXCEPTION - STOPPING AGENT EXECUTION');
@@ -485,12 +485,12 @@ export class WebAutomation {
         const tourStep: TourStep = {
           order: state.currentActionIndex + 1,
           action: {
-            type: nextAction.type,
-            selector: nextAction.selector,
-            inputText: nextAction.inputText,
+            type: this.convertToPuppeteerAction(nextAction).type as any,
+            selector: '',
+            inputText: '', // Will be determined by intelligent analysis
             description: nextAction.description
           },
-          selector: nextAction.selector || '',
+          selector: '',
           description: nextAction.description,
           tooltip: 'Critical goal exception - stopping execution',
           timestamp: Date.now(),
@@ -532,17 +532,11 @@ export class WebAutomation {
       
       // Use LLM to validate the coordinate-based action was successful using screenshot
       const validation = await this.llmService.validateActionSuccessWithScreenshot(
-        {
-          type: nextAction.type,
-          selector: nextAction.selector,
-          inputText: nextAction.inputText,
-          description: nextAction.description,
-          coordinates: nextAction.coordinates
-        },
+        this.convertToPuppeteerAction(nextAction),
         screenshotData.screenshot,
         currentUrl,
         pageTitle,
-        nextAction.expectedOutcome,
+        nextAction.description,
         screenshotData.screenshotData,
         screenshotData.screenshotPath
       );
@@ -567,7 +561,7 @@ export class WebAutomation {
       
       // For navigation actions, check if URL changed
       if (nextAction.type === 'navigate') {
-        const targetUrl = nextAction.inputText || nextAction.selector;
+        const targetUrl = nextAction.description; // Use description as URL hint
         
         console.log(`🔍 Coordinate-based navigation validation details:`);
         console.log(`   Target URL: "${targetUrl}"`);
@@ -602,11 +596,11 @@ export class WebAutomation {
           `action-${state.currentActionIndex}-${Date.now()}`,
           false,
           validationReasoning,
-          this.isCriticalAction(nextAction, state)
+          this.isCriticalAction(this.convertToPuppeteerAction(nextAction), state)
         );
         
         // Check if this is a critical action
-        const isCriticalAction = this.isCriticalAction(nextAction, state);
+        const isCriticalAction = this.isCriticalAction(this.convertToPuppeteerAction(nextAction), state);
         
         if (isCriticalAction) {
           console.log(`🚨 CRITICAL ACTION VALIDATION DETECTED: ${nextAction.type} - ${nextAction.description}`);
@@ -618,7 +612,7 @@ export class WebAutomation {
             try {
               // Use LLM to analyze failure and regenerate improved coordinate-based action
               const retryAnalysis = await this.llmService.analyzeFailureAndRegenerateAction(
-                nextAction,
+                this.convertToPuppeteerAction(nextAction),
                 validationReasoning,
                 null, // No DOM state for coordinate-based actions
                 state.goal,
@@ -631,23 +625,9 @@ export class WebAutomation {
                 recommendations: retryAnalysis.recommendations
               });
               
-              // Update the action plan with the improved action
-              const updatedActionPlan = {
-                ...state.actionPlan,
-                actions: state.actionPlan.actions.map((action, index) => 
-                  index === state.currentActionIndex ? {
-                    ...retryAnalysis.improvedAction,
-                    expectedOutcome: action.expectedOutcome || retryAnalysis.improvedAction.description,
-                    priority: action.priority || 'medium',
-                    estimatedDuration: action.estimatedDuration || 5
-                  } : action
-                )
-              };
-              
               return {
                 ...state,
                 retryCount: state.retryCount + 1,
-                actionPlan: updatedActionPlan,
                 currentActionIndex: state.currentActionIndex - 1, // Retry the same action index
                 reasoning: `Critical coordinate-based action intelligent retry ${state.retryCount + 1}: ${retryAnalysis.analysis}`
               };
@@ -670,12 +650,12 @@ export class WebAutomation {
             const tourStep: TourStep = {
               order: state.currentActionIndex + 1,
               action: {
-                type: nextAction.type,
-                selector: nextAction.selector,
-                inputText: nextAction.inputText,
+                type: this.convertToPuppeteerAction(nextAction).type as any,
+                selector: '',
+                inputText: '', // Will be determined by intelligent analysis
                 description: nextAction.description
               },
-              selector: nextAction.selector || '',
+              selector: '',
               description: nextAction.description,
               tooltip: 'Critical action validation failed after max retries - stopping execution',
               timestamp: Date.now(),
@@ -702,7 +682,7 @@ export class WebAutomation {
           try {
             // Use LLM to analyze failure and regenerate improved coordinate-based action
             const retryAnalysis = await this.llmService.analyzeFailureAndRegenerateAction(
-              nextAction,
+              this.convertToPuppeteerAction(nextAction),
               validationReasoning,
               null, // No DOM state for coordinate-based actions
               state.goal,
@@ -715,23 +695,9 @@ export class WebAutomation {
               recommendations: retryAnalysis.recommendations
             });
             
-            // Update the action plan with the improved action
-            const updatedActionPlan = {
-              ...state.actionPlan,
-              actions: state.actionPlan.actions.map((action, index) => 
-                index === state.currentActionIndex ? {
-                  ...retryAnalysis.improvedAction,
-                  expectedOutcome: action.expectedOutcome || retryAnalysis.improvedAction.description,
-                  priority: action.priority || 'medium',
-                  estimatedDuration: action.estimatedDuration || 5
-                } : action
-              )
-            };
-            
             return {
               ...state,
               retryCount: state.retryCount + 1,
-              actionPlan: updatedActionPlan,
               currentActionIndex: state.currentActionIndex - 1, // Retry the same action index
               reasoning: `Coordinate-based intelligent retry ${state.retryCount + 1}: ${retryAnalysis.analysis}`
             };
@@ -754,7 +720,7 @@ export class WebAutomation {
           `action-${state.currentActionIndex}-${Date.now()}`,
           true,
           validationReasoning,
-          this.isCriticalAction(nextAction, state)
+          this.isCriticalAction(this.convertToPuppeteerAction(nextAction), state)
         );
       }
       
@@ -767,7 +733,7 @@ export class WebAutomation {
       
       // Check if this is a critical action
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
-      const isCriticalAction = this.isCriticalAction(nextAction, state);
+      const isCriticalAction = this.isCriticalAction(this.convertToPuppeteerAction(nextAction), state);
       
       if (isCriticalAction) {
         console.error('💥 CRITICAL ACTION VALIDATION EXCEPTION - STOPPING AGENT EXECUTION');
@@ -776,12 +742,12 @@ export class WebAutomation {
         const tourStep: TourStep = {
           order: state.currentActionIndex + 1,
           action: {
-            type: nextAction.type,
-            selector: nextAction.selector,
-            inputText: nextAction.inputText,
+            type: this.convertToPuppeteerAction(nextAction).type as any,
+            selector: '',
+            inputText: '', // Will be determined by intelligent analysis
             description: nextAction.description
           },
-          selector: nextAction.selector || '',
+          selector: '',
           description: nextAction.description,
           tooltip: 'Critical action validation exception - stopping execution',
           timestamp: Date.now(),
@@ -874,7 +840,7 @@ export class WebAutomation {
     // Check if we have any critical failures that should fail the entire process
     const hasCriticalFailures = state.failedActions.some(actionIndex => {
       const action = state.actionPlan.actions[actionIndex];
-      return this.isCriticalAction(action, state);
+      return this.isCriticalAction(this.convertToPuppeteerAction(action), state);
     });
     
     if (hasCriticalFailures) {
@@ -1003,6 +969,33 @@ export class WebAutomation {
     }
     
     return false;
+  }
+
+  /**
+   * Convert simplified action to PuppeteerAction for compatibility
+   */
+  private convertToPuppeteerAction(simpleAction: { id: string; type: string; description: string; dependencies: string[] }): PuppeteerAction {
+    // Map simplified types to PuppeteerAction types
+    const typeMap: { [key: string]: any } = {
+      'navigate': 'navigate',
+      'click': 'click',
+      'type': 'type',
+      'scroll': 'scroll',
+      'select': 'select',
+      'wait': 'wait',
+      'extract': 'extract',
+      'evaluate': 'evaluate'
+    };
+
+    return {
+      type: typeMap[simpleAction.type] || 'click',
+      description: simpleAction.description,
+      expectedOutcome: simpleAction.description,
+      priority: 'medium',
+      estimatedDuration: 5,
+      selector: '',
+      inputText: ''
+    };
   }
 
   // Public method to run the web automation agent
