@@ -697,21 +697,30 @@ Find the best coordinates for this action. Return in this JSON format:
     try {
       const response = await this.callLLM(prompt, systemPrompt, 0.1);
       
-      if (response.success && response.action) {
-        const result = response.action as any;
+      console.log("🚀 ~ LLMService ~ detectClickCoordinates ~ response:", JSON.stringify(response, null, 2));
+      
+      if (response.success) {
+        // The coordinates are in the root of the response, not in response.action
+        const result = response as any;
         console.log("🚀 ~ LLMService ~ detectClickCoordinates ~ result:", result);
-        return {
-          coordinates: (result.coordinates || []).map(coord => ({
-            x: coord.x,
-            y: coord.y,
-            confidence: coord.confidence,
-            reasoning: coord.reasoning || 'No reasoning provided',
-            elementDescription: coord.elementDescription || 'No description provided',
-            element: coord.element
-          })),
-          pageAnalysis: result.pageAnalysis || '',
-          recommendations: result.recommendations || []
-        };
+        
+        if (result.coordinates && Array.isArray(result.coordinates)) {
+          console.log(`✅ Found ${result.coordinates.length} coordinates from LLM`);
+          return {
+            coordinates: result.coordinates.map(coord => ({
+              x: coord.x,
+              y: coord.y,
+              confidence: coord.confidence,
+              reasoning: coord.reasoning || 'No reasoning provided',
+              elementDescription: coord.elementDescription || 'No description provided',
+              element: coord.element
+            })),
+            pageAnalysis: result.pageAnalysis || '',
+            recommendations: result.recommendations || []
+          };
+        } else {
+          console.log(`❌ No coordinates found in LLM response. Available keys:`, Object.keys(result));
+        }
       }
       
       return {

@@ -959,7 +959,7 @@ export class PuppeteerWorkerService {
 
     // Validate coordinates are within reasonable bounds
     if (x < 0 || y < 0 || x > 1920 || y > 1080) {
-      throw new Error(`Invalid coordinates: (${x}, ${y}). Coordinates should be within screen bounds.`);
+      console.warn(`⚠️ Coordinates outside typical screen bounds: (${x}, ${y}). Proceeding with click.`);
     }
 
     // Take a screenshot before clicking for verification

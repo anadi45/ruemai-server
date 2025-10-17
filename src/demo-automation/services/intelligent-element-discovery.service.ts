@@ -269,6 +269,10 @@ export class IntelligentElementDiscoveryService {
       
       if (bestMatch && bestMatch.confidence > 0.3) {
         console.log(`✅ Coordinates found: (${bestMatch.x}, ${bestMatch.y}) with confidence ${bestMatch.confidence}`);
+        console.log(`💭 Reasoning: ${bestMatch.reasoning}`);
+      } else {
+        console.log(`❌ No suitable coordinates found. Best match:`, bestMatch);
+        console.log(`📊 All coordinates:`, coordinateResult.coordinates);
       }
       
       return {
