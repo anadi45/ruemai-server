@@ -26,7 +26,8 @@ Guidelines:
 - Focus on user behavior: clicking, typing, navigating, reading, etc.
 - Use natural language that describes user interactions
 - Actions should flow logically from one to the next
-- Include dependencies between actions where one must happen before another`;
+- Include dependencies between actions where one must happen before another
+- EXPLICITLY describe the user journey - tell the story of how a user would navigate through the website to complete the feature`;
 
     const prompt = `
 Create a user-focused action plan for demonstrating this feature:
@@ -44,7 +45,9 @@ ${featureDocs.expectedOutcomes.map(outcome => `- ${outcome}`).join('\n')}
 Prerequisites:
 ${featureDocs.prerequisites.map(prereq => `- ${prereq}`).join('\n')}
 
-Create an action plan that describes how a user would naturally interact with the website to demonstrate this feature. Think about the user's journey and what they would do step by step.
+Create an action plan that EXPLICITLY describes the user journey - tell the story of how a user would navigate through the website to complete this feature. Each action should describe the user's journey step by step, focusing on what the user sees, thinks, and does.
+
+Think about the user's journey and what they would do step by step. Describe the user's experience as they navigate through the website.
 
 Return in this JSON format:
 {
