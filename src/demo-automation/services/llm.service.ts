@@ -563,7 +563,8 @@ Guidelines:
 - Focus on what the user sees and how they would naturally interact
 - Look for visual cues that guide user behavior
 - Consider the user experience and visual hierarchy
-- Be specific about what the user can see and what actions are naturally available to them`;
+- Be specific about what the user can see and what actions are naturally available to them
+- Select the most appropriate tool from the available tools based on the action needed`;
 
     const prompt = `
 Current Page Analysis:
@@ -578,15 +579,32 @@ ${history.map((action, i) => `${i + 1}. ${action.type}: ${action.description}`).
 Enhanced Context:
 ${enhancedContext}
 
+Available Tools:
+1. navigate - Navigate to a specific URL or page
+2. wait - Wait for a condition or time period
+3. go_back - Navigate back to the previous page using browser back button
+4. click_coordinates - Click at specific coordinates using screenshot-based coordinate detection
+5. type_coordinates - Type text at specific coordinates using screenshot-based coordinate detection
+6. scroll_coordinates - Scroll at specific coordinates using screenshot-based coordinate detection
+7. select_coordinates - Select option at specific coordinates using screenshot-based coordinate detection
+
 Screenshot Analysis:
 [Base64 screenshot provided - analyze the visual layout, buttons, forms, and interactive elements]
 
-Based on the visual analysis and current state, what should be the next action? Return in this JSON format:
+Based on the visual analysis and current state, select the most appropriate tool and action. Return in this JSON format:
 {
   "success": true,
-  "reasoning": "Your analysis of the current state and reasoning for the next action",
+  "reasoning": "Your analysis of the current state and reasoning for the tool selection",
+  "selectedTool": "tool_name_from_available_tools",
+  "toolParams": {
+    "url": "string (for navigate)",
+    "actionDescription": "string (for coordinate-based tools)",
+    "inputText": "string (for type/select tools)",
+    "context": "string (for coordinate-based tools)",
+    "waitAfter": "number (optional)"
+  },
   "action": {
-    "type": "click|type|navigate|wait|scroll",
+    "type": "click|type|navigate|wait|scroll|select",
     "selector": "User-visible element description (what the user sees and interacts with)",
     "value": "value to type (if applicable)",
     "description": "Human-readable description of the action"

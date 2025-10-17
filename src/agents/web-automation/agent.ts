@@ -220,7 +220,7 @@ export class WebAutomation {
   }
 
   private async executeNode(state: SmartAgentState): Promise<SmartAgentState> {
-    console.log('🔧 Selecting and executing coordinate-based tool based on roadmap goals...');
+    console.log('🔧 Using LLM to select and execute the most appropriate tool...');
     
     try {
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
@@ -239,28 +239,60 @@ export class WebAutomation {
         };
       }
       
-      // COORDINATE-BASED EXECUTION - Use coordinate-based tools for all interactions
-      console.log(`🎯 Using coordinate-based execution for: "${nextAction.description}"`);
+      // LLM-BASED TOOL SELECTION - Use LLM to select the most appropriate tool
+      console.log(`🧠 Using LLM to select tool for: "${nextAction.description}"`);
       console.log(`🎯 Roadmap goal: ${nextAction.description}`);
       console.log(`🎯 Feature: ${state.featureDocs.featureName}`);
       
-      // Take screenshot for coordinate-based analysis
+      // Take screenshot for LLM analysis
       const screenshotData = await this.puppeteerWorker.takeScreenshotForCoordinates();
       const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
       console.log(`📸 Screenshot captured with dimensions: ${screenshotData.dimensions.width}x${screenshotData.dimensions.height}`);
       
-      // Determine the best coordinate-based tool based on the action type
-      let toolName: string;
-      let toolParams: any;
+      // Use LLM to analyze and select the appropriate tool
+      const llmAnalysis = await this.llmService.analyzeCurrentStateWithScreenshot(
+        screenshotData.screenshot,
+        currentUrl,
+        pageTitle,
+        nextAction,
+        state.featureDocs,
+        state.history || [],
+        state.currentContext
+      );
       
-      if (nextAction.description.toLowerCase().includes('navigate') || 
-          nextAction.description.toLowerCase().includes('go to') ||
-          nextAction.description.toLowerCase().includes('reach')) {
-        // Use navigation tool
-        toolName = 'navigate';
-        
+      if (!llmAnalysis.success || !llmAnalysis.selectedTool) {
+        console.error('❌ LLM failed to select appropriate tool:', llmAnalysis.error);
+        return {
+          ...state,
+          error: `LLM tool selection failed: ${llmAnalysis.error}`,
+          isComplete: true
+        };
+      }
+      
+      console.log(`🧠 LLM selected tool: ${llmAnalysis.selectedTool}`);
+      console.log(`🧠 LLM reasoning: ${llmAnalysis.reasoning}`);
+      
+      // Get the selected tool and parameters from LLM
+      const toolName = llmAnalysis.selectedTool;
+      const toolParams = llmAnalysis.toolParams || {};
+      
+      // Enhance tool parameters with additional context for coordinate-based tools
+      if (toolName.includes('coordinates')) {
+        toolParams.actionDescription = toolParams.actionDescription || nextAction.description;
+        toolParams.actionType = toolParams.actionType || nextAction.type;
+        toolParams.context = toolParams.context || state.currentContext;
+        toolParams.screenshot = screenshotData.screenshot;
+        toolParams.screenshotData = screenshotData.screenshotData;
+        toolParams.screenshotPath = screenshotData.screenshotPath;
+        toolParams.currentUrl = currentUrl;
+        toolParams.pageTitle = pageTitle;
+        toolParams.viewportDimensions = screenshotData.dimensions;
+      }
+      
+      // For navigation tool, ensure URL is provided
+      if (toolName === 'navigate' && !toolParams.url) {
         // Extract URL from description text - handle both with and without protocols
         let extractedUrl = nextAction.description;
         
@@ -277,109 +309,21 @@ export class WebAutomation {
         }
         
         console.log(`🔍 Extracted URL from description: "${nextAction.description}" -> "${extractedUrl}"`);
-        
-        toolParams = {
-          url: extractedUrl // Extract actual URL from description
-        };
-      } else if (nextAction.description.toLowerCase().includes('go back') ||
-                 nextAction.description.toLowerCase().includes('back') ||
-                 nextAction.description.toLowerCase().includes('previous')) {
-        // Use go back tool
-        toolName = 'go_back';
-        toolParams = {
-          waitAfter: 1000
-        };
-      } else if (nextAction.type === 'click' || 
-                 nextAction.description.toLowerCase().includes('click')) {
-        // Use coordinate-based click
-        toolName = 'click_coordinates';
-        toolParams = {
-          actionDescription: nextAction.description,
-          actionType: nextAction.type,
-          context: state.currentContext,
-          screenshot: screenshotData.screenshot,
-          screenshotData: screenshotData.screenshotData,
-          screenshotPath: screenshotData.screenshotPath,
-          currentUrl: currentUrl,
-          pageTitle: pageTitle,
-          viewportDimensions: screenshotData.dimensions
-        };
-      } else if (nextAction.type === 'type' || 
-                 nextAction.description.toLowerCase().includes('type') ||
-                 nextAction.description.toLowerCase().includes('enter')) {
-        // Use coordinate-based type
-        toolName = 'type_coordinates';
-        toolParams = {
-          actionDescription: nextAction.description,
-          actionType: nextAction.type,
-          inputText: '', // Will be determined by intelligent analysis
-          context: state.currentContext,
-          screenshot: screenshotData.screenshot,
-          screenshotData: screenshotData.screenshotData,
-          screenshotPath: screenshotData.screenshotPath,
-          currentUrl: currentUrl,
-          pageTitle: pageTitle,
-          viewportDimensions: screenshotData.dimensions
-        };
-      } else if (nextAction.type === 'scroll' || 
-                 nextAction.description.toLowerCase().includes('scroll')) {
-        // Use coordinate-based scroll
-        toolName = 'scroll_coordinates';
-        toolParams = {
-          actionDescription: nextAction.description,
-          actionType: nextAction.type,
-          context: state.currentContext,
-          screenshot: screenshotData.screenshot,
-          screenshotData: screenshotData.screenshotData,
-          screenshotPath: screenshotData.screenshotPath,
-          currentUrl: currentUrl,
-          pageTitle: pageTitle,
-          viewportDimensions: screenshotData.dimensions
-        };
-      } else if (nextAction.type === 'select' || 
-                 nextAction.description.toLowerCase().includes('select')) {
-        // Use coordinate-based select
-        toolName = 'select_coordinates';
-        toolParams = {
-          actionDescription: nextAction.description,
-          actionType: nextAction.type,
-          inputText: '', // Will be determined by intelligent analysis
-          context: state.currentContext,
-          screenshot: screenshotData.screenshot,
-          screenshotData: screenshotData.screenshotData,
-          screenshotPath: screenshotData.screenshotPath,
-          currentUrl: currentUrl,
-          pageTitle: pageTitle,
-          viewportDimensions: screenshotData.dimensions
-        };
-      } else {
-        // Default to coordinate-based click for unknown actions
-        toolName = 'click_coordinates';
-        toolParams = {
-          actionDescription: nextAction.description,
-          actionType: nextAction.type,
-          context: state.currentContext,
-          screenshot: screenshotData.screenshot,
-          screenshotData: screenshotData.screenshotData,
-          screenshotPath: screenshotData.screenshotPath,
-          currentUrl: currentUrl,
-          pageTitle: pageTitle,
-          viewportDimensions: screenshotData.dimensions
-        };
+        toolParams.url = extractedUrl;
       }
       
-      console.log(`🛠️  Selected coordinate-based tool: ${toolName}`);
+      console.log(`🛠️  LLM selected tool: ${toolName}`);
       console.log(`🎯 Goal: ${nextAction.description}`);
       
       const tool = this.tools.get(toolName);
       if (!tool) {
-        throw new Error(`No coordinate-based tool available for: ${toolName}`);
+        throw new Error(`LLM selected tool not available: ${toolName}`);
       }
       
-      // Execute the coordinate-based tool
+      // Execute the LLM-selected tool
       const result = await tool.execute(toolParams, state);
       
-      console.log(`📊 Coordinate-Based Execution Output:`, {
+      console.log(`📊 LLM Tool Execution Output:`, {
         success: result.success,
         method: result.result?.method,
         reasoning: result.result?.reasoning,
@@ -396,7 +340,7 @@ export class WebAutomation {
       }
       
       if (result.success) {
-        console.log('✅ Coordinate-based execution successful');
+        console.log('✅ LLM tool execution successful');
         
         // Log action completion
         this.actionLogger.logActionComplete(`goal-${state.currentActionIndex}-${Date.now()}`, true);
@@ -424,7 +368,7 @@ export class WebAutomation {
           extractedData: { ...state.extractedData, ...result.result }
         };
       } else {
-        console.log('❌ Coordinate-based execution failed:', result.error);
+        console.log('❌ LLM tool execution failed:', result.error);
         
         // Log action failure
         this.actionLogger.logActionComplete(`goal-${state.currentActionIndex}-${Date.now()}`, false, result.error);

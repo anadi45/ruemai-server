@@ -141,6 +141,8 @@ export interface LLMResponse {
     element: any;
   };
   pageAnalysis?: string;
+  selectedTool?: string;
+  toolParams?: Record<string, any>;
 }
 
 export interface PuppeteerWorkerConfig {
