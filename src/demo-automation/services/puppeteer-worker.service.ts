@@ -641,6 +641,7 @@ export class PuppeteerWorkerService {
 
   /**
    * NEW: Take screenshot with specific dimensions for coordinate-based automation
+   * Enhanced with page stability checks and consistent viewport handling
    */
   async takeScreenshotForCoordinates(): Promise<{
     screenshot: string;
@@ -653,17 +654,26 @@ export class PuppeteerWorkerService {
       throw new Error('Page not initialized. Call initialize() first.');
     }
 
+    // Wait for page to be stable before taking screenshot
+    await this.waitForPageStability();
+
     // Get current viewport dimensions
     const viewport = this.page.viewport();
     if (!viewport) {
       throw new Error('Unable to get viewport dimensions');
     }
 
+    // Ensure consistent viewport dimensions
+    const consistentViewport = {
+      width: viewport.width || this.config.viewport.width,
+      height: viewport.height || this.config.viewport.height
+    };
+
     // Generate unique filename
     const timestamp = Date.now();
     const screenshotPath = path.join(process.cwd(), 'screenshots', `screenshot_${timestamp}.png`);
 
-    // Take screenshot and save as file
+    // Take screenshot and save as file with consistent viewport
     await this.page.screenshot({ 
       path: screenshotPath as `${string}.png`,
       fullPage: false 
@@ -675,6 +685,8 @@ export class PuppeteerWorkerService {
       fullPage: false 
     });
 
+    console.log(`📸 Screenshot captured with stable page state. Viewport: ${consistentViewport.width}x${consistentViewport.height}`);
+
     return {
       screenshot,
       screenshotData: {
@@ -682,9 +694,43 @@ export class PuppeteerWorkerService {
         mimeType: 'image/png'
       },
       screenshotPath,
-      dimensions: { width: viewport.width, height: viewport.height },
-      viewport: { width: viewport.width, height: viewport.height }
+      dimensions: consistentViewport,
+      viewport: consistentViewport
     };
+  }
+
+  /**
+   * Wait for page stability before taking screenshots
+   */
+  private async waitForPageStability(): Promise<void> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    try {
+      // Wait for network to be idle (Puppeteer equivalent)
+      await this.page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 5000 }).catch(() => {
+        // Ignore timeout if no navigation is happening
+      });
+      
+      // Wait for any pending animations or transitions
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Check if page is still loading
+      const isLoading = await this.page.evaluate(() => {
+        return document.readyState !== 'complete' || 
+               document.querySelectorAll('[style*="loading"], .loading, .spinner').length > 0;
+      });
+      
+      if (isLoading) {
+        console.log('⏳ Page still loading, waiting for stability...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      console.log('✅ Page is stable, ready for screenshot');
+    } catch (error) {
+      console.warn('⚠️ Could not verify page stability, proceeding with screenshot:', error);
+    }
   }
 
   /**
@@ -709,6 +755,153 @@ export class PuppeteerWorkerService {
       await this.cleanupScreenshot(path);
     }
   }
+
+  /**
+   * Verify if an action was successful by checking DOM state changes
+   */
+  async verifyActionSuccess(
+    actionType: string,
+    actionDescription: string,
+    expectedOutcome?: string
+  ): Promise<{ success: boolean; reasoning: string; confidence: number }> {
+    if (!this.page) {
+      throw new Error('Page not initialized. Call initialize() first.');
+    }
+
+    try {
+      // Get current page state
+      const currentUrl = this.page.url();
+      const pageTitle = await this.page.title();
+      
+      // Check for common success indicators based on action type
+      let success = false;
+      let reasoning = '';
+      let confidence = 0;
+
+      if (actionType === 'click' || actionType === 'click_coordinates') {
+        // For click actions, check if the page state changed or if we're on a new page
+        const urlChanged = currentUrl !== this.lastKnownUrl;
+        const titleChanged = pageTitle !== this.lastKnownTitle;
+        
+        if (urlChanged || titleChanged) {
+          success = true;
+          reasoning = `Page state changed after click: URL=${urlChanged}, Title=${titleChanged}`;
+          confidence = 0.8;
+        } else {
+          // Check for visual feedback like button states, form submissions, etc.
+          const hasVisualFeedback = await this.checkForVisualFeedback(actionDescription);
+          if (hasVisualFeedback) {
+            success = true;
+            reasoning = 'Visual feedback detected after click action';
+            confidence = 0.7;
+          } else {
+            success = false;
+            reasoning = 'No visible changes detected after click action';
+            confidence = 0.3;
+          }
+        }
+      } else if (actionType === 'type' || actionType === 'type_coordinates') {
+        // For type actions, check if the input field has the expected value
+        const inputValue = await this.getLastFocusedInputValue();
+        if (inputValue && inputValue.length > 0) {
+          success = true;
+          reasoning = `Text successfully entered: "${inputValue}"`;
+          confidence = 0.9;
+        } else {
+          success = false;
+          reasoning = 'No text detected in input field';
+          confidence = 0.2;
+        }
+      } else if (actionType === 'navigate') {
+        // For navigation, check if we're on the expected page
+        success = currentUrl.includes(actionDescription) || pageTitle.includes(actionDescription);
+        reasoning = success ? 'Successfully navigated to target page' : 'Navigation did not reach target page';
+        confidence = success ? 0.9 : 0.1;
+      }
+
+      // Store current state for next comparison
+      this.lastKnownUrl = currentUrl;
+      this.lastKnownTitle = pageTitle;
+
+      return { success, reasoning, confidence };
+    } catch (error) {
+      console.error('Error verifying action success:', error);
+      return { 
+        success: false, 
+        reasoning: `Verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        confidence: 0.1 
+      };
+    }
+  }
+
+  /**
+   * Check for visual feedback after an action
+   */
+  private async checkForVisualFeedback(actionDescription: string): Promise<boolean> {
+    if (!this.page) {
+      return false;
+    }
+
+    try {
+      // Check for common success indicators
+      const indicators = await this.page.evaluate(() => {
+        const successIndicators = [
+          // Check for success messages
+          document.querySelectorAll('[class*="success"], [class*="successful"], .alert-success, .toast-success').length > 0,
+          // Check for loading states that might indicate processing
+          document.querySelectorAll('[class*="loading"], .spinner, [class*="processing"]').length > 0,
+          // Check for form submissions
+          document.querySelectorAll('form[data-submitted="true"], .form-submitted').length > 0,
+          // Check for button state changes
+          document.querySelectorAll('button[disabled], .btn-disabled').length > 0,
+          // Check for new content appearing
+          document.querySelectorAll('[class*="new"], [class*="added"], [class*="created"]').length > 0
+        ];
+        
+        return indicators.some(indicator => indicator);
+      });
+
+      return indicators;
+    } catch (error) {
+      console.warn('Error checking for visual feedback:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get the value of the last focused input field
+   */
+  private async getLastFocusedInputValue(): Promise<string> {
+    if (!this.page) {
+      return '';
+    }
+
+    try {
+      return await this.page.evaluate(() => {
+        const activeElement = document.activeElement as HTMLInputElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+          return activeElement.value || '';
+        }
+        
+        // Fallback: check all input fields for recent changes
+        const inputs = document.querySelectorAll('input[type="text"], input[type="email"], input[type="password"], textarea');
+        for (const input of inputs) {
+          if ((input as HTMLInputElement).value && (input as HTMLInputElement).value.length > 0) {
+            return (input as HTMLInputElement).value;
+          }
+        }
+        
+        return '';
+      });
+    } catch (error) {
+      console.warn('Error getting input value:', error);
+      return '';
+    }
+  }
+
+  // Store last known state for comparison
+  private lastKnownUrl: string = '';
+  private lastKnownTitle: string = '';
 
   /**
    * NEW: Click at specific coordinates
@@ -898,10 +1091,38 @@ export class PuppeteerWorkerService {
       await this.page!.mouse.click(x, y);
       console.log(`✅ Coordinate click successful at (${x}, ${y})`);
       
+      // Wait for any potential page changes or animations
+      await this.waitForActionCompletion();
       
     } catch (error) {
       console.error(`❌ Coordinate click failed at (${x}, ${y}):`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Wait for action completion and page stability
+   */
+  private async waitForActionCompletion(): Promise<void> {
+    if (!this.page) {
+      return;
+    }
+
+    try {
+      // Wait for any immediate page changes
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Wait for network activity to settle
+      await this.page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 3000 }).catch(() => {
+        // Ignore timeout if no navigation is happening
+      });
+      
+      // Wait for any animations or transitions to complete
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      console.log('✅ Action completion wait finished');
+    } catch (error) {
+      console.warn('⚠️ Could not wait for action completion:', error);
     }
   }
 

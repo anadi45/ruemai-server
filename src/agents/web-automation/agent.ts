@@ -548,8 +548,21 @@ export class WebAutomation {
       
       console.log('📸 Screenshot captured for validation analysis with dimensions:', screenshotData.dimensions);
       
+      // Enhanced validation: Use both DOM-based verification and LLM analysis
+      const domVerification = await this.puppeteerWorker.verifyActionSuccess(
+        nextAction.type,
+        nextAction.description,
+        nextAction.description
+      );
+      
+      console.log(`🔍 DOM-based verification:`, {
+        success: domVerification.success,
+        reasoning: domVerification.reasoning,
+        confidence: domVerification.confidence
+      });
+      
       // Use LLM to validate the coordinate-based action was successful using screenshot
-      const validation = await this.llmService.validateActionSuccessWithScreenshot(
+      const llmValidation = await this.llmService.validateActionSuccessWithScreenshot(
         this.convertToPuppeteerAction(nextAction),
         screenshotData.screenshot,
         currentUrl,
@@ -559,9 +572,9 @@ export class WebAutomation {
         screenshotData.screenshotPath
       );
       
-      console.log(`📊 Validation Analysis Output:`, {
-        success: validation.success,
-        reasoning: validation.reasoning
+      console.log(`📊 LLM Validation Analysis Output:`, {
+        success: llmValidation.success,
+        reasoning: llmValidation.reasoning
       });
       
       // Clean up screenshot file after processing
@@ -573,9 +586,21 @@ export class WebAutomation {
         }
       }
       
-      // Enhanced validation logic for coordinate-based actions using screenshot analysis
-      let validationSuccess = validation.success;
-      let validationReasoning = validation.reasoning;
+      // Combined validation logic: Use both DOM verification and LLM analysis
+      let validationSuccess = false;
+      let validationReasoning = '';
+      
+      // If either DOM verification or LLM validation succeeds, consider it successful
+      if (domVerification.success && domVerification.confidence > 0.5) {
+        validationSuccess = true;
+        validationReasoning = `DOM verification successful: ${domVerification.reasoning}`;
+      } else if (llmValidation.success) {
+        validationSuccess = true;
+        validationReasoning = `LLM validation successful: ${llmValidation.reasoning}`;
+      } else {
+        validationSuccess = false;
+        validationReasoning = `Both validations failed. DOM: ${domVerification.reasoning}, LLM: ${llmValidation.reasoning}`;
+      }
       
       // For navigation actions, check if URL changed
       if (nextAction.type === 'navigate') {
@@ -601,8 +626,8 @@ export class WebAutomation {
       if (nextAction.type === 'click' || nextAction.type === 'type' || nextAction.type === 'scroll' || nextAction.type === 'select') {
         console.log(`🔍 Coordinate-based action validation: ${nextAction.type}`);
         // For coordinate-based actions, the screenshot analysis is more reliable
-        validationSuccess = validation.success;
-        validationReasoning = `Coordinate-based ${nextAction.type} validation: ${validation.reasoning}`;
+        validationSuccess = llmValidation.success;
+        validationReasoning = `Coordinate-based ${nextAction.type} validation: ${llmValidation.reasoning}`;
       }
       
       if (!validationSuccess) {
@@ -687,7 +712,7 @@ export class WebAutomation {
               tourSteps: [...state.tourSteps, tourStep],
               isComplete: true,
               success: false,
-              error: `Critical action validation failed after max retries: ${nextAction.type} - ${validation.reasoning}`,
+              error: `Critical action validation failed after max retries: ${nextAction.type} - ${validationReasoning}`,
               endTime: Date.now()
             };
           }

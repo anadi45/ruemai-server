@@ -659,7 +659,9 @@ Guidelines:
 - Consider the visual layout and element positioning
 - Return multiple potential coordinates ranked by confidence
 - Prioritize elements that are visible and interactive
-- Consider the element's position and size`;
+- Consider the element's position and size
+- Be conservative with confidence scores - only high confidence matches should be returned
+- Focus on clear, unambiguous visual elements`;
 
     const prompt = `
 Target Description: ${targetDescription}
@@ -670,6 +672,13 @@ Search Context: ${searchContext}
 
 Screenshot Analysis:
 [Base64 screenshot provided - analyze the visual layout and interactive elements]
+
+IMPORTANT: Only return coordinates with high confidence (>0.7) for clear, unambiguous elements.
+For navigation elements like "workflows" in a left sidebar, look for:
+- Clear text labels
+- Distinct visual boundaries
+- Consistent positioning
+- Interactive appearance (buttons, links, menu items)
 
 Find the best coordinates for this action. Return in this JSON format:
 {
@@ -705,19 +714,40 @@ Find the best coordinates for this action. Return in this JSON format:
         console.log("🚀 ~ LLMService ~ detectClickCoordinates ~ result:", result);
         
         if (result.coordinates && Array.isArray(result.coordinates)) {
-          console.log(`✅ Found ${result.coordinates.length} coordinates from LLM`);
-          return {
-            coordinates: result.coordinates.map(coord => ({
-              x: coord.x,
-              y: coord.y,
-              confidence: coord.confidence,
-              reasoning: coord.reasoning || 'No reasoning provided',
-              elementDescription: coord.elementDescription || 'No description provided',
-              element: coord.element
-            })),
-            pageAnalysis: result.pageAnalysis || '',
-            recommendations: result.recommendations || []
-          };
+          // Filter coordinates by confidence threshold
+          const highConfidenceCoordinates = result.coordinates.filter((coord: any) => coord.confidence > 0.7);
+          
+          if (highConfidenceCoordinates.length > 0) {
+            console.log(`✅ Found ${highConfidenceCoordinates.length} high-confidence coordinates from LLM`);
+            return {
+              coordinates: highConfidenceCoordinates.map((coord: any) => ({
+                x: coord.x,
+                y: coord.y,
+                confidence: coord.confidence,
+                reasoning: coord.reasoning || 'No reasoning provided',
+                elementDescription: coord.elementDescription || 'No description provided',
+                element: coord.element
+              })),
+              pageAnalysis: result.pageAnalysis || '',
+              recommendations: result.recommendations || []
+            };
+          } else {
+            console.log(`⚠️ No high-confidence coordinates found. All coordinates:`, result.coordinates);
+            // Return the best available coordinates even if below threshold
+            const bestCoordinates = result.coordinates.sort((a: any, b: any) => b.confidence - a.confidence).slice(0, 1);
+            return {
+              coordinates: bestCoordinates.map((coord: any) => ({
+                x: coord.x,
+                y: coord.y,
+                confidence: coord.confidence,
+                reasoning: coord.reasoning || 'No reasoning provided',
+                elementDescription: coord.elementDescription || 'No description provided',
+                element: coord.element
+              })),
+              pageAnalysis: result.pageAnalysis || '',
+              recommendations: result.recommendations || []
+            };
+          }
         } else {
           console.log(`❌ No coordinates found in LLM response. Available keys:`, Object.keys(result));
         }
