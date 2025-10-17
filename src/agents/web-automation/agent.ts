@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { StateGraph, MemorySaver, START, END } from '@langchain/langgraph';
-import { GeminiService } from '../../demo-automation/services/gemini.service';
+import { LLMService } from '../../demo-automation/services/llm.service';
 import { PuppeteerWorkerService } from '../../demo-automation/services/puppeteer-worker.service';
 import { IntelligentElementDiscoveryService } from '../../demo-automation/services/intelligent-element-discovery.service';
 import { ActionLoggerService } from '../../demo-automation/services/action-logger.service';
@@ -28,7 +28,7 @@ export class WebAutomation {
   private webAutomationTools: WebAutomationTools;
 
   constructor(
-    private geminiService: GeminiService,
+    private llmService: LLMService,
     private puppeteerWorker: PuppeteerWorkerService,
     private elementDiscovery: IntelligentElementDiscoveryService,
     private actionLogger: ActionLoggerService
@@ -183,8 +183,8 @@ export class WebAutomation {
       enhancedContext += `- Plan guidance: ${nextAction.description}\n`;
       enhancedContext += `- Feature goal: ${state.featureDocs.featureName}\n`;
       
-      // Use Gemini to analyze the screenshot for coordinate-based actions
-      const analysis = await this.geminiService.analyzeCurrentStateWithScreenshot(
+      // Use LLM to analyze the screenshot for coordinate-based actions
+      const analysis = await this.llmService.analyzeCurrentStateWithScreenshot(
         screenshot,
         currentUrl,
         pageTitle,
@@ -530,8 +530,8 @@ export class WebAutomation {
       
       console.log('📸 Screenshot captured for validation analysis with dimensions:', screenshotData.dimensions);
       
-      // Use Gemini to validate the coordinate-based action was successful using screenshot
-      const validation = await this.geminiService.validateActionSuccessWithScreenshot(
+      // Use LLM to validate the coordinate-based action was successful using screenshot
+      const validation = await this.llmService.validateActionSuccessWithScreenshot(
         {
           type: nextAction.type,
           selector: nextAction.selector,
@@ -617,7 +617,7 @@ export class WebAutomation {
             
             try {
               // Use LLM to analyze failure and regenerate improved coordinate-based action
-              const retryAnalysis = await this.geminiService.analyzeFailureAndRegenerateAction(
+              const retryAnalysis = await this.llmService.analyzeFailureAndRegenerateAction(
                 nextAction,
                 validationReasoning,
                 null, // No DOM state for coordinate-based actions
@@ -701,7 +701,7 @@ export class WebAutomation {
           
           try {
             // Use LLM to analyze failure and regenerate improved coordinate-based action
-            const retryAnalysis = await this.geminiService.analyzeFailureAndRegenerateAction(
+            const retryAnalysis = await this.llmService.analyzeFailureAndRegenerateAction(
               nextAction,
               validationReasoning,
               null, // No DOM state for coordinate-based actions

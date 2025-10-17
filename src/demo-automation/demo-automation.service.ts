@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CreateDemoResponseDto } from './demo-automation.dto';
-import { GeminiService } from './services/gemini.service';
+import { LLMService } from './services/llm.service';
 import { PuppeteerWorkerService } from './services/puppeteer-worker.service';
 import { WebAutomation } from '../agents/web-automation/agent';
 import { writePlanToFile } from './utils/plan-writer';
@@ -16,7 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 @Injectable()
 export class DemoAutomationService {
   constructor(
-    private geminiService: GeminiService,
+    private llmService: LLMService,
     private puppeteerWorker: PuppeteerWorkerService,
     private webAutomationAgent: WebAutomation
   ) {}
@@ -31,16 +31,19 @@ export class DemoAutomationService {
     const startTime = Date.now();
 
     try {
-      // Process files directly with Gemini
-      console.log(`Processing ${files.length} files directly with Gemini...`);
-      const extractedData = await this.geminiService.processFilesDirectly(files, featureName);
+      // Process files directly with LLM
+      console.log(`Processing ${files.length} files directly with LLM...`);
+      const extractedData = await this.llmService.processFilesDirectly(files, featureName);
 
       // Convert to ProductDocs format
       const featureDocs: ProductDocs = {
         featureName: extractedData.featureName,
         description: extractedData.description,
         steps: extractedData.steps,
-        selectors: extractedData.selectors,
+        selectors: extractedData.selectors.reduce((acc, selector, index) => {
+          acc[`selector_${index}`] = selector;
+          return acc;
+        }, {} as Record<string, string>),
         expectedOutcomes: extractedData.expectedOutcomes,
         prerequisites: extractedData.prerequisites,
       };
@@ -54,7 +57,7 @@ export class DemoAutomationService {
         console.log('🎯 Agent will figure out execution details based on visual analysis');
         console.log('🔍 Agent will intelligently navigate to and use the feature');
       } catch (error) {
-        console.error('Failed to generate intelligent roadmap with Gemini:', error);
+        console.error('Failed to generate intelligent roadmap with LLM:', error);
         throw error;
       }
 
@@ -144,7 +147,7 @@ export class DemoAutomationService {
       console.log('🎯 Creating high-level goals for feature demonstration');
       console.log('🔍 Agent will figure out execution details through visual analysis');
       
-      const actionPlan = await this.geminiService.generateActionPlan(featureDocs, websiteUrl);
+      const actionPlan = await this.llmService.generateActionPlan(featureDocs, websiteUrl);
 
       console.log('✅ Generated intelligent roadmap');
       console.log(`📋 Roadmap contains ${actionPlan.actions.length} high-level goals`);

@@ -124,11 +124,23 @@ export interface DemoAutomationState {
   endTime?: number;
 }
 
-export interface GeminiResponse {
+export interface LLMResponse {
+  success: boolean;
   action: Action | null;
   reasoning: string;
-  confidence: number;
+  confidence?: number;
   nextSteps?: string[];
+  error?: string;
+  analysis?: string;
+  improvedAction?: Action;
+  recommendations?: string[];
+  suggestedSelectors?: string[];
+  coordinates?: {
+    x: number;
+    y: number;
+    element: any;
+  };
+  pageAnalysis?: string;
 }
 
 export interface PuppeteerWorkerConfig {
