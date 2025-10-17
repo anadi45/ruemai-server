@@ -67,16 +67,29 @@ export class WebAutomation {
           // Initialize the automation agent
           state = await self.initializeNode(state);
           
-          // Main execution loop with intelligent adaptation
-          while (!state.isComplete && state.currentActionIndex < state.actionPlan.actions.length) {
-            console.log(`\n🔄 Intelligently executing action ${state.currentActionIndex + 1}/${state.actionPlan.actions.length}`);
-            console.log(`🎯 Plan guidance: ${state.actionPlan.actions[state.currentActionIndex]?.description || 'No guidance available'}`);
-            console.log(`🧠 Feature goal: ${state.featureDocs.featureName}`);
+          // Intelligent goal-oriented execution loop
+          while (!state.isComplete) {
+            console.log(`\n🔄 Intelligently analyzing current state and goal progress...`);
+            console.log(`🎯 END GOAL: ${state.featureDocs.featureName}`);
+            console.log(`📊 Progress: ${state.completedActions.length} completed, ${state.failedActions.length} failed`);
             
-            // Intelligently analyze current state and plan
+            // Intelligently analyze current state and goal progress
             state = await self.analyzeNode(state);
             
             if (state.isComplete) break;
+            
+            // Check if we've achieved the goal (intelligent completion detection)
+            if (state.goalProgress && state.goalProgress.toLowerCase().includes('goal achieved') || 
+                state.goalProgress && state.goalProgress.toLowerCase().includes('completed')) {
+              console.log('🎉 GOAL ACHIEVED! Agent intelligently detected completion');
+              state = {
+                ...state,
+                isComplete: true,
+                success: true,
+                reasoning: 'Goal achieved through intelligent analysis'
+              };
+              break;
+            }
             
             // Intelligently select and execute the best tool
             state = await self.executeNode(state);
@@ -99,8 +112,8 @@ export class WebAutomation {
             // Intelligently adapt strategy based on results
             state = await self.adaptNode(state);
             
-            // Increment to next action
-            state = await self.incrementNode(state);
+            // Intelligently decide whether to continue or complete
+            state = await self.intelligentIncrementNode(state);
           }
           
           // Complete the automation workflow
@@ -155,35 +168,30 @@ export class WebAutomation {
   }
 
   private async analyzeNode(state: SmartAgentState): Promise<SmartAgentState> {
-    console.log('🧠 Analyzing current state for coordinate-based action planning...');
+    console.log('🧠 Intelligently analyzing current state and goal progress...');
     
     try {
-      // Take screenshot for coordinate-based visual analysis
+      // Take screenshot for intelligent visual analysis
       const screenshot = await this.puppeteerWorker.takeScreenshot();
       const currentUrl = this.puppeteerWorker.getCurrentUrl() || '';
       const pageTitle = await this.puppeteerWorker.getPageTitle() || '';
       
-      // Get the next action from the plan (as guidance only)
+      // Get the next action from the plan (as guidance only, not strict)
       const nextAction = state.actionPlan.actions[state.currentActionIndex];
       
-      if (!nextAction) {
-        return {
-          ...state,
-          isComplete: true,
-          reasoning: 'All actions in plan completed'
-        };
-      }
-      
-      // Build enhanced context for coordinate-based analysis
+      // Build intelligent context focused on goal achievement
       let enhancedContext = state.currentContext;
-      enhancedContext += `\n\nCoordinate-Based Page Analysis:\n`;
-      enhancedContext += `- URL: ${currentUrl}\n`;
-      enhancedContext += `- Title: ${pageTitle}\n`;
-      enhancedContext += `- Screenshot captured for coordinate-based visual analysis\n`;
-      enhancedContext += `- Plan guidance: ${nextAction.description}\n`;
-      enhancedContext += `- Feature goal: ${state.featureDocs.featureName}\n`;
+      enhancedContext += `\n\nINTELLIGENT GOAL-ORIENTED ANALYSIS:\n`;
+      enhancedContext += `- Current URL: ${currentUrl}\n`;
+      enhancedContext += `- Page Title: ${pageTitle}\n`;
+      enhancedContext += `- Screenshot captured for intelligent visual analysis\n`;
+      enhancedContext += `- Roadmap guidance (not strict): ${nextAction?.description || 'No specific guidance'}\n`;
+      enhancedContext += `- END GOAL: ${state.featureDocs.featureName}\n`;
+      enhancedContext += `- Goal Description: ${state.featureDocs.description}\n`;
+      enhancedContext += `- Expected Outcomes: ${state.featureDocs.expectedOutcomes?.join(', ') || 'Not specified'}\n`;
+      enhancedContext += `- Progress: ${state.completedActions.length} actions completed, ${state.failedActions.length} failed\n`;
       
-      // Use LLM to analyze the screenshot for coordinate-based actions
+      // Use LLM to intelligently analyze the current state and goal progress
       const analysis = await this.llmService.analyzeCurrentStateWithScreenshot(
         screenshot,
         currentUrl,
@@ -194,26 +202,33 @@ export class WebAutomation {
         enhancedContext
       );
       
-      // Enhanced reasoning with coordinate-based analysis
-      const coordinateBasedReasoning = [
+      // Enhanced reasoning with intelligent analysis
+      const intelligentReasoning = [
         analysis.reasoning,
-        `Plan guidance: ${nextAction.description}`,
-        `Feature goal: ${state.featureDocs.featureName}`,
+        `Goal Progress: ${analysis.goalProgress || 'Not specified'}`,
+        `Can Skip Ahead: ${analysis.canSkipAhead || 'Not specified'}`,
+        `Needs Intermediate Step: ${analysis.needsIntermediateStep || 'Not specified'}`,
+        `Feature Goal: ${state.featureDocs.featureName}`,
         `Current step: ${state.currentActionIndex + 1}/${state.actionPlan.actions.length}`
       ].filter(Boolean).join('\n');
+      
+      console.log(`🧠 Intelligent Analysis Results:`);
+      console.log(`   Goal Progress: ${analysis.goalProgress || 'Not specified'}`);
+      console.log(`   Can Skip Ahead: ${analysis.canSkipAhead || 'Not specified'}`);
+      console.log(`   Needs Intermediate Step: ${analysis.needsIntermediateStep || 'Not specified'}`);
       
       return {
         ...state,
         currentContext: enhancedContext,
-        reasoning: coordinateBasedReasoning,
-        // Store the analysis results for coordinate-based execution
+        reasoning: intelligentReasoning,
+        // Store the intelligent analysis results
         ...analysis
       };
     } catch (error) {
-      console.error('Coordinate-based analysis failed:', error);
+      console.error('Intelligent analysis failed:', error);
       return {
         ...state,
-        error: error instanceof Error ? error.message : 'Coordinate-based analysis failed',
+        error: error instanceof Error ? error.message : 'Intelligent analysis failed',
         isComplete: true
       };
     }
@@ -785,6 +800,94 @@ export class WebAutomation {
       console.error('Strategy adaptation failed:', error);
       return state;
     }
+  }
+
+  private async intelligentIncrementNode(state: SmartAgentState): Promise<SmartAgentState> {
+    console.log('🧠 Intelligently deciding next steps based on goal progress...');
+    
+    // Check if we can skip ahead based on LLM analysis
+    if (state.canSkipAhead && state.canSkipAhead.toLowerCase().includes('yes')) {
+      console.log('🚀 LLM suggests we can skip ahead - looking for opportunities...');
+      
+      // Try to find a more advanced step that we can jump to
+      const advancedStepIndex = this.findAdvancedStepIndex(state);
+      if (advancedStepIndex > state.currentActionIndex) {
+        console.log(`🚀 Skipping ahead to step ${advancedStepIndex + 1} (from ${state.currentActionIndex + 1})`);
+        return {
+          ...state,
+          currentActionIndex: advancedStepIndex,
+          reasoning: `Intelligently skipped ahead to step ${advancedStepIndex + 1} based on goal progress`
+        };
+      }
+    }
+    
+    // Check if we need intermediate steps
+    if (state.needsIntermediateStep && state.needsIntermediateStep.toLowerCase().includes('yes')) {
+      console.log('🔄 LLM detected need for intermediate steps - staying on current step');
+      return {
+        ...state,
+        reasoning: 'Taking intermediate steps as detected by LLM analysis'
+      };
+    }
+    
+    // Normal increment
+    const nextActionIndex = state.currentActionIndex + 1;
+    
+    // Check if we've completed all actions in the roadmap
+    if (nextActionIndex >= state.actionPlan.actions.length) {
+      console.log('📋 All roadmap actions completed - checking if goal is achieved...');
+      
+      // Even if roadmap is complete, check if we've actually achieved the goal
+      if (state.goalProgress && !state.goalProgress.toLowerCase().includes('goal achieved')) {
+        console.log('🎯 Roadmap complete but goal not fully achieved - continuing intelligently...');
+        return {
+          ...state,
+          currentActionIndex: state.currentActionIndex, // Stay on current step
+          reasoning: 'Roadmap complete but goal not achieved - continuing intelligently'
+        };
+      }
+      
+      console.log('✅ All roadmap actions completed and goal achieved');
+      return {
+        ...state,
+        isComplete: true,
+        success: true,
+        reasoning: 'All roadmap actions completed and goal achieved'
+      };
+    }
+    
+    console.log(`🔄 Moving to roadmap action ${nextActionIndex + 1}/${state.actionPlan.actions.length}`);
+    
+    return {
+      ...state,
+      currentActionIndex: nextActionIndex
+    };
+  }
+
+  private findAdvancedStepIndex(state: SmartAgentState): number {
+    // Look for steps that might be more relevant to current goal progress
+    // This is a simple heuristic - in a more sophisticated system, you'd use LLM analysis
+    const currentIndex = state.currentActionIndex;
+    const totalActions = state.actionPlan.actions.length;
+    
+    // Look ahead up to 3 steps to find a more relevant action
+    for (let i = currentIndex + 1; i < Math.min(currentIndex + 4, totalActions); i++) {
+      const action = state.actionPlan.actions[i];
+      if (action && this.isActionRelevantToGoal(action, state)) {
+        return i;
+      }
+    }
+    
+    // If no advanced step found, just increment normally
+    return currentIndex + 1;
+  }
+
+  private isActionRelevantToGoal(action: any, state: SmartAgentState): boolean {
+    // Simple heuristic to determine if an action is relevant to the current goal
+    const goalKeywords = state.featureDocs.featureName.toLowerCase().split(' ');
+    const actionDescription = action.description.toLowerCase();
+    
+    return goalKeywords.some(keyword => actionDescription.includes(keyword));
   }
 
   private async incrementNode(state: SmartAgentState): Promise<SmartAgentState> {

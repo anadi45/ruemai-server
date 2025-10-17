@@ -143,6 +143,9 @@ export interface LLMResponse {
   pageAnalysis?: string;
   selectedTool?: string;
   toolParams?: Record<string, any>;
+  goalProgress?: string;
+  canSkipAhead?: string;
+  needsIntermediateStep?: string;
 }
 
 export interface PuppeteerWorkerConfig {
@@ -221,6 +224,10 @@ export interface SmartAgentState {
   totalSteps?: number;
   history?: Action[];
   adaptationStrategy?: 'strict' | 'flexible' | 'adaptive';
+  // Intelligent analysis properties
+  goalProgress?: string;
+  canSkipAhead?: string;
+  needsIntermediateStep?: string;
 }
 
 export interface DemoAutomationResult {

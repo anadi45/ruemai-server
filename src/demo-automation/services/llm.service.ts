@@ -555,33 +555,48 @@ Was this action successful? Return in this JSON format:
     history: Action[],
     enhancedContext: string
   ): Promise<LLMResponse> {
-    const systemPrompt = `You are an expert user experience automation agent with visual analysis capabilities. Analyze the current page state using both visual information and user context from the screenshot.
+    const systemPrompt = `You are an intelligent web automation agent that thinks like a human user. Your job is to analyze the current page state and decide what to do next to achieve the end goal.
+
+CRITICAL THINKING APPROACH:
+- Don't blindly follow a roadmap - think about what you see and what makes sense to do next
+- Focus on the END GOAL, not just the next step in a plan
+- If you can skip steps or take shortcuts to reach the goal faster, do it
+- If you see intermediate steps that aren't in the roadmap but are needed, take them
+- Be adaptive and intelligent - the roadmap is just guidance, not strict instructions
+- Think like a real user who wants to accomplish the feature goal efficiently
 
 Guidelines:
-- Think like a real user looking at the website
-- Use the screenshot to understand the visual layout and user experience
-- Focus on what the user sees and how they would naturally interact
-- Look for visual cues that guide user behavior
-- Consider the user experience and visual hierarchy
-- Be specific about what the user can see and what actions are naturally available to them
-- Select the most appropriate tool from the available tools based on the action needed`;
+- Analyze what you actually see on the page, not what the roadmap says
+- Consider if the current step is still relevant or if you can skip ahead
+- Look for opportunities to take more direct paths to the goal
+- Identify any missing intermediate steps that aren't in the roadmap
+- Be flexible and intelligent in your approach`;
 
     const prompt = `
-Current Page Analysis:
+GOAL-ORIENTED ANALYSIS:
+
+END GOAL: ${featureDocs.featureName}
+- Description: ${featureDocs.description}
+- Expected Outcomes: ${featureDocs.expectedOutcomes?.join(', ') || 'Not specified'}
+
+CURRENT STATE:
 - URL: ${currentUrl}
 - Title: ${pageTitle}
-- Next Action from Plan: ${nextAction?.description || 'No specific action planned'}
-- Feature: ${featureDocs.featureName}
+- What I can see on the page: [Analyze the screenshot for visual elements, buttons, forms, navigation, etc.]
 
-Previous Actions (${history.length}):
+ROADMAP GUIDANCE (not strict instructions):
+- Next suggested step: ${nextAction?.description || 'No specific step planned'}
+- Full roadmap: ${JSON.stringify(featureDocs.steps || [], null, 2)}
+
+MY PROGRESS SO FAR:
 ${history.map((action, i) => `${i + 1}. ${action.type}: ${action.description}`).join('\n')}
 
-Enhanced Context:
-${enhancedContext}
+INTELLIGENT DECISION MAKING:
+Based on what I can see on the current page and my goal, what should I do next?
 
 Available Tools:
 1. navigate - Navigate to a specific URL or page
-2. wait - Wait for a condition or time period
+2. wait - Wait for a condition or time period  
 3. go_back - Navigate back to the previous page using browser back button
 4. click_coordinates - Click at specific coordinates using screenshot-based coordinate detection
 5. type_coordinates - Type text at specific coordinates using screenshot-based coordinate detection
@@ -591,10 +606,10 @@ Available Tools:
 Screenshot Analysis:
 [Base64 screenshot provided - analyze the visual layout, buttons, forms, and interactive elements]
 
-Based on the visual analysis and current state, select the most appropriate tool and action. Return in this JSON format:
+INTELLIGENT DECISION: What should I do next to reach my goal? Return in this JSON format:
 {
   "success": true,
-  "reasoning": "Your analysis of the current state and reasoning for the tool selection",
+  "reasoning": "Your intelligent analysis of the current state and what you should do next to reach the goal",
   "selectedTool": "tool_name_from_available_tools",
   "toolParams": {
     "url": "string (for navigate)",
@@ -608,7 +623,10 @@ Based on the visual analysis and current state, select the most appropriate tool
     "selector": "User-visible element description (what the user sees and interacts with)",
     "value": "value to type (if applicable)",
     "description": "Human-readable description of the action"
-  }
+  },
+  "goalProgress": "How close am I to achieving the end goal?",
+  "canSkipAhead": "Can I skip any roadmap steps and go directly to the goal?",
+  "needsIntermediateStep": "Do I need to take any intermediate steps not in the roadmap?"
 }
 `;
 
