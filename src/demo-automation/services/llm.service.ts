@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleAIFileManager } from '@google/generative-ai/server';
 import { Action, DOMState, LLMResponse, ProductDocs, ActionPlan, PuppeteerAction, ElementMatch } from '../types/demo-automation.types';
 import * as fs from 'fs';
 
@@ -61,6 +62,13 @@ export class LLMService {
     const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonMatch) {
       return jsonMatch[1].trim();
+    }
+
+    // Handle cases where response starts with text like "text" or "Genera"
+    // Look for JSON after any initial text
+    const textThenJsonMatch = text.match(/^[^{[]*(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (textThenJsonMatch) {
+      return textThenJsonMatch[1].trim();
     }
 
     // If no JSON found, return the original text
@@ -153,6 +161,75 @@ export class LLMService {
     return leastUsedAvailable;
   }
 
+  /**
+   * Upload files directly to Gemini and return file references
+   */
+  private async uploadFilesToGemini(files: Express.Multer.File[]): Promise<any[]> {
+    const uploadedFiles = [];
+    
+    for (const file of files) {
+      try {
+        console.log(`Uploading file: ${file.originalname} (${file.mimetype})`);
+        
+        // Get API key for file upload
+        const keyIndex = this.getNextKeyIndex();
+        const apiKey = this.getApiKeys()[keyIndex];
+        
+        // Create file manager instance
+        const fileManager = new GoogleAIFileManager(apiKey);
+        
+        // Upload file directly using buffer
+        const uploadedFile = await fileManager.uploadFile(file.buffer, {
+          mimeType: file.mimetype,
+          displayName: file.originalname
+        });
+        
+        uploadedFiles.push(uploadedFile.file);
+        
+        console.log(`Successfully uploaded: ${file.originalname} to ${uploadedFile.file.uri}`);
+      } catch (error) {
+        console.error(`Failed to upload file ${file.originalname}:`, error);
+        throw new Error(`Failed to upload file ${file.originalname}`);
+      }
+    }
+    
+    return uploadedFiles;
+  }
+
+  /**
+   * Call LLM with uploaded files and return raw text response
+   */
+  private async callLLMWithFiles(
+    prompt: string,
+    uploadedFiles: any[],
+    temperature: number = 0.1
+  ): Promise<string> {
+    try {
+      const result = await this.callWithKeyRotation(async (model) => {
+        // Create content array with file data and prompt (using correct Gemini format)
+        const content = [
+          // Add text prompt first
+          prompt,
+          // Add file data parts
+          ...uploadedFiles.map(file => ({
+            fileData: {
+              fileUri: file.uri,
+              mimeType: file.mimeType
+            }
+          }))
+        ];
+        
+        const response = await model.generateContent(content);
+        return response.response.text();
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error calling LLM with files:', error);
+      throw error;
+    }
+  }
+
   async callLLM(
     prompt: string,
     systemPrompt?: string,
@@ -181,6 +258,8 @@ export class LLMService {
   private parseLLMResponse(text: string): LLMResponse {
     try {
       const jsonText = this.extractJsonFromMarkdown(text);
+      console.log('Extracted JSON text:', jsonText.substring(0, 200) + (jsonText.length > 200 ? '...' : ''));
+      
       const parsed = JSON.parse(jsonText);
       
       return {
@@ -192,6 +271,8 @@ export class LLMService {
       };
     } catch (error) {
       console.error('Error parsing LLM response:', error);
+      console.error('Original text:', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
+      console.error('Extracted text:', this.extractJsonFromMarkdown(text).substring(0, 500) + (this.extractJsonFromMarkdown(text).length > 500 ? '...' : ''));
       return {
         success: false,
         reasoning: 'Failed to parse LLM response',
@@ -213,21 +294,13 @@ export class LLMService {
     prerequisites: string[];
   }> {
     try {
-      console.log(`Processing ${files.length} files with LLM...`);
+      console.log(`Processing ${files.length} files directly with Gemini...`);
       
-      // Prepare file data for LLM
-      const fileContents = files.map(file => ({
-        name: file.originalname,
-        content: file.buffer.toString('utf-8'),
-        size: file.size,
-        mimetype: file.mimetype
-      }));
-
+      // Upload files directly to Gemini and get file references
+      const uploadedFiles = await this.uploadFilesToGemini(files);
+      
       const prompt = `
-Analyze the following files and extract feature information for "${featureName || 'the feature'}".
-
-Files:
-${fileContents.map(f => `- ${f.name} (${f.mimetype}, ${f.size} bytes)`).join('\n')}
+Analyze the following uploaded files and extract feature information for "${featureName || 'the feature'}".
 
 Please extract:
 1. Feature name
@@ -237,7 +310,9 @@ Please extract:
 5. Expected outcomes after completing the feature
 6. Any prerequisites or setup requirements
 
-Return the information in this JSON format:
+IMPORTANT: You must respond with ONLY valid JSON. Do not include any text before or after the JSON. Do not wrap the JSON in markdown code blocks.
+
+Return the information in this exact JSON format:
 {
   "featureName": "string",
   "description": "string", 
@@ -248,14 +323,20 @@ Return the information in this JSON format:
 }
 `;
 
-      // Use LLM's file upload capabilities
-      const response = await this.callLLM(prompt, undefined, 0.1);
+      // Use the uploaded files with Gemini
+      const response = await this.callLLMWithFiles(prompt, uploadedFiles, 0.1);
       
-      if (!response.success || !response.action) {
-        throw new Error('Failed to process files with LLM');
+      // Parse the JSON response from the LLM
+      try {
+        const jsonText = this.extractJsonFromMarkdown(response);
+        console.log('Extracted JSON text:', jsonText.substring(0, 200) + (jsonText.length > 200 ? '...' : ''));
+        const parsed = JSON.parse(jsonText);
+        return parsed;
+      } catch (parseError) {
+        console.error('Error parsing LLM response:', parseError);
+        console.error('Raw response:', response);
+        throw new Error('Failed to parse LLM response');
       }
-
-      return response.action as any;
     } catch (error) {
       console.error('Error processing files with LLM:', error);
       throw new Error('Failed to process files with LLM');
@@ -323,11 +404,106 @@ Return in this JSON format:
 
     const response = await this.callLLM(prompt, systemPrompt, 0.1);
     
-    if (!response.success || !response.action) {
+    if (!response.success) {
+      console.error('LLM response:', response);
       throw new Error('Failed to generate action plan');
     }
 
-    return response.action as unknown as ActionPlan;
+    // Transform the LLM response to match ActionPlan interface
+    const llmResponse = response as any;
+    
+    if (!llmResponse.actions || !Array.isArray(llmResponse.actions)) {
+      console.error('LLM response missing actions array:', llmResponse);
+      throw new Error('Failed to generate action plan - no actions array');
+    }
+    const actionPlan: ActionPlan = {
+      featureName: featureDocs.featureName,
+      totalActions: llmResponse.actions?.length || 0,
+      estimatedDuration: this.parseEstimatedDuration(llmResponse.metadata?.estimatedDuration || '2-3 minutes'),
+      actions: llmResponse.actions?.map((action: any, index: number) => ({
+        id: action.id || `action_${index + 1}`,
+        type: this.mapActionType(action.type),
+        description: action.description || '',
+        priority: action.priority || index + 1,
+        dependencies: action.dependencies || [],
+        selector: '', // Will be filled during execution
+        value: '', // Will be filled during execution
+        waitTime: 1000, // Default wait time
+        retryCount: 0,
+        maxRetries: 3
+      })) || [],
+      summary: {
+        clickActions: 0,
+        typeActions: 0,
+        navigationActions: 0,
+        waitActions: 0,
+        extractActions: 0,
+        evaluateActions: 0
+      }
+    };
+
+    // Calculate summary
+    actionPlan.actions.forEach(action => {
+      switch (action.type) {
+        case 'click':
+          actionPlan.summary.clickActions++;
+          break;
+        case 'type':
+          actionPlan.summary.typeActions++;
+          break;
+        case 'navigate':
+          actionPlan.summary.navigationActions++;
+          break;
+        case 'wait':
+          actionPlan.summary.waitActions++;
+          break;
+        case 'extract':
+          actionPlan.summary.extractActions++;
+          break;
+        case 'evaluate':
+          actionPlan.summary.evaluateActions++;
+          break;
+      }
+    });
+
+    return actionPlan;
+  }
+
+  private parseEstimatedDuration(duration: string): number {
+    // Parse duration strings like "2-3 minutes", "5 minutes", "1 hour", etc.
+    const match = duration.match(/(\d+)(?:-(\d+))?\s*(minute|hour|second)s?/i);
+    if (match) {
+      const min = parseInt(match[1]);
+      const max = match[2] ? parseInt(match[2]) : min;
+      const unit = match[3].toLowerCase();
+      const avgMinutes = (min + max) / 2;
+      
+      switch (unit) {
+        case 'second':
+          return avgMinutes * 60;
+        case 'minute':
+          return avgMinutes * 60;
+        case 'hour':
+          return avgMinutes * 60 * 60;
+        default:
+          return avgMinutes * 60;
+      }
+    }
+    return 180; // Default to 3 minutes
+  }
+
+  private mapActionType(llmType: string): string {
+    // Map LLM action types to our internal action types
+    const typeMap: { [key: string]: string } = {
+      'navigate': 'navigate',
+      'interact': 'click',
+      'click': 'click',
+      'type': 'type',
+      'wait': 'wait',
+      'extract': 'extract',
+      'evaluate': 'evaluate'
+    };
+    return typeMap[llmType] || 'click';
   }
 
   async decideNextAction(
