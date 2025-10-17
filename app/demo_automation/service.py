@@ -1,5 +1,5 @@
 from app.services.browser_automation import execute_browser_task
-from app.services.gemini_service import extract_feature_usage_from_file
+from app.services.llm_service import extract_feature_usage_from_file
 import logging
 
 logger = logging.getLogger(__name__)
@@ -9,7 +9,7 @@ class DemoAutomationService:
     """Service class for handling demo automation business logic."""
     
     @staticmethod
-    async def process_feature_documentation(feature_docs):
+    async def _process_feature_documentation(feature_docs):
         """
         Process feature documentation file and extract usage instructions.
         
@@ -30,7 +30,7 @@ class DemoAutomationService:
         return feature_usage_instructions
     
     @staticmethod
-    def create_final_task(original_task, feature_usage_instructions):
+    def _create_final_task(original_task, feature_usage_instructions):
         """
         Combine original task with feature usage instructions.
         
@@ -49,7 +49,7 @@ class DemoAutomationService:
         return final_task
     
     @staticmethod
-    async def execute_automation_task(final_task):
+    async def _execute_automation_task(final_task):
         """
         Execute the browser automation task.
         
@@ -63,7 +63,7 @@ class DemoAutomationService:
         return await execute_browser_task(final_task)
     
     @staticmethod
-    def build_response_data(task, automation_result, feature_name=None, 
+    def _build_response_data(task, automation_result, feature_name=None, 
                           feature_docs=None, feature_usage_instructions=None):
         """
         Build the response data structure.
@@ -120,18 +120,18 @@ class DemoAutomationService:
         """
         try:
             # Process feature docs if provided
-            feature_usage_instructions = await DemoAutomationService.process_feature_documentation(feature_docs)
+            feature_usage_instructions = await DemoAutomationService._process_feature_documentation(feature_docs)
             
             print("feature_usage_instructions: ", feature_usage_instructions)
             
             # Create the final task - combine original task with feature usage instructions if available
-            final_task = DemoAutomationService.create_final_task(task, feature_usage_instructions)
+            final_task = DemoAutomationService._create_final_task(task, feature_usage_instructions)
             
             # Execute the browser automation task
-            automation_result = await DemoAutomationService.execute_automation_task(final_task)
+            automation_result = await DemoAutomationService._execute_automation_task(final_task)
             
             # Build and return response data
-            return DemoAutomationService.build_response_data(
+            return DemoAutomationService._build_response_data(
                 task=task,
                 automation_result=automation_result,
                 feature_name=feature_name,
