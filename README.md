@@ -1,4 +1,4 @@
-# RUEMAI Server
+# RuemaAI Server
 
 ## Setup
 
