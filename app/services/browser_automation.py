@@ -48,7 +48,7 @@ class BrowserAutomationService:
         try:
             logger.info(f"Executing browser automation task")
 
-            task_with_instructions = f"{task}\n\n Instructions:\n 1. Whenever you enter a value in a dropdown, then you need to select the value from the dropdown. 2. If you are not able to find the value in the dropdown, then you need to create a new value in the dropdown to proceed."
+            task_with_instructions = f"{task}\n\n Instructions:\n 1. Whenever you enter a value in a dropdown, then you need to press Enter key to select the value from the dropdown. 2. If you are not able to find the value in the dropdown, then you need to create a new value in the dropdown to proceed."
             
             # Create the agent with the provided task
             self.agent = Agent(
