@@ -13,6 +13,17 @@
    uv sync
    ```
 
+3. **Set up environment variables:**
+   Copy the sample environment file and configure your API keys:
+   ```bash
+   # Copy the sample environment file
+   cp .env.sample .env
+   ```
+   
+   Edit the `.env` file and replace the placeholder values with your actual API keys:
+   - **GOOGLE_API_KEY**: Get your API key from [Google AI Studio](https://aistudio.google.com/api-keys)
+   - **BROWSER_USE_API_KEY**: Get your API key from [Browser Use Cloud](https://cloud.browser-use.com/settings)
+
 ## Running the Server
 
 ### Development Mode (with hot reload)
