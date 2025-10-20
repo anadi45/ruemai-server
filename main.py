@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from app.demo_automation.routes import router as demo_router
+from app.voice_agent.routes import router as voice_router
 
 app = FastAPI(title="RUEM Server", description="A basic FastAPI server", version="1.0.0")
 
 # Include demo automation router
 app.include_router(demo_router)
+app.include_router(voice_router)
 
 @app.get("/")
 async def root():
