@@ -27,6 +27,8 @@ async def entrypoint(ctx: agents.JobContext):
         turn_detection=MultilingualModel(),
     )
 
+    print("creating session",)
+
     await session.start(
         room=ctx.room,
         agent=Assistant(),
