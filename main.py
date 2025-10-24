@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting RUEM Server...")
     try:
         # Start the voice agent service
-        await voice_agent_service.start_agent()
+        await voice_agent_service._start_agent()
         logger.info("Voice agent service started successfully")
     except Exception as e:
         logger.error(f"Failed to start voice agent service: {e}")
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down RUEM Server...")
     try:
-        await voice_agent_service.stop_agent()
+        await voice_agent_service._stop_agent()
         logger.info("Voice agent service stopped successfully")
     except Exception as e:
         logger.error(f"Error stopping voice agent service: {e}")

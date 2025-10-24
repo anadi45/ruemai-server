@@ -13,8 +13,8 @@ class VoiceAgentService:
         self.agent_process: Optional[subprocess.Popen] = None
         self.is_running = False
         
-    async def start_agent(self):
-        """Start the LiveKit voice agent in the background"""
+    async def _start_agent(self):
+        """Internal method to start the LiveKit voice agent (used by FastAPI lifespan)"""
         if self.is_running:
             logger.warning("Voice agent is already running")
             return
@@ -34,8 +34,8 @@ class VoiceAgentService:
             logger.error(f"Failed to start voice agent: {e}")
             raise
     
-    async def stop_agent(self):
-        """Stop the LiveKit voice agent"""
+    async def _stop_agent(self):
+        """Internal method to stop the LiveKit voice agent (used by FastAPI lifespan)"""
         if not self.is_running:
             logger.warning("Voice agent is not running")
             return
