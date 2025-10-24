@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import logging
-from app.demo_automation.routes import router as demo_router
-from app.voice_agent.routes import router as voice_router
+from app.api.v1.api import api_router
 from app.voice_agent.service import voice_agent_service
 
 # Configure logging
@@ -40,9 +39,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Include demo automation router
-app.include_router(demo_router)
-app.include_router(voice_router)
+# Include API router with all endpoints
+app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
