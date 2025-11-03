@@ -1,8 +1,6 @@
-import asyncio
-import os
-import httpx
-from typing import Dict, Any, Optional
-from browser_use import Agent, ChatGoogle
+from typing import Dict, Any, Callable, Optional
+from browser_use import Browser, sandbox, ChatBrowserUse
+from browser_use.agent.service import Agent
 from dotenv import load_dotenv
 import logging
 
@@ -11,57 +9,75 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-class BrowserAutomationService:
-    """Service for browser automation tasks using browser-use."""
+# Store the live URL from browser creation
+_live_url: Optional[str] = None
+
+
+def get_live_url() -> Optional[str]:
+    """
+    Get the stored live URL from the browser session.
     
-    def __init__(self):
-        self.agent = None
-        self.llm = self._get_llm()
+    Returns:
+        str: The live URL if available, None otherwise
+    """
+    return _live_url
+
+
+def _add_task_instructions(task: str) -> str:
+    """
+    Add default instructions to the task.
     
-    def _get_llm(self):
-        """Initialize ChatGoogle LLM."""
-        return ChatGoogle(model="gemini-flash-latest")
+    Args:
+        task (str): The original task instruction
+        
+    Returns:
+        str: Task with additional instructions appended
+    """
+    return f"{task}\n\n Instructions:\n 1. Whenever you enter a value in a dropdown, then you need to press Enter key to select the value from the dropdown. 2. If you are not able to find the value in the dropdown, then you need to create a new value in the dropdown to proceed."
+
+
+def _on_browser_created(data):
+    """
+    Callback function when browser is created.
+    Stores and logs the live URL if available.
+    """
+    global _live_url
+    if hasattr(data, 'live_url') and data.live_url:
+        _live_url = data.live_url
+        logger.info(f'Live URL: {_live_url}')
+
+
+def _create_sandboxed_task(task: str) -> Callable:
+    """
+    Create a sandboxed task function that captures the task in a closure.
     
-    async def __aenter__(self):
-        """Async context manager entry."""
-        # Don't create agent here - it needs a task parameter
-        return self
+    Args:
+        task (str): The task instruction for the browser automation agent
+        
+    Returns:
+        Callable: Sandboxed function ready to execute
+    """
+    task_with_instructions = _add_task_instructions(task)
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        if self.agent:
-            try:
-                await self.agent.close()
-            except:
-                pass
-    
-    async def execute_task(self, task: str) -> Dict[str, Any]:
+    @sandbox(on_browser_created=_on_browser_created)
+    async def _run_automation_task(browser: Browser) -> Dict[str, Any]:
         """
-        Execute a generic browser automation task.
+        Internal function that runs the automation task using sandbox pattern.
         
         Args:
-            task (str): The task instruction for the browser automation agent
+            browser (Browser): Browser instance provided by sandbox
             
         Returns:
             Dict[str, Any]: Result containing success status and details
         """
         try:
-            logger.info(f"Executing browser automation task")
-
-            task_with_instructions = f"{task}\n\n Instructions:\n 1. Whenever you enter a value in a dropdown, then you need to press Enter key to select the value from the dropdown. 2. If you are not able to find the value in the dropdown, then you need to create a new value in the dropdown to proceed."
-            
-            # Create the agent with the provided task
-            self.agent = Agent(
+            agent = Agent(
                 task=task_with_instructions,
-                llm=self.llm,
-                use_vision=True,
-                max_steps=15,
-                flash_mode=False,
-                use_thinking=True
+                browser=browser,
+                llm=ChatBrowserUse()
             )
             
-            # Run the agent
-            result = await self.agent.run()
+            result = await agent.run()
             
             # Extract final result message
             final_result_message = result.final_result() if result.final_result() else "No final result available"
@@ -82,10 +98,12 @@ class BrowserAutomationService:
                 "error": str(e)
             }
     
-# Convenience functions for easy usage
+    return _run_automation_task
+
+
 async def execute_browser_task(task: str) -> Dict[str, Any]:
     """
-    Convenience function to execute any browser automation task.
+    Execute a browser automation task using sandbox pattern.
     
     Args:
         task (str): The task instruction for the browser automation agent
@@ -93,5 +111,21 @@ async def execute_browser_task(task: str) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Result containing success status and details
     """
-    async with BrowserAutomationService() as browser_service:
-        return await browser_service.execute_task(task)
+    try:
+        logger.info(f"Executing browser automation task")
+        
+        # Create sandboxed task function with task captured in closure
+        sandboxed_task = _create_sandboxed_task(task)
+        
+        # Run the sandboxed automation task
+        result = await sandboxed_task()
+        
+        return result
+            
+    except Exception as e:
+        logger.error(f"Error during task execution: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Task execution failed: {str(e)}",
+            "error": str(e)
+        }
