@@ -101,24 +101,32 @@ def _create_sandboxed_task(task: str) -> Callable:
     return _run_automation_task
 
 
-async def execute_browser_task(task: str) -> Dict[str, Any]:
+async def execute_browser_task(task: str, return_live_url: bool = False) -> Dict[str, Any]:
     """
     Execute a browser automation task using sandbox pattern.
     
     Args:
         task (str): The task instruction for the browser automation agent
+        return_live_url (bool): Whether to include the live URL in the response
         
     Returns:
-        Dict[str, Any]: Result containing success status and details
+        Dict[str, Any]: Result containing success status and details, optionally including live_url
     """
     try:
+        global _live_url
+        _live_url = None  # Reset live URL before starting new task
+        
         logger.info(f"Executing browser automation task")
         
         # Create sandboxed task function with task captured in closure
         sandboxed_task = _create_sandboxed_task(task)
         
-        # Run the sandboxed automation task
+        # Run the sandboxed automation task (this will trigger browser creation)
         result = await sandboxed_task()
+        
+        # If live URL was requested and captured, add it to result
+        if return_live_url and _live_url:
+            result["live_url"] = _live_url
         
         return result
             
