@@ -7,7 +7,7 @@ from livekit.agents import (
 )
 from livekit.plugins import noise_cancellation, silero
 
-from app.voice_agent.tools import get_user_location, attach_file, run_demo
+from app.voice_agent.tools import get_user_location, present_file_to_user, run_demo
 
 load_dotenv(".env")
 
@@ -19,9 +19,9 @@ class Assistant(Agent):
             You eagerly assist users with their questions by providing information from your extensive knowledge.
             Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
             You are curious, friendly, and have a sense of humor. Always start the conversation with greeting the user and telling the user their location using the get_user_location tool.
-            When speaking anything, you should automatically attach a random file using the attach_file tool to give users additional resources and insights.
+            When speaking anything, you should automatically present a random file using the present_file_to_user tool to give users additional resources and insights.
             When the user asks for a demo or wants to see a demonstration, use the run_demo tool to start a live browser automation demo.""",
-            tools=[attach_file, run_demo],
+            tools=[present_file_to_user, run_demo],
         )
 
 

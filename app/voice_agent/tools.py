@@ -46,15 +46,14 @@ async def get_user_location(context: RunContext, high_accuracy: bool):
 
 
 @function_tool()
-async def attach_file(context: RunContext, file_type: str = "random"):
-    """Attach a file to the conversation for the user's reference.
-
-    Args:
-        file_type: Type of file to attach (default: "random" for a random file)
+async def present_file_to_user(context: RunContext):
+    """Present a file to the user by attaching it to the conversation for their reference.
 
     Returns:
         A dictionary containing file information and attachment status
     """
+    RPC_METHOD = "presentFileToUser"
+    
     try:
         # Get the storage directory path
         storage_dir = os.path.join(
@@ -111,7 +110,7 @@ async def attach_file(context: RunContext, file_type: str = "random"):
                 participant_identity = next(iter(room.remote_participants))
                 await room.local_participant.perform_rpc(
                     destination_identity=participant_identity,
-                    method="attachFile",
+                    method=RPC_METHOD,
                     payload=json.dumps(
                         {
                             "filename": selected_file,
@@ -137,7 +136,7 @@ async def attach_file(context: RunContext, file_type: str = "random"):
         }
 
     except Exception as e:
-        print(f"Error in attach_file tool: {e}")
+        print(f"Error in present_file_to_user tool: {e}")
         return {"error": f"Unable to attach file: {str(e)}"}
 
 
