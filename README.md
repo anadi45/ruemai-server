@@ -29,7 +29,7 @@
 ### Development Mode (with hot reload)
 ```bash
 uv run uvicorn main:app --reload
-uv run python app/voice_agent/agent.py dev # Run the agent
+uv run python app/voice_agent/agent.py dev / uv run python -m app.voice_agent.agent dev # Run the agent
 ```
 
 ### Production Mode
