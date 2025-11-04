@@ -46,10 +46,6 @@ async def entrypoint(ctx: agents.JobContext):
         turn_detection=turn_detection,
     )
 
-    print(
-        "creating session",
-    )
-
     await session.start(
         room=ctx.room,
         agent=Assistant(),
