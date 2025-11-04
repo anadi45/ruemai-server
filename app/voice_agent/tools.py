@@ -141,13 +141,15 @@ async def present_file_to_user(context: RunContext):
 
 
 @function_tool()
-async def run_demo(context: RunContext):
-    """Run a demo automation that shows a browser performing tasks in real-time.
+async def present_demo_to_user(context: RunContext):
+    """Present a demo automation to the user that shows a browser performing tasks in real-time.
     This will execute a pre-configured demo automation and display the browser session in an iframe.
 
     Returns:
         A dictionary containing demo execution status and live URL
     """
+    RPC_METHOD = "presentDemoToUser"
+    
     try:
         # Hardcoded demo task
         demo_task = "Go to https://app.gorattle.com/home and login using harshith1234@gorattle.com & 12345678. Then create a general workflow with salesforce as source and opportunity as principal object"
@@ -193,7 +195,7 @@ async def run_demo(context: RunContext):
                     participant_identity = next(iter(room.remote_participants))
                     await room.local_participant.perform_rpc(
                         destination_identity=participant_identity,
-                        method="demo",
+                        method=RPC_METHOD,
                         payload=json.dumps(
                             {
                                 "liveUrl": live_url,
@@ -219,6 +221,6 @@ async def run_demo(context: RunContext):
         }
         
     except Exception as e:
-        print(f"Error in run_demo tool: {e}")
+        print(f"Error in present_demo_to_user tool: {e}")
         return {"error": f"Unable to start demo: {str(e)}"}
 
