@@ -117,3 +117,6 @@ storage/
 
 # KMS directory (created by browser-use library)
 KMS/
+
+# Ruff cache
+ruff_cache/
