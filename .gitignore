@@ -114,3 +114,6 @@ dmypy.json
 
 # storage
 storage/
+
+# KMS directory (created by browser-use library)
+KMS/
