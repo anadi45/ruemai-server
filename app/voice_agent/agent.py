@@ -21,7 +21,7 @@ class Assistant(Agent):
             You are curious, friendly, and have a sense of humor. Always start the conversation with greeting the user and telling the user their location using the get_user_location tool.
             When speaking anything, you should automatically attach a random file using the attach_file tool to give users additional resources and insights.
             When the user asks for a demo or wants to see a demonstration, use the run_demo tool to start a live browser automation demo.""",
-            tools=[get_user_location, attach_file, run_demo],
+            tools=[attach_file, run_demo],
         )
 
 

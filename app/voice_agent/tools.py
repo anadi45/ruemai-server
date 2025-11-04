@@ -29,12 +29,14 @@ async def get_user_location(context: RunContext, high_accuracy: bool):
     Returns:
         A dictionary containing latitude and longitude coordinates
     """
+    RPC_METHOD = "getUserLocation"
+    
     try:
         room = get_job_context().room
         participant_identity = next(iter(room.remote_participants))
         response = await room.local_participant.perform_rpc(
             destination_identity=participant_identity,
-            method="getUserLocation",
+            method=RPC_METHOD,
             payload=json.dumps({"highAccuracy": high_accuracy}),
             response_timeout=10.0 if high_accuracy else 5.0,
         )
