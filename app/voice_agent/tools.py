@@ -30,7 +30,7 @@ async def get_user_location(context: RunContext, high_accuracy: bool):
         A dictionary containing latitude and longitude coordinates
     """
     RPC_METHOD = "getUserLocation"
-    
+
     try:
         room = get_job_context().room
         participant_identity = next(iter(room.remote_participants))
@@ -53,7 +53,7 @@ async def present_file_to_user(context: RunContext):
         A dictionary containing file information and attachment status
     """
     RPC_METHOD = "presentFileToUser"
-    
+
     try:
         # Get the storage directory path
         storage_dir = os.path.join(
@@ -149,19 +149,19 @@ async def present_demo_to_user(context: RunContext):
         A dictionary containing demo execution status and live URL
     """
     RPC_METHOD = "presentDemoToUser"
-    
+
     try:
         # Hardcoded demo task
         demo_task = "Go to https://app.gorattle.com/home and login using harshith1234@gorattle.com & 12345678. Then create a general workflow with salesforce as source and opportunity as principal object"
-        
+
         print("Starting demo automation...")
-        
+
         # Import browser automation functions to create task directly
         from app.services.browser_automation import _create_sandboxed_task
-        
+
         # Create sandboxed task function
         sandboxed_task = _create_sandboxed_task(demo_task)
-        
+
         # Start the browser automation task in the background
         async def run_automation():
             try:
@@ -169,15 +169,15 @@ async def present_demo_to_user(context: RunContext):
                 print(f"Demo automation completed: {result}")
             except Exception as e:
                 print(f"Demo automation error: {e}")
-        
+
         # Create background task
         automation_task = asyncio.create_task(run_automation())
-        
+
         # Wait a bit for browser to be created and get live URL
         max_wait_time = 15  # seconds
         wait_interval = 0.5  # seconds
         waited = 0
-        
+
         live_url = None
         while waited < max_wait_time and not live_url:
             await asyncio.sleep(wait_interval)
@@ -186,7 +186,7 @@ async def present_demo_to_user(context: RunContext):
             if live_url:
                 print(f"Got live URL: {live_url}")
                 break
-        
+
         # Send demo URL to frontend via RPC
         if live_url:
             try:
@@ -210,17 +210,16 @@ async def present_demo_to_user(context: RunContext):
             except Exception as e:
                 print(f"Failed to send demo URL to frontend: {e}")
                 # Don't fail the tool if RPC fails
-        
+
         # Continue with automation in background (don't wait for it)
         # The automation will complete independently
-        
+
         return {
             "success": True,
             "message": "Here is the demo.",
             "live_url": live_url,
         }
-        
+
     except Exception as e:
         print(f"Error in present_demo_to_user tool: {e}")
         return {"error": f"Unable to start demo: {str(e)}"}
-
