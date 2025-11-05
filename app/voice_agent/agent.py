@@ -6,11 +6,11 @@ from livekit.agents import (
     RoomInputOptions,
 )
 from livekit.plugins import noise_cancellation, silero
-
 from app.voice_agent.tools import (
     present_file_to_user,
     present_demo_to_user,
 )
+from app.voice_agent.prompts import INSTRUCTIONS
 
 load_dotenv(".env")
 
@@ -18,9 +18,7 @@ load_dotenv(".env")
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(
-            instructions="""You are Ruem AI Agent. An intelligent agent that is used to give demo, knowledge etc to the user about a product. You need to act like a sales executive 
-            and make sure the user is happy and satisfied with the demo and knowledge you are providing. The user if satisfied can convert into a qualified lead and we can help a company with their inbound sales funnel.
-            There are 2 cases when you need to call tools. First, if the user asks about pricing, then call present_file_to_user tool to present the pricing information. Second, if the user asks for a demo, then call present_demo_to_user tool to start a live browser automation demo.""",
+            instructions=INSTRUCTIONS,
             tools=[present_file_to_user, present_demo_to_user],
         )
 
