@@ -8,7 +8,6 @@ from livekit.agents import (
 from livekit.plugins import noise_cancellation, silero
 
 from app.voice_agent.tools import (
-    get_user_location,
     present_file_to_user,
     present_demo_to_user,
 )
