@@ -88,7 +88,6 @@ async def present_file_to_user(context: RunContext):
             "filename": selected_file,
             "size": file_size,
             "extension": file_extension,
-            "path": file_path,
         }
 
         # Send file information to frontend via RPC (with better error handling)
@@ -104,7 +103,6 @@ async def present_file_to_user(context: RunContext):
                             "filename": selected_file,
                             "fileSize": file_size,
                             "fileExtension": file_extension,
-                            "filePath": file_path,
                         }
                     ),
                     response_timeout=10.0,
