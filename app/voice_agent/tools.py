@@ -83,25 +83,13 @@ async def present_file_to_user(context: RunContext):
         file_size = os.path.getsize(file_path)
         file_extension = os.path.splitext(selected_file)[1]
 
-        # Read file content (for text files) or just metadata
+        # Get file metadata
         file_info = {
             "filename": selected_file,
             "size": file_size,
             "extension": file_extension,
             "path": file_path,
         }
-
-        # For text files, include content preview
-        if file_extension in [".txt", ".json"]:
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    # Truncate if too long
-                    if len(content) > 500:
-                        content = content[:500] + "..."
-                    file_info["content_preview"] = content
-            except Exception:
-                file_info["content_preview"] = "Unable to read file content"
 
         # Send file information to frontend via RPC (with better error handling)
         try:
@@ -117,7 +105,6 @@ async def present_file_to_user(context: RunContext):
                             "fileSize": file_size,
                             "fileExtension": file_extension,
                             "filePath": file_path,
-                            "contentPreview": file_info.get("content_preview", ""),
                         }
                     ),
                     response_timeout=10.0,
