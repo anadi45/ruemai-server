@@ -3,11 +3,16 @@ from browser_use import Browser, sandbox, ChatBrowserUse
 from browser_use.agent.service import Agent
 from dotenv import load_dotenv
 import logging
+import sys
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# Get project root directory
+_project_root = Path(__file__).parent.parent.parent
 
 # Store the live URL from browser creation
 _live_url: Optional[str] = None
@@ -58,6 +63,8 @@ def _create_sandboxed_task(task: str) -> Callable:
         Callable: Sandboxed function ready to execute
     """
     task_with_instructions = _add_task_instructions(task)
+    # Capture project root before sandbox execution
+    project_root_str = str(_project_root)
 
     @sandbox(on_browser_created=_on_browser_created)
     async def _run_automation_task(browser: Browser) -> Dict[str, Any]:
@@ -70,12 +77,44 @@ def _create_sandboxed_task(task: str) -> Callable:
         Returns:
             Dict[str, Any]: Result containing success status and details
         """
+        # Add project root to Python path for sandbox execution context
+        # This ensures imports like 'app.services.*' work in the sandbox process
+        import sys
+        import os
+        if project_root_str not in sys.path:
+            sys.path.insert(0, project_root_str)
+        
+        # Set PYTHONPATH environment variable for subprocesses
+        env_pythonpath = os.environ.get("PYTHONPATH", "")
+        if project_root_str not in env_pythonpath:
+            if env_pythonpath:
+                os.environ["PYTHONPATH"] = f"{project_root_str}{os.pathsep}{env_pythonpath}"
+            else:
+                os.environ["PYTHONPATH"] = project_root_str
+        
+        # Re-initialize logger in sandbox context to avoid import issues
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Define logging callback inside sandbox to avoid pickling issues
+        async def log_agent_actions(agent):
+            """
+            Log agent actions during step execution.
+            
+            Args:
+                agent: The Agent instance executing the task
+            """
+            logger.info(f"Agent is executing: {agent.state}")
+        
         try:
             agent = Agent(
                 task=task_with_instructions, browser=browser, llm=ChatBrowserUse()
             )
 
-            result = await agent.run()
+            result = await agent.run(
+                on_step_start=log_agent_actions,
+                on_step_end=log_agent_actions
+            )
 
             # Extract final result message
             final_result_message = (
