@@ -81,39 +81,48 @@ def _create_sandboxed_task(task: str) -> Callable:
         # This ensures imports like 'app.services.*' work in the sandbox process
         import sys
         import os
+
         if project_root_str not in sys.path:
             sys.path.insert(0, project_root_str)
-        
+
         # Set PYTHONPATH environment variable for subprocesses
         env_pythonpath = os.environ.get("PYTHONPATH", "")
         if project_root_str not in env_pythonpath:
             if env_pythonpath:
-                os.environ["PYTHONPATH"] = f"{project_root_str}{os.pathsep}{env_pythonpath}"
+                os.environ["PYTHONPATH"] = (
+                    f"{project_root_str}{os.pathsep}{env_pythonpath}"
+                )
             else:
                 os.environ["PYTHONPATH"] = project_root_str
-        
+
         # Re-initialize logger in sandbox context to avoid import issues
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         # Define logging callback inside sandbox to avoid pickling issues
-        async def log_agent_actions(agent):
+        async def log_agent_actions(agent: Agent):
             """
-            Log agent actions during step execution.
-            
+            Log agent planned next steps during step execution.
+
             Args:
                 agent: The Agent instance executing the task
             """
-            logger.info(f"Agent is executing: {agent.state}")
-        
+            if not agent.state.last_model_output:
+                logger.debug("No agent plan available yet")
+                return
+
+            model_output = agent.state.last_model_output.model_dump()
+
+            logger.info(f"model output: {model_output}")
+
         try:
             agent = Agent(
                 task=task_with_instructions, browser=browser, llm=ChatBrowserUse()
             )
 
             result = await agent.run(
-                on_step_start=log_agent_actions,
-                on_step_end=log_agent_actions
+                on_step_start=log_agent_actions, on_step_end=log_agent_actions
             )
 
             # Extract final result message
