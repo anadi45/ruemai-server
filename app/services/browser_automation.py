@@ -122,7 +122,8 @@ def _create_sandboxed_task(task: str) -> Callable:
             )
 
             result = await agent.run(
-                on_step_start=log_agent_actions, on_step_end=log_agent_actions
+                on_step_start=log_agent_actions,
+                # on_step_end=log_agent_actions
             )
 
             # Extract final result message
